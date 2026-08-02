@@ -7,7 +7,11 @@ import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
@@ -15,6 +19,7 @@ import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.JLabel;
 import javax.swing.JList;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.ListCellRenderer;
@@ -42,6 +47,94 @@ public class OverviewPanel extends JPanel {
         list.setVisibleRowCount(-1);
         list.setCellRenderer(new EntryRenderer());
         add(new JScrollPane(list), BorderLayout.CENTER);
+    }
+
+    /**
+     * Prompts (via a {@link JOptionPane} button row, one ascending/descending
+     * button pair per field) for a sort field and direction, then re-sorts
+     * the grid in place. One click picks both and closes the dialog. Wired
+     * to the app toolbar's Sort button in {@link Voynich#main}; must be
+     * called from the EDT.
+     */
+    public void sort() {
+        SortKey[] keys = SortKey.values();
+        String[] labels = new String[keys.length * 2];
+        Comparator<CatalogEntry>[] comparators = new Comparator[keys.length * 2];
+        for (int i = 0; i < keys.length; i++) {
+            labels[i * 2] = keys[i] + " ↑";
+            comparators[i * 2] = keys[i];
+            labels[i * 2 + 1] = keys[i] + " ↓";
+            comparators[i * 2 + 1] = keys[i].reversed();
+        }
+        int choice = JOptionPane.showOptionDialog(this, "Sort by:", "Sort",
+                JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
+                null, labels, labels[0]);
+        if (choice == JOptionPane.CLOSED_OPTION) {
+            return;
+        }
+        Comparator<CatalogEntry> comparator = comparators[choice];
+        List<CatalogEntry> entries = new ArrayList<>(model.size());
+        for (int i = 0; i < model.size(); i++) {
+            entries.add(model.get(i));
+        }
+        Collections.sort(entries, comparator);
+        model.clear();
+        for (CatalogEntry entry : entries) {
+            model.addElement(entry);
+        }
+    }
+
+    /**
+     * The fields {@link #sort()} offers, in menu order. Each constant is
+     * itself the {@link Comparator} for that field.
+     */
+    private enum SortKey implements Comparator<CatalogEntry> {
+        FILENAME("Filename") {
+            @Override
+            public int compare(CatalogEntry a, CatalogEntry b) {
+                return a.filename.compareToIgnoreCase(b.filename);
+            }
+        },
+        WIDTH("Width") {
+            @Override
+            public int compare(CatalogEntry a, CatalogEntry b) {
+                return Integer.compare(a.width, b.width);
+            }
+        },
+        HEIGHT("Height") {
+            @Override
+            public int compare(CatalogEntry a, CatalogEntry b) {
+                return Integer.compare(a.height, b.height);
+            }
+        },
+        COLOR_DENSITY("Colors / Megapixel") {
+            @Override
+            public int compare(CatalogEntry a, CatalogEntry b) {
+                return Double.compare(colorsPerMegapixel(a), colorsPerMegapixel(b));
+            }
+        };
+
+        /**
+         * {@link CatalogEntry#uniqueColors} scaled per megapixel of
+         * {@link CatalogEntry#width}×{@link CatalogEntry#height}, so foldout
+         * pages (scanned at 2x, 3x, or 3x2 the area of a normal page) don't
+         * simply win on pixel count alone.
+         */
+        private static double colorsPerMegapixel(CatalogEntry e) {
+            long pixels = (long) e.width * (long) e.height;
+            return pixels == 0 ? 0.0 : e.uniqueColors * 1_000_000.0 / pixels;
+        }
+
+        private final String label;
+
+        SortKey(String label) {
+            this.label = label;
+        }
+
+        @Override
+        public String toString() {
+            return label;
+        }
     }
 
     /**
