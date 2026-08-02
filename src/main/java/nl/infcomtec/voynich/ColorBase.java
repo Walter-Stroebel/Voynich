@@ -255,7 +255,7 @@ public class ColorBase {
             } else {
                 new TriLabColor(this, new Color(rgb, true));
             }
-            return scratch.v0 << 16 + scratch.v1 << 8 + scratch.v2;
+            return (scratch.v0 << 16) | (scratch.v1 << 8) | scratch.v2;
 
         }
     }
@@ -294,7 +294,7 @@ public class ColorBase {
             } else {
                 new TriLabColor(this, c);
             }
-            return scratch.v0 << 16 + scratch.v1 << 8 + scratch.v2;
+            return (scratch.v0 << 16) | (scratch.v1 << 8) | scratch.v2;
 
         }
     }
