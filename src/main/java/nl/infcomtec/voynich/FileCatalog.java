@@ -5,8 +5,11 @@ package nl.infcomtec.voynich;
 
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.List;
 import javax.imageio.ImageIO;
 
 /**
@@ -53,6 +56,23 @@ public class FileCatalog implements Catalog {
             return null;
         }
         return JSON.readValue(null, jsonFile, CatalogEntry.class);
+    }
+
+    @Override
+    public List<CatalogEntry> listAll() throws IOException {
+        File[] jsonFiles = dir.listFiles(new FilenameFilter() {
+            @Override
+            public boolean accept(File d, String name) {
+                return name.endsWith(".json");
+            }
+        });
+        List<CatalogEntry> all = new ArrayList<>();
+        if (null != jsonFiles) {
+            for (File jsonFile : jsonFiles) {
+                all.add(JSON.readValue(null, jsonFile, CatalogEntry.class));
+            }
+        }
+        return all;
     }
 
     @Override

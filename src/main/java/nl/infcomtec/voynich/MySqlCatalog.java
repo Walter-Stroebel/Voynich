@@ -13,6 +13,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
 import javax.imageio.ImageIO;
 
 /**
@@ -137,6 +139,28 @@ public class MySqlCatalog implements Catalog {
             } catch (SQLException ex) {
                 if (attempt == 2) {
                     throw new IOException("Could not load catalog entry " + filename, ex);
+                }
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public synchronized List<CatalogEntry> listAll() throws IOException {
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                reconnectIfBroken();
+                try (Statement st = conn.createStatement();
+                        ResultSet rs = st.executeQuery("SELECT data FROM images")) {
+                    List<CatalogEntry> all = new ArrayList<>();
+                    while (rs.next()) {
+                        all.add(JSON.readValue(rs.getString(1), CatalogEntry.class));
+                    }
+                    return all;
+                }
+            } catch (SQLException ex) {
+                if (attempt == 2) {
+                    throw new IOException("Could not list catalog entries", ex);
                 }
             }
         }

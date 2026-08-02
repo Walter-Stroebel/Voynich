@@ -7,7 +7,7 @@ import com.formdev.flatlaf.FlatDarculaLaf;
 import java.awt.BorderLayout;
 import java.awt.event.ActionEvent;
 import java.io.File;
-import java.io.FilenameFilter;
+import java.io.IOException;
 import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
@@ -30,7 +30,6 @@ public class Voynich {
      * The config loaded from {@link #configFile} at startup.
      */
     public static Config config;
-    private static File[] files;
 
     public static void main(String[] args) {
         FlatDarculaLaf.setup();
@@ -46,23 +45,38 @@ public class Voynich {
             System.exit(2);
         }
 
+        Catalog catalog;
         try {
-            files = new File(config.scanPath).listFiles(new FilenameFilter() {
-                @Override
-                public boolean accept(File dir, String name) {
-                    return name.endsWith(".png");
-                }
-            });
-            System.out.format("Found %d PNG files.", files.length);
-        } catch (Exception any) {
-            System.err.println("That did not work: " + any.getMessage());
+            catalog = Catalog.open(config);
+        } catch (IOException ex) {
+            System.err.println("Could not open catalog: " + ex.getMessage());
             System.exit(2);
+            return;
         }
+
+        final OverviewPanel overview = new OverviewPanel(catalog);
+        try {
+            overview.loadFromCatalog();
+        } catch (IOException ex) {
+            System.err.println("Could not load catalog: " + ex.getMessage());
+        }
+
         final JFrame fr = new JFrame(TITLE);
         fr.setExtendedState(JFrame.MAXIMIZED_BOTH);
         fr.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         JPanel outer = new JPanel(new BorderLayout());
         JToolBar toolBar = new JToolBar();
+        toolBar.add(new JButton(new EzAction("Scan") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                TaskWindow existing = TaskWindow.getOrNull(ScanTaskWindow.TASK_TYPE);
+                if (null == existing) {
+                    new ScanTaskWindow(config, catalog, overview, fr).start();
+                } else {
+                    existing.start();
+                }
+            }
+        }));
         toolBar.add(new JButton(new EzAction("Exit") {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -70,6 +84,7 @@ public class Voynich {
             }
         }));
         outer.add(toolBar, BorderLayout.NORTH);
+        outer.add(overview, BorderLayout.CENTER);
         fr.setContentPane(outer);
         SwingUtilities.invokeLater(new Runnable() {
             @Override

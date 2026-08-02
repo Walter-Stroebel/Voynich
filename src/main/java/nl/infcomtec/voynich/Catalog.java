@@ -6,6 +6,7 @@ package nl.infcomtec.voynich;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
 
 /**
  * Persistence for the image catalog: one {@link CatalogEntry} plus one
@@ -40,6 +41,13 @@ public interface Catalog {
      * @throws IOException if the read fails
      */
     BufferedImage loadThumbnail(String filename) throws IOException;
+
+    /**
+     * @return every {@link CatalogEntry} currently stored, in
+     * backend-defined order
+     * @throws IOException if the read fails
+     */
+    List<CatalogEntry> listAll() throws IOException;
 
     /**
      * Records that {@code filename} was seen at {@code file}'s path, merging
