@@ -606,12 +606,10 @@ public class ColorBase {
          * cached object's {@link #count} and copy its LAB values (direct
          * construction path only; never reached via {@code add()}).</li>
          * <li>On miss, check {@link ColorBase#convert} (static level). On hit,
-         * copy the LAB values. {@code this} is NOT inserted into
-         * {@code cb.cache} here; the caller ({@code add()}) never reaches this
-         * constructor for a colour already in the instance cache, so the
-         * absence of a put on the static-hit path is intentional — it trades
-         * one extra allocation on cross-image colour collisions for simpler,
-         * correct accounting.</li>
+         * copy the LAB values and register {@code this} in {@code cb.cache} —
+         * this image has never seen the colour before even though another
+         * instance has, so it still needs an entry (and an initial
+         * {@link #count} of 1) in this image's own inventory.</li>
          * <li>On miss in both caches, compute CIELab via
          * {@link EnhancedColor#getCIELAB(Color)}, clamp and store the results,
          * then register {@code this} in both caches.</li>
@@ -651,6 +649,7 @@ public class ColorBase {
                 l = lu.l;
                 a = lu.a;
                 b = lu.b;
+                cb.cache.put(this, this);
             }
         }
     }
