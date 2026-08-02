@@ -30,10 +30,13 @@ import javax.swing.WindowConstants;
  * indicator: start the task, open a {@code TaskWindow} showing what it's
  * doing, let the user watch it or iconify it and move on.
  * <p>
- * Closing the window (the X button) iconifies it rather than disposing it —
- * the task keeps running headless either way, and the only way to actually
- * stop it is the Cancel button. This is deliberate: an accidental
- * window-close shouldn't silently kill a long-running scan.
+ * While the task is running, closing the window (the X button) iconifies it
+ * rather than disposing it — the task keeps running headless either way, and
+ * the only way to actually stop it is the Cancel button. This is deliberate:
+ * an accidental window-close shouldn't silently kill a long-running scan.
+ * Once the task has finished (or been cancelled), both the X button and the
+ * same button — now relabeled Close — dispose the window instead, since
+ * there's nothing left to protect.
  * </p>
  * <p>
  * {@link #getOrNull(String)} plus one window instance per concrete subclass
@@ -51,7 +54,7 @@ public abstract class TaskWindow extends JFrame {
     private final String taskType;
     private final JProgressBar progressBar = new JProgressBar(0, 100);
     private final JTextArea log = new JTextArea(16, 60);
-    private final JButton cancelButton;
+    private final EzAction cancelAction;
     private Worker worker;
 
     /**
@@ -69,16 +72,18 @@ public abstract class TaskWindow extends JFrame {
         add(new JScrollPane(log), BorderLayout.CENTER);
         add(progressBar, BorderLayout.NORTH);
 
-        cancelButton = new JButton(new EzAction("Cancel") {
+        cancelAction = new EzAction("Cancel") {
             @Override
             public void actionPerformed(ActionEvent e) {
-                if (null != worker) {
+                if (isRunning()) {
                     worker.cancel(true);
+                } else {
+                    dispose();
                 }
             }
-        });
+        };
         JPanel south = new JPanel();
-        south.add(cancelButton);
+        south.add(new JButton(cancelAction));
         add(south, BorderLayout.SOUTH);
 
         pack();
@@ -88,7 +93,11 @@ public abstract class TaskWindow extends JFrame {
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
-                setExtendedState(Frame.ICONIFIED);
+                if (isRunning()) {
+                    setExtendedState(Frame.ICONIFIED);
+                } else {
+                    dispose();
+                }
             }
         });
 
@@ -157,6 +166,15 @@ public abstract class TaskWindow extends JFrame {
     }
 
     /**
+     * @return {@code true} while a run is in progress (used to decide whether
+     * closing the window should iconify it or dispose it, and whether the
+     * bottom button cancels the run or dismisses the finished window)
+     */
+    private boolean isRunning() {
+        return null != worker && !worker.isDone();
+    }
+
+    /**
      * Starts the background task and shows the window. Safe to call on a
      * window returned by {@link #getOrNull(String)}: if its previous run has
      * finished or been cancelled, this starts a fresh one (clearing the log
@@ -172,9 +190,9 @@ public abstract class TaskWindow extends JFrame {
         }
         log.setText("");
         progressBar.setValue(0);
+        cancelAction.setName("Cancel");
         worker = new Worker();
         worker.addPropertyChangeListener(new ProgressListener());
-        cancelButton.setEnabled(true);
         worker.execute();
         setVisible(true);
     }
@@ -215,7 +233,6 @@ public abstract class TaskWindow extends JFrame {
 
         @Override
         protected void done() {
-            cancelButton.setEnabled(false);
             try {
                 get();
             } catch (CancellationException ex) {
@@ -227,6 +244,7 @@ public abstract class TaskWindow extends JFrame {
                 // more queued output this could race against.
                 log.append("Failed: " + ex.getCause() + "\n");
             }
+            cancelAction.setName("Close");
         }
     }
 }

@@ -51,6 +51,22 @@ public class ColorBase {
      * conversions already performed by earlier instances without carrying the
      * full per-instance cache.
      * </p>
+     * <p>
+     * Shared across every {@code ColorBase} instance and thread in the JVM, so
+     * every touch of this map — here and in {@link #reverse} — takes the
+     * {@code ColorBase.class} monitor via a {@code synchronized (ColorBase.class)}
+     * block: in {@link #resolve}, {@link #resolveFromLab}, and
+     * {@link TriLabColor#TriLabColor(ColorBase, Color)}. {@link #saveConvert}
+     * and {@link #loadConvert} are {@code synchronized static} methods instead
+     * (locking the same monitor for their whole body), since they iterate the
+     * map and need the lock held for the full walk, not just single calls. A
+     * plain {@link TreeMap} has no locking of its own; concurrent structural
+     * modification (a {@code put} of a new key) without this would corrupt the
+     * tree for any other thread mid-walk, not just race on a value — so the
+     * lock only ever wraps the cheap map lookup/insert itself, never the CIELab
+     * math on either side of it, keeping each critical section down to a
+     * handful of nanoseconds regardless of cache hit or miss.
+     * </p>
      */
     public static TreeMap<TriElm, TriLabColor> convert = new TreeMap<>();
 
@@ -85,7 +101,7 @@ public class ColorBase {
      * @param f the file to write; created or overwritten
      * @throws IOException if the file cannot be written
      */
-    public static void saveConvert(File f) throws IOException {
+    public static synchronized void saveConvert(File f) throws IOException {
         if (null == f) {
             return;
         }
@@ -141,7 +157,7 @@ public class ColorBase {
      * @param f the file to read; must have been written by {@link #saveConvert}
      * @throws IOException if the file cannot be read or is malformed
      */
-    public static void loadConvert(File f) throws IOException {
+    public static synchronized void loadConvert(File f) throws IOException {
         if (null == f || !f.exists()) {
             return;
         }
@@ -316,7 +332,10 @@ public class ColorBase {
             key.v1 = (short) c.getGreen();
             key.v2 = (short) c.getBlue();
         }
-        TriLabColor lu = convert.get(key);
+        TriLabColor lu;
+        synchronized (ColorBase.class) {
+            lu = convert.get(key);
+        }
         if (null != lu) {
             return lu;
         }
@@ -328,7 +347,9 @@ public class ColorBase {
         tc.l = (short) Math.max(0, Math.min(10000, cielab[0]));
         tc.a = (short) Math.max(-12800, Math.min(12800, cielab[1]));
         tc.b = (short) Math.max(-12800, Math.min(12800, cielab[2]));
-        convert.put(tc, tc);
+        synchronized (ColorBase.class) {
+            convert.put(tc, tc);
+        }
         return tc;
     }
 
@@ -429,7 +450,10 @@ public class ColorBase {
         labKey.v0 = (short) Math.max(0, Math.min(10000, Math.round(L * 100)));
         labKey.v1 = (short) Math.max(-12800, Math.min(12800, Math.round(a * 100)));
         labKey.v2 = (short) Math.max(-12800, Math.min(12800, Math.round(b * 100)));
-        TriLabColor lu = reverse.get(labKey);
+        TriLabColor lu;
+        synchronized (ColorBase.class) {
+            lu = reverse.get(labKey);
+        }
         if (null != lu) {
             return lu;
         }
@@ -441,8 +465,10 @@ public class ColorBase {
         tc.l = labKey.v0;
         tc.a = labKey.v1;
         tc.b = labKey.v2;
-        reverse.put(labKey, tc);
-        convert.putIfAbsent(tc, tc);
+        synchronized (ColorBase.class) {
+            reverse.put(labKey, tc);
+            convert.putIfAbsent(tc, tc);
+        }
         return tc;
     }
 
@@ -599,7 +625,9 @@ public class ColorBase {
             }
             TriLabColor lu = cb.cache.get(this);
             if (null == lu) {
-                lu = convert.get(this);
+                synchronized (ColorBase.class) {
+                    lu = convert.get(this);
+                }
             } else {
                 lu.count++;
             }
@@ -609,7 +637,9 @@ public class ColorBase {
                 a = (short) Math.max(-12800, Math.min(12800, cielab[1]));
                 b = (short) Math.max(-12800, Math.min(12800, cielab[2]));
                 cb.cache.put(this, this);
-                convert.put(this, this);
+                synchronized (ColorBase.class) {
+                    convert.put(this, this);
+                }
             } else {
                 l = lu.l;
                 a = lu.a;
