@@ -1,0 +1,33 @@
+# The mach1 side of a GTID-based MySQL replication pair. Run alone for
+# master-slave (mach2's docker-compose.replica.yml is the slave); run
+# replication/setup-replication.sh a second time in the reverse direction
+# to turn this into master-master — same containers, no rebuild needed,
+# see replication/README.md.
+services:
+  mysql:
+    image: mysql:8
+    container_name: voynich-repl-primary
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      REPL_USER: ${REPL_USER}
+      REPL_PASSWORD: ${REPL_PASSWORD}
+    command:
+      - --server-id=1
+      - --log-bin=mysql-bin
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      # Only load-bearing once mach2 also writes directly (master-master);
+      # harmless as a no-op default under plain master-slave.
+      - --auto-increment-increment=2
+      - --auto-increment-offset=1
+    ports:
+      # Never 3306 — see docker-compose.yml at repo root.
+      - "${REPL_PRIMARY_PORT:-13306}:3306"
+    volumes:
+      - voynich-repl-primary-data:/var/lib/mysql
+      - ./init:/docker-entrypoint-initdb.d:ro
+
+volumes:
+  voynich-repl-primary-data:

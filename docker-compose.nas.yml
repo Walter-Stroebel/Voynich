@@ -1,0 +1,14 @@
+# Override for mach1 (a docker-MySQL host with a NAS mount available): bind
+# the MySQL datadir to the /usb1 NAS mount (CIFS share) instead of a local
+# docker-managed volume. Use with:
+#   docker compose -f docker-compose.yml -f docker-compose.nas.yml up -d
+#
+# /usb1 is mounted `soft,cache=none,vers=2.0` — MySQL's docs call this
+# configuration unsupported for InnoDB datadirs (no reliable byte-range
+# locking over SMB). This file exists to test that assumption, not because
+# it's a recommended layout.
+services:
+  mysql:
+    user: "1000:1000"
+    volumes:
+      - /usb1/voynich_mysql_data:/var/lib/mysql

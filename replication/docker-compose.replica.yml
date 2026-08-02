@@ -1,0 +1,27 @@
+# The mach2 side of the pair — see docker-compose.primary.yml and
+# replication/README.md.
+services:
+  mysql:
+    image: mysql:8
+    container_name: voynich-repl-replica
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      REPL_USER: ${REPL_USER}
+      REPL_PASSWORD: ${REPL_PASSWORD}
+    command:
+      - --server-id=2
+      - --log-bin=mysql-bin
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --auto-increment-increment=2
+      - --auto-increment-offset=2
+    ports:
+      - "${REPL_REPLICA_PORT:-13307}:3306"
+    volumes:
+      - voynich-repl-replica-data:/var/lib/mysql
+      - ./init:/docker-entrypoint-initdb.d:ro
+
+volumes:
+  voynich-repl-replica-data:
