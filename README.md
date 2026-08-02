@@ -61,7 +61,15 @@ compile:
 6. **Deferred, nice-to-have:** primary/replica MySQL topology (fast NVMe
    primary, NAS replica) if a long-running catalog operation actually
    demands the durability. See "Why Docker + MySQL" below for why this is
-   even possible at all.
+   even possible at all. The replication mechanics themselves are built and
+   live-tested (`replication/`, both master-slave and master-master) — what's
+   still missing is any consumer of it: `Config` carries exactly one
+   `db` endpoint, and `MySqlCatalog` has no notion of a second host to fail
+   over to. `MySqlCatalog` does retry once through a dead/hiccuped
+   connection (real hardware drops connections; that's normal, not a
+   failover event), but a primary that's actually down still requires
+   editing `db.host` by hand and restarting the app — this item is what
+   would make that automatic.
 7. **Minor housekeeping:** `mysql-connector-java:8.0.27` is the legacy
    artifact coordinate (`groupId: mysql`); the maintained one is
    `com.mysql:mysql-connector-j`. Still works, not urgent.

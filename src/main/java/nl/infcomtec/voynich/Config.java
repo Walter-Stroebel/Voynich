@@ -30,7 +30,14 @@ public class Config {
     public static class Db {
 
         public String host = "localhost";
-        public int port = 3306;
+        /**
+         * No default on purpose — this project never binds MySQL to its
+         * standard port (see {@code docker-compose.yml}), so defaulting
+         * this to 3306 would silently point an incomplete config at the
+         * one port it's guaranteed not to be on. Leaving it unset (0)
+         * fails loudly instead.
+         */
+        public int port;
         public String database;
         public String user;
         public String password;
