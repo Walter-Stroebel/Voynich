@@ -6,13 +6,19 @@ package nl.infcomtec.voynich;
 import java.awt.Window;
 import java.io.File;
 import java.io.FilenameFilter;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Walks {@link Config#scanPath}, decodes each PNG via {@link ColorImage},
  * and records it in the {@link Catalog} — the concrete {@link TaskWindow}
- * behind the toolbar's Scan button. Progress is reported per file; the
- * {@link OverviewPanel} is updated live as each one is cataloged, so results
- * appear while the scan is still running rather than only at the end.
+ * behind the toolbar's Scan button. Files are processed in parallel across
+ * every available core (see {@link #runTask()}); progress is reported per
+ * file as each one finishes, and the {@link OverviewPanel} is updated live,
+ * so results appear while the scan is still running rather than only at the
+ * end.
  * <p>
  * A file whose catalog entry already has a {@link CatalogEntry.Location}
  * matching this path with the same {@code size}/{@code mtime} is skipped
@@ -48,34 +54,64 @@ public class ScanTaskWindow extends TaskWindow {
             publishLine("Could not list " + config.scanPath);
             return;
         }
-        publishLine("Found " + files.length + " PNG files.");
-        int skipped = 0;
-        for (int i = 0; i < files.length; i++) {
-            if (isCancelRequested()) {
-                publishLine("Cancelled after " + i + " of " + files.length + " files.");
-                return;
-            }
-            File file = files[i];
-            try {
-                CatalogEntry existing = catalog.loadEntry(file.getName());
-                if (unchanged(existing, file)) {
-                    overview.addOrUpdate(existing);
-                    publishLine(file.getName() + ": unchanged, skipped.");
-                    skipped++;
-                } else {
-                    ColorImage ci = new ColorImage(file);
-                    CatalogEntry entry = catalog.recordSighting(
-                            file.getName(), file, ci.w, ci.h, ci.labIndex.size(), ci.thumbnail);
-                    overview.addOrUpdate(entry, ci.thumbnail);
-                    publishLine(file.getName() + ": " + ci.w + "x" + ci.h + ", "
-                            + ci.labIndex.size() + " colors.");
+        int cores = Runtime.getRuntime().availableProcessors();
+        publishLine("Found " + files.length + " PNG files, scanning with " + cores + " threads.");
+
+        AtomicInteger completed = new AtomicInteger();
+        AtomicInteger skipped = new AtomicInteger();
+        ExecutorService pool = Executors.newFixedThreadPool(cores);
+        for (final File file : files) {
+            pool.submit(new Runnable() {
+                @Override
+                public void run() {
+                    scanOne(file, files.length, completed, skipped);
                 }
-            } catch (Exception ex) {
-                publishLine(file.getName() + ": FAILED - " + ex.getMessage());
-            }
-            setProgressPercent((int) ((i + 1) * 100L / files.length));
+            });
         }
-        publishLine("Scan complete: " + files.length + " files, " + skipped + " unchanged.");
+        pool.shutdown();
+        pool.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
+
+        if (isCancelRequested()) {
+            publishLine("Cancelled after " + completed.get() + " of " + files.length + " files.");
+        } else {
+            publishLine("Scan complete: " + files.length + " files, " + skipped.get() + " unchanged.");
+        }
+    }
+
+    /**
+     * Catalogs one file — the unit of work submitted per-file to the thread
+     * pool in {@link #runTask()}. Checked in, not just fired off blind: skips
+     * entirely if a cancel has already landed by the time this task actually
+     * starts (queued-but-not-yet-run tasks from a large batch bail out cheaply
+     * this way rather than each doing a full decode after the user cancelled).
+     *
+     * @param file the file to catalog
+     * @param total total file count, for the progress percentage
+     * @param completed shared counter, incremented once this file is done
+     * @param skipped shared counter, incremented if this file was unchanged
+     */
+    private void scanOne(File file, int total, AtomicInteger completed, AtomicInteger skipped) {
+        if (isCancelRequested()) {
+            return;
+        }
+        try {
+            CatalogEntry existing = catalog.loadEntry(file.getName());
+            if (unchanged(existing, file)) {
+                overview.addOrUpdate(existing);
+                publishLine(file.getName() + ": unchanged, skipped.");
+                skipped.incrementAndGet();
+            } else {
+                ColorImage ci = new ColorImage(file);
+                CatalogEntry entry = catalog.recordSighting(
+                        file.getName(), file, ci.w, ci.h, ci.labIndex.size(), ci.thumbnail);
+                overview.addOrUpdate(entry, ci.thumbnail);
+                publishLine(file.getName() + ": " + ci.w + "x" + ci.h + ", "
+                        + ci.labIndex.size() + " colors.");
+            }
+        } catch (Exception ex) {
+            publishLine(file.getName() + ": FAILED - " + ex.getMessage());
+        }
+        setProgressPercent((int) (completed.incrementAndGet() * 100L / total));
     }
 
     /**

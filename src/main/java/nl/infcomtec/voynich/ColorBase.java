@@ -214,6 +214,23 @@ public class ColorBase {
     private final TriElm scratch = new TriElm();
 
     /**
+     * Packs three 0-255 components into one RGB {@code int}: red in bits
+     * 23-16, green in bits 15-8, blue in bits 7-0. The single point of truth
+     * for this packing — both {@link #add(int)} and {@link #add(Color)} call
+     * it rather than each repeating the bit math inline, since an earlier
+     * inline copy of exactly this expression had a precedence bug
+     * ({@code v0 << 16 + v1 << 8 + v2} silently isn't RGB packing at all).
+     *
+     * @param r red component, 0-255
+     * @param g green component, 0-255
+     * @param b blue component, 0-255
+     * @return the packed RGB value
+     */
+    private static int packRGB(int r, int g, int b) {
+        return (r << 16) | (g << 8) | b;
+    }
+
+    /**
      * Registers a raw ARGB pixel value and returns its alpha-premultiplied
      * absolute RGB.
      * <p>
@@ -255,7 +272,7 @@ public class ColorBase {
             } else {
                 new TriLabColor(this, new Color(rgb, true));
             }
-            return (scratch.v0 << 16) | (scratch.v1 << 8) | scratch.v2;
+            return packRGB(scratch.v0, scratch.v1, scratch.v2);
 
         }
     }
@@ -294,7 +311,7 @@ public class ColorBase {
             } else {
                 new TriLabColor(this, c);
             }
-            return (scratch.v0 << 16) | (scratch.v1 << 8) | scratch.v2;
+            return packRGB(scratch.v0, scratch.v1, scratch.v2);
 
         }
     }
