@@ -37,28 +37,37 @@ gap.
 - A CIELab-thumbnail distance metric (`ColorImage.distanceTo`) — mean per-cell ΔE between two images' thumbnails, resolution-independent, the basis for "is this a copy of that" comparisons across a collection
 - A catalog persistence layer (`Catalog`/`CatalogEntry`, with `MySqlCatalog` and `FileCatalog` backends) — one record + thumbnail per filename, keyed by filename rather than path so the same file at two locations (e.g. a NAS copy and a local NVMe copy) is one entry, not two. MySQL is optional (runs via `docker-compose.yml`) and falls back automatically to plain JSON+PNG sidecar files when unconfigured
 
+**Implemented (app level):**
+- `MySqlCatalog` smoke-tested against a real container — a live
+  `recordSighting`/`loadEntry`/`loadThumbnail` round-trip, not just compiled
+  code
+- `Catalog` wired into `Voynich.main`: the toolbar's Scan action walks
+  `config.scanPath`, decodes each image, and records it via
+  `Catalog.recordSighting`, with progress shown live in a `TaskWindow`
+  (background `SwingWorker`, Cancel while running/Close when done, one window
+  per task-type reused on repeat runs) — see `CLAUDE.md` for the class
+  rundown
+- Catalog/browse UI: `OverviewPanel`, a `JList` grid over stored thumbnails
+  and filenames, populated from `Catalog.listAll()` at startup and updated
+  live as a scan runs — the grid view the roadmap below used to list as a
+  separate step
+- Re-scans skip any file whose catalog entry already matches its on-disk
+  `size`/`mtime`, so a repeat scan with nothing changed completes in seconds
+  instead of re-decoding all 210+ images
+
 ## Roadmap
 
 In order — each step assumes the ones above it are done, not just that they
 compile:
 
-1. **Smoke-test `MySqlCatalog` against a real container.** It compiles but
-   has never touched an actual MySQL instance — `docker compose up -d`, fill
-   in a real `.env`, run one `recordSighting` round-trip. De-risk this before
-   building anything on top of it.
-2. **Wire `Catalog` into `Voynich.main`.** Currently nothing opens one or
-   records a sighting — the whole persistence layer is unused library code
-   until the scan loop calls it. This is what turns it from a library into
-   an actual pipeline.
-3. **Catalog/browse UI** — a grid view over `thumbnail`, the first real use
-   of any of this from a human's perspective instead of just a compiler's.
-4. **Sort-by-similarity / duplicate report**, using `ColorImage.distanceTo`
-   across the catalog — the original motivating feature.
-5. **Deferred, only if measured slow:** precomputed nearest-neighbour /
+1. **Sort-by-similarity / duplicate report**, using `ColorImage.distanceTo`
+   across the catalog — the original motivating feature, and the first item
+   here nothing has actually been built against yet.
+2. **Deferred, only if measured slow:** precomputed nearest-neighbour /
    duplicate-cluster caching, if an O(n²) `distanceTo` pass over a real
    collection turns out to actually be a bottleneck. Don't build this
    speculatively.
-6. **Deferred, nice-to-have:** primary/replica MySQL topology (fast NVMe
+3. **Deferred, nice-to-have:** primary/replica MySQL topology (fast NVMe
    primary, NAS replica) if a long-running catalog operation actually
    demands the durability. See "Why Docker + MySQL" below for why this is
    even possible at all. The replication mechanics themselves are built and
@@ -70,10 +79,10 @@ compile:
    failover event), but a primary that's actually down still requires
    editing `db.host` by hand and restarting the app — this item is what
    would make that automatic.
-7. **Minor housekeeping:** `mysql-connector-java:8.0.27` is the legacy
+4. **Minor housekeeping:** `mysql-connector-java:8.0.27` is the legacy
    artifact coordinate (`groupId: mysql`); the maintained one is
    `com.mysql:mysql-connector-j`. Still works, not urgent.
-8. Editing operations (crop, exposure, white balance, etc.) — not scoped
+5. Editing operations (crop, exposure, white balance, etc.) — not scoped
    yet at all; this project has stayed cataloging/comparison so far, not
    editing.
 
