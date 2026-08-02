@@ -7,17 +7,19 @@ package nl.infcomtec.voynich;
  * An ordered triple of {@code short} values used as a composite map key.
  * <p>
  * The natural ordering is lexicographic on (v0, v1, v2), which satisfies the
- * contract required by {@link java.util.TreeMap}. The meaning of v0/v1/v2 is
- * defined by the caller — {@link ColorBase} uses this both as an RGB triple
- * (v0=R, v1=G, v2=B) and, via {@link ColorBase.TriLabColor}, as a scaled
- * CIELab triple (v0=L*x100, v1=a*x100, v2=b*x100).
+ * contract required by both {@link java.util.TreeMap} (the per-instance
+ * cache) and {@link java.util.concurrent.ConcurrentSkipListMap} (the shared
+ * static caches in {@link ColorBase}). The meaning of v0/v1/v2 is defined by
+ * the caller — {@link ColorBase} uses this both as an RGB triple (v0=R,
+ * v1=G, v2=B) and, via {@link ColorBase.TriLabColor}, as a scaled CIELab
+ * triple (v0=L*x100, v1=a*x100, v2=b*x100).
  * </p>
  * <p>
- * {@code equals} and {@code hashCode} are intentionally not overridden — only
- * {@link java.util.TreeMap} is used, which relies exclusively on
- * {@link #compareTo}. Do not place {@code TriElm} instances into any
- * hash-based collection ({@code HashMap}, {@code HashSet}) without first
- * adding proper {@code equals}/{@code hashCode} implementations.
+ * {@code equals} and {@code hashCode} are intentionally not overridden —
+ * only ordered maps that rely exclusively on {@link #compareTo} are used. Do
+ * not place {@code TriElm} instances into any hash-based collection
+ * ({@code HashMap}, {@code HashSet}) without first adding proper
+ * {@code equals}/{@code hashCode} implementations.
  * </p>
  */
 public class TriElm implements Comparable<TriElm> {
