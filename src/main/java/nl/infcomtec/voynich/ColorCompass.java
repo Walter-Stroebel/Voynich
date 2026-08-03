@@ -7,12 +7,17 @@ import java.util.ArrayList;
 import javax.swing.*;
 
 /**
- * Interactive polar map of CIELAB colour space, centered on a pickable colour.
- * Distance from the center encodes ΔE (CIE76) reach along six axes (L+/L-,
- * a+/a-, b+/b-); left-click samples a colour into the history strip,
- * right-click re-centers the map on the clicked colour.
+ * Interactive polar map of a colour space, centered on a pickable colour.
+ * Three interchangeable spaces are supported (CIELAB, YUV, RGB); distance
+ * from the center encodes reach along six axes, two per native channel
+ * (channel+/channel-). Left-click samples a colour into the history strip,
+ * right-click re-centers the map on the clicked colour, and — if the
+ * compass was opened on two colours — a small ring/dot marks the second
+ * colour's position relative to the current center. Points that fall
+ * outside the sRGB gamut render as solid black rather than a dimmed colour:
+ * there is nothing displayable there.
  */
-public class CielabCompass extends JFrame {
+public class ColorCompass extends JFrame {
 
     public void showFrame() {
         if (getWidth() < 500 || getHeight() < 500) {
@@ -25,7 +30,7 @@ public class CielabCompass extends JFrame {
             EventQueue.invokeLater(new Runnable() {
                 @Override
                 public void run() {
-                    CielabCompass.super.setVisible(true);
+                    ColorCompass.super.setVisible(true);
                 }
             });
         }
@@ -34,24 +39,39 @@ public class CielabCompass extends JFrame {
     /**
      * Opens centered on neutral gray (L*50, a*0, b*0).
      */
-    public CielabCompass() {
-        this(new EnhancedColor(128, 128, 128));
+    public ColorCompass() {
+        this(new EnhancedColor(128, 128, 128), null);
     }
 
     /**
-     * Opens centered on the CIELAB coordinates of the given colour.
+     * Opens centered on the given colour.
      *
      * @param initial colour to center the compass on.
      */
-    public CielabCompass(Color initial) {
-        super("CIELAB ΔE Compass");
+    public ColorCompass(Color initial) {
+        this(initial, null);
+    }
+
+    /**
+     * Opens centered on {@code initial}, with {@code second} marked on the
+     * disc. The ΔE/reach slider is auto-scaled so {@code second} lands at
+     * 2/3 of the disc radius, on whichever axis direction its delta from
+     * {@code initial} leans toward.
+     *
+     * @param initial colour to center the compass on.
+     * @param second colour to mark, or {@code null} for none.
+     */
+    public ColorCompass(Color initial, Color second) {
+        super("Colour Compass");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setResizable(false);
 
-        double[] initialLab = EnhancedColor.getCIELAB(initial);
-        CompassPanel compass = new CompassPanel(500, initialLab);
+        CompassPanel compass = new CompassPanel(500, initial);
         InfoPanel info = new InfoPanel(compass);
         compass.setInfoPanel(info);
+        if (second != null) {
+            compass.setSecondColor(second);
+        }
 
         JPanel root = new JPanel(new BorderLayout(16, 0));
         root.setBackground(new Color(0x1a1a1a));
@@ -64,14 +84,32 @@ public class CielabCompass extends JFrame {
         setLocationByPlatform(true);
     }
 
+    private static double clamp(double v, double lo, double hi) {
+        return Math.max(lo, Math.min(hi, v));
+    }
+
+    private static double[] subtract(double[] a, double[] b) {
+        return new double[]{a[0] - b[0], a[1] - b[1], a[2] - b[2]};
+    }
+
+    private static double norm(double[] v) {
+        return Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    }
+
+    private static final int BLACK_ARGB = 0xff000000;
+
+    private static int argbOpaque(double r, double g, double b) {
+        int ri = (int) clamp(Math.round(r), 0, 255);
+        int gi = (int) clamp(Math.round(g), 0, 255);
+        int bi = (int) clamp(Math.round(b), 0, 255);
+        return 0xff000000 | (ri << 16) | (gi << 8) | bi;
+    }
+
     /**
      * Lab→XYZ→linear-sRGB, kept local and unclamped rather than reusing
      * {@link EnhancedColor#fromCIELAB}: that method deliberately clips each
-     * channel to a displayable value, so every out-of-gamut coordinate in a
-     * region collapses to whatever primary it clips to. This tool instead
-     * wants out-of-gamut pixels to stay visually distinguishable — dimmed by
-     * how far and in which direction they overshoot — which needs the raw
-     * value before clamping.
+     * channel to a displayable value, which loses exactly the information
+     * this tool needs to tell in-gamut from out-of-gamut.
      *
      * @return [r, g, bl] linear-light (pre-gamma), unclamped.
      */
@@ -113,24 +151,40 @@ public class CielabCompass extends JFrame {
     }
 
     /**
-     * ARGB for a CIELAB coordinate. Out-of-gamut coordinates are dimmed and
-     * made translucent rather than hard-clamped, so the disc still shows
-     * where the true colour would lie.
+     * Same idea as {@link #GAMUT_EPSILON}, scaled for the 0..255 range that
+     * the YUV and RGB conversions (simple linear algebra, far less
+     * round-trip error than Lab's cube roots) work in.
      */
-    static int labToArgb(double L, double a, double b, boolean dimOutOfGamut) {
-        double[] linear = rawLinearRGB(L, a, b);
-        boolean inGamut = inGamut(linear);
-        double factor = (!inGamut && dimOutOfGamut) ? 0.3 : 1.0;
-        int ri = (int) Math.min(255, Math.max(0, gammaEncode(linear[0]) * 255 * factor));
-        int gi = (int) Math.min(255, Math.max(0, gammaEncode(linear[1]) * 255 * factor));
-        int bi = (int) Math.min(255, Math.max(0, gammaEncode(linear[2]) * 255 * factor));
-        int alpha = (!inGamut && dimOutOfGamut) ? 180 : 255;
-        return (alpha << 24) | (ri << 16) | (gi << 8) | bi;
+    private static final double GAMUT_EPSILON_255 = 0.05;
+
+    private static boolean inGamut255(double[] rgb) {
+        for (double c : rgb) {
+            if (c < -GAMUT_EPSILON_255 || c > 255 + GAMUT_EPSILON_255) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * YUV→RGB, kept local and unclamped for the same reason as
+     * {@link #rawLinearRGB}: {@link YUV#from()} clamps.
+     *
+     * @return [r, g, b] in the 0..255 scale, unclamped.
+     */
+    private static double[] rawRgbFromYUV(double Y, double U, double V) {
+        double y = Y - 16, u = U - 128, v = V - 128;
+        double r = 1.164 * y + 1.596 * v;
+        double g = 1.164 * y - 0.392 * u - 0.813 * v;
+        double b = 1.164 * y + 2.017 * u;
+        return new double[]{r, g, b};
     }
 
     // ── Axis definitions ─────────────────────────────────────────────────────
-    // Each row: {angle in degrees, dL, da, db} — the CIELAB direction reached
-    // when the mouse is at that angle from the center.
+    // Each row: {angle in degrees, w1, w2, w3} — the direction in the active
+    // Space's native channels reached when the mouse is at that angle from
+    // the center. Shared across all three spaces: only the channels' meaning
+    // (and their labels/colours, see Space) changes between modes.
     static final double[][] AXES = {
         {90, 1, 0, 0},
         {270, -1, 0, 0},
@@ -138,38 +192,277 @@ public class CielabCompass extends JFrame {
         {210, 0, -1, 0},
         {330, 0, 0, 1},
         {150, 0, 0, -1},};
-    static final Color[] AXIS_COLORS = {
-        new Color(0xff, 0xff, 0xff), new Color(0x44, 0x44, 0x44),
-        new Color(0xff, 0x44, 0x66), new Color(0x44, 0xcc, 0x44),
-        new Color(0xff, 0xdd, 0x00), new Color(0x44, 0x88, 0xff),};
-    static final String[] AXIS_LABELS = {"L+", "L−", "a+", "a−", "b+", "b−"};
 
     /**
-     * Renders the polar CIELAB disc and turns mouse position/clicks into
-     * CIELAB coordinates for the linked {@link InfoPanel}.
+     * Finds the on-disc angle that best represents an arbitrary native-space
+     * delta. Most deltas activate two adjacent axes (a delta with all three
+     * channels nonzero has no exact position on the disc, since the disc's
+     * generative mapping only ever blends two of the six rays); this
+     * resolves that by summing each axis's positive contribution as a 2D
+     * vector and taking the resultant direction.
+     */
+    private static double angleForDelta(double[] delta) {
+        double vx = 0, vy = 0;
+        for (double[] axis : AXES) {
+            double activation = Math.max(0, delta[0] * axis[1] + delta[1] * axis[2] + delta[2] * axis[3]);
+            double rad = Math.toRadians(axis[0]);
+            vx += activation * Math.cos(rad);
+            vy += activation * Math.sin(rad);
+        }
+        if (vx == 0 && vy == 0) {
+            return 0;
+        }
+        double deg = Math.toDegrees(Math.atan2(vy, vx));
+        return deg < 0 ? deg + 360 : deg;
+    }
+
+    /**
+     * A colour space the compass can display: conversion to/from
+     * {@link Color}, gamut test, and the axis vocabulary (labels/colours)
+     * for that space's three native channels.
+     */
+    enum Space {
+
+        LAB("ΔE reach") {
+            @Override
+            double[] fromColor(Color c) {
+                return EnhancedColor.getCIELAB(c);
+            }
+
+            @Override
+            double[] clampDomain(double[] v) {
+                return new double[]{clamp(v[0], 0, 100), clamp(v[1], -128, 128), clamp(v[2], -128, 128)};
+            }
+
+            @Override
+            boolean inGamut(double[] v) {
+                return ColorCompass.inGamut(rawLinearRGB(v[0], v[1], v[2]));
+            }
+
+            @Override
+            int toArgb(double[] v) {
+                double[] linear = rawLinearRGB(v[0], v[1], v[2]);
+                if (!ColorCompass.inGamut(linear)) {
+                    return BLACK_ARGB;
+                }
+                return argbOpaque(gammaEncode(linear[0]) * 255, gammaEncode(linear[1]) * 255, gammaEncode(linear[2]) * 255);
+            }
+
+            @Override
+            Color toDisplayColor(double[] v) {
+                return EnhancedColor.fromCIELAB(v[0], v[1], v[2]);
+            }
+
+            @Override
+            String format(double[] v) {
+                return String.format("L* %.1f  a* %.1f  b* %.1f", v[0], v[1], v[2]);
+            }
+
+            @Override
+            String[] axisLabels() {
+                return new String[]{"L+", "L−", "a+", "a−", "b+", "b−"};
+            }
+
+            @Override
+            Color[] axisColors() {
+                return new Color[]{
+                    new Color(0xff, 0xff, 0xff), new Color(0x44, 0x44, 0x44),
+                    new Color(0xff, 0x44, 0x66), new Color(0x44, 0xcc, 0x44),
+                    new Color(0xff, 0xdd, 0x00), new Color(0x44, 0x88, 0xff)
+                };
+            }
+
+            @Override
+            String[] axisLegend() {
+                return new String[]{"↑ L+ lighter", "↓ L− darker", "↗ a+ red",
+                    "↙ a− green", "↘ b+ yellow", "↖ b− blue"};
+            }
+        },
+        YUV("YUV reach") {
+            @Override
+            double[] fromColor(Color c) {
+                YUV yuv = new YUV(c);
+                return new double[]{yuv.Y, yuv.U, yuv.V};
+            }
+
+            @Override
+            double[] clampDomain(double[] v) {
+                return new double[]{clamp(v[0], 0, 255), clamp(v[1], 0, 255), clamp(v[2], 0, 255)};
+            }
+
+            @Override
+            boolean inGamut(double[] v) {
+                return inGamut255(rawRgbFromYUV(v[0], v[1], v[2]));
+            }
+
+            @Override
+            int toArgb(double[] v) {
+                double[] rgb = rawRgbFromYUV(v[0], v[1], v[2]);
+                if (!inGamut255(rgb)) {
+                    return BLACK_ARGB;
+                }
+                return argbOpaque(rgb[0], rgb[1], rgb[2]);
+            }
+
+            @Override
+            Color toDisplayColor(double[] v) {
+                return new YUV(v[0], v[1], v[2]).from();
+            }
+
+            @Override
+            String format(double[] v) {
+                return String.format("Y %.1f  U %.1f  V %.1f", v[0], v[1], v[2]);
+            }
+
+            @Override
+            String[] axisLabels() {
+                return new String[]{"Y+", "Y−", "U+", "U−", "V+", "V−"};
+            }
+
+            @Override
+            Color[] axisColors() {
+                return new Color[]{
+                    new Color(0xff, 0xff, 0xff), new Color(0x44, 0x44, 0x44),
+                    new Color(0xff, 0x44, 0x44), new Color(0x44, 0xdd, 0xdd),
+                    new Color(0x44, 0x66, 0xff), new Color(0xdd, 0xdd, 0x44)
+                };
+            }
+
+            @Override
+            String[] axisLegend() {
+                return new String[]{"↑ Y+ brighter", "↓ Y− darker", "↗ U+ red dev.",
+                    "↙ U− cyan dev.", "↘ V+ blue dev.", "↖ V− yellow dev."};
+            }
+        },
+        RGB("RGB reach") {
+            @Override
+            double[] fromColor(Color c) {
+                return new double[]{c.getRed(), c.getGreen(), c.getBlue()};
+            }
+
+            @Override
+            double[] clampDomain(double[] v) {
+                return new double[]{clamp(v[0], 0, 255), clamp(v[1], 0, 255), clamp(v[2], 0, 255)};
+            }
+
+            @Override
+            boolean inGamut(double[] v) {
+                return inGamut255(v);
+            }
+
+            @Override
+            int toArgb(double[] v) {
+                if (!inGamut255(v)) {
+                    return BLACK_ARGB;
+                }
+                return argbOpaque(v[0], v[1], v[2]);
+            }
+
+            @Override
+            Color toDisplayColor(double[] v) {
+                return EnhancedColor.clamped(Math.round(v[0]), Math.round(v[1]), Math.round(v[2]));
+            }
+
+            @Override
+            String format(double[] v) {
+                return String.format("R %.0f  G %.0f  B %.0f", v[0], v[1], v[2]);
+            }
+
+            @Override
+            String[] axisLabels() {
+                return new String[]{"R+", "R−", "G+", "G−", "B+", "B−"};
+            }
+
+            @Override
+            Color[] axisColors() {
+                return new Color[]{
+                    new Color(0xff, 0x44, 0x44), new Color(0x44, 0xdd, 0xdd),
+                    new Color(0x44, 0xdd, 0x44), new Color(0xdd, 0x44, 0xdd),
+                    new Color(0x44, 0x66, 0xff), new Color(0xdd, 0xdd, 0x44)
+                };
+            }
+
+            @Override
+            String[] axisLegend() {
+                return new String[]{"↑ R+ more red", "↓ R− less red (cyan)", "↗ G+ more green",
+                    "↙ G− less green (magenta)", "↘ B+ more blue", "↖ B− less blue (yellow)"};
+            }
+        };
+
+        final String reachLabel;
+
+        Space(String reachLabel) {
+            this.reachLabel = reachLabel;
+        }
+
+        /**
+         * @return this space's native [ch1, ch2, ch3] for a real colour.
+         */
+        abstract double[] fromColor(Color c);
+
+        /**
+         * @return v clamped to this space's legal per-channel numeric range
+         * (not a gamut test — just keeps values in a sane domain).
+         */
+        abstract double[] clampDomain(double[] v);
+
+        /**
+         * @return whether v converts to a displayable sRGB colour.
+         */
+        abstract boolean inGamut(double[] v);
+
+        /**
+         * @return opaque ARGB for v, or solid black if out of gamut.
+         */
+        abstract int toArgb(double[] v);
+
+        /**
+         * @return the nearest displayable colour to v (clamped, no gamut
+         * signalling — for swatches/history, not the disc raster).
+         */
+        abstract Color toDisplayColor(double[] v);
+
+        /**
+         * @return v formatted as this space's coordinate readout text.
+         */
+        abstract String format(double[] v);
+
+        abstract String[] axisLabels();
+
+        abstract Color[] axisColors();
+
+        abstract String[] axisLegend();
+    }
+
+    /**
+     * Renders the polar disc for the active {@link Space} and turns mouse
+     * position/clicks into native coordinates for the linked
+     * {@link InfoPanel}.
      */
     static class CompassPanel extends JPanel {
 
         final int SIZE;
         final int CX, CY, R;
+        Space mode = Space.LAB;
         double[] center;
+        Color secondColor;
         int deReach = 30;
         double[] hover = null;
         InfoPanel info;
         BufferedImage compassImage;
 
-        CompassPanel(int size, double[] initialLab) {
+        CompassPanel(int size, Color initialColor) {
             SIZE = size;
             CX = CY = SIZE / 2;
             R = SIZE / 2 - 2;
-            center = initialLab.clone();
+            center = mode.fromColor(initialColor);
             setPreferredSize(new Dimension(SIZE, SIZE));
             setBackground(new Color(0x1a1a1a));
             rebuildImage();
 
             addMouseMotionListener(new MouseMotionAdapter() {
                 public void mouseMoved(MouseEvent e) {
-                    hover = pixelToLab(e.getX(), e.getY());
+                    hover = pixelToNative(e.getX(), e.getY());
                     if (hover != null && info != null) {
                         info.update(hover, false);
                     }
@@ -178,19 +471,19 @@ public class CielabCompass extends JFrame {
             });
             addMouseListener(new MouseAdapter() {
                 public void mouseClicked(MouseEvent e) {
-                    double[] lab = pixelToLab(e.getX(), e.getY());
-                    if (lab == null) {
+                    double[] v = pixelToNative(e.getX(), e.getY());
+                    if (v == null) {
                         return;
                     }
                     if (SwingUtilities.isRightMouseButton(e)) {
-                        center = lab;
+                        center = v;
                         rebuildImage();
                         if (info != null) {
-                            info.update(lab, false);
+                            info.update(v, false);
                         }
                     } else {
                         if (info != null) {
-                            info.pick(lab);
+                            info.pick(v);
                         }
                     }
                     repaint();
@@ -200,6 +493,31 @@ public class CielabCompass extends JFrame {
 
         void setInfoPanel(InfoPanel p) {
             this.info = p;
+        }
+
+        void setMode(Space newMode) {
+            Color asColor = mode.toDisplayColor(center);
+            mode = newMode;
+            center = newMode.fromColor(asColor);
+            rebuildImage();
+        }
+
+        /**
+         * Marks {@code c} on the disc and scales the reach so it sits at
+         * exactly 2/3 of the radius, on whichever axis direction its delta
+         * from the current center leans toward.
+         */
+        void setSecondColor(Color c) {
+            secondColor = c;
+            double dist = norm(subtract(mode.fromColor(c), center));
+            int needed = (int) Math.max(5, Math.ceil(dist * 1.5));
+            if (info != null) {
+                info.snapReachTo(needed);
+            } else {
+                deReach = needed;
+                rebuildImage();
+            }
+            repaint();
         }
 
         void setDeReach(int v) {
@@ -214,28 +532,11 @@ public class CielabCompass extends JFrame {
             for (int py = 0; py < SIZE; py++) {
                 for (int px = 0; px < SIZE; px++) {
                     double dx = px - CX, dy = py - CY;
-                    double dist = Math.sqrt(dx * dx + dy * dy);
-                    if (dist > R) {
+                    if (Math.sqrt(dx * dx + dy * dy) > R) {
                         raster[py * SIZE + px] = 0x00000000;
                         continue;
                     }
-                    double t = dist / R;
-                    double reach = t * deReach;
-                    double angle = Math.toDegrees(Math.atan2(-dy, dx));
-                    if (angle < 0) {
-                        angle += 360;
-                    }
-                    double[] w = axisWeights(angle);
-                    double L = center[0], a = center[1], b = center[2];
-                    for (int i = 0; i < AXES.length; i++) {
-                        L += reach * AXES[i][1] * w[i];
-                        a += reach * AXES[i][2] * w[i];
-                        b += reach * AXES[i][3] * w[i];
-                    }
-                    L = Math.max(0, Math.min(100, L));
-                    a = Math.max(-128, Math.min(128, a));
-                    b = Math.max(-128, Math.min(128, b));
-                    raster[py * SIZE + px] = labToArgb(L, a, b, true);
+                    raster[py * SIZE + px] = mode.toArgb(discToNative(dx, dy));
                 }
             }
             compassImage.setRGB(0, 0, SIZE, SIZE, raster, 0, SIZE);
@@ -272,30 +573,33 @@ public class CielabCompass extends JFrame {
             return w;
         }
 
-        double[] pixelToLab(int px, int py) {
-            double dx = px - CX, dy = py - CY;
+        /**
+         * Native coordinate reached at pixel offset (dx,dy) from the
+         * center, shared by the raster fill and mouse hit-testing.
+         */
+        double[] discToNative(double dx, double dy) {
             double dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist > R) {
-                return null;
-            }
-            double t = dist / R;
-            double reach = t * deReach;
+            double reach = (dist / R) * deReach;
             double angle = Math.toDegrees(Math.atan2(-dy, dx));
             if (angle < 0) {
                 angle += 360;
             }
             double[] w = axisWeights(angle);
-            double L = center[0], a = center[1], b = center[2];
+            double[] v = center.clone();
             for (int i = 0; i < AXES.length; i++) {
-                L += reach * AXES[i][1] * w[i];
-                a += reach * AXES[i][2] * w[i];
-                b += reach * AXES[i][3] * w[i];
+                v[0] += reach * AXES[i][1] * w[i];
+                v[1] += reach * AXES[i][2] * w[i];
+                v[2] += reach * AXES[i][3] * w[i];
             }
-            return new double[]{
-                Math.max(0, Math.min(100, L)),
-                Math.max(-128, Math.min(128, a)),
-                Math.max(-128, Math.min(128, b))
-            };
+            return mode.clampDomain(v);
+        }
+
+        double[] pixelToNative(int px, int py) {
+            double dx = px - CX, dy = py - CY;
+            if (Math.sqrt(dx * dx + dy * dy) > R) {
+                return null;
+            }
+            return discToNative(dx, dy);
         }
 
         protected void paintComponent(Graphics g) {
@@ -309,20 +613,20 @@ public class CielabCompass extends JFrame {
             g2.setClip(null);
 
             // axis lines
+            String[] labels = mode.axisLabels();
+            Color[] colors = mode.axisColors();
             for (int i = 0; i < AXES.length; i++) {
                 double rad = Math.toRadians(AXES[i][0]);
                 int ex = (int) (CX + Math.cos(rad) * R);
                 int ey = (int) (CY - Math.sin(rad) * R);
-                g2.setColor(new Color(AXIS_COLORS[i].getRed(), AXIS_COLORS[i].getGreen(),
-                        AXIS_COLORS[i].getBlue(), 50));
+                g2.setColor(new Color(colors[i].getRed(), colors[i].getGreen(), colors[i].getBlue(), 50));
                 g2.drawLine(CX, CY, ex, ey);
                 // label
                 int lx = (int) (CX + Math.cos(rad) * (R - 20));
                 int ly = (int) (CY - Math.sin(rad) * (R - 20));
-                g2.setColor(new Color(AXIS_COLORS[i].getRed(), AXIS_COLORS[i].getGreen(),
-                        AXIS_COLORS[i].getBlue(), 160));
+                g2.setColor(new Color(colors[i].getRed(), colors[i].getGreen(), colors[i].getBlue(), 160));
                 g2.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
-                g2.drawString(AXIS_LABELS[i], lx - 8, ly + 4);
+                g2.drawString(labels[i], lx - 8, ly + 4);
             }
 
             // border
@@ -330,28 +634,43 @@ public class CielabCompass extends JFrame {
             g2.setStroke(new BasicStroke(2));
             g2.drawOval(CX - R, CY - R, R * 2, R * 2);
 
+            // second-colour marker
+            if (secondColor != null) {
+                double[] delta = subtract(mode.fromColor(secondColor), center);
+                double frac = Math.min(1.0, norm(delta) / deReach);
+                double rad = Math.toRadians(angleForDelta(delta));
+                int mx = (int) (CX + Math.cos(rad) * R * frac);
+                int my = (int) (CY - Math.sin(rad) * R * frac);
+                g2.setColor(Color.WHITE);
+                g2.setStroke(new BasicStroke(2));
+                g2.drawOval(mx - 7, my - 7, 14, 14);
+                g2.setColor(secondColor);
+                g2.fillOval(mx - 4, my - 4, 8, 8);
+            }
+
             // center dot
             g2.setColor(Color.WHITE);
             g2.fillOval(CX - 5, CY - 5, 10, 10);
-            EnhancedColor cRgb = EnhancedColor.fromCIELAB(center[0], center[1], center[2]);
-            g2.setColor(cRgb);
+            g2.setColor(mode.toDisplayColor(center));
             g2.fillOval(CX - 3, CY - 3, 6, 6);
         }
     }
 
     /**
-     * Swatch, coordinate readout and pick history alongside the compass disc.
+     * Mode buttons, swatch, coordinate readout and pick history alongside
+     * the compass disc.
      */
     static class InfoPanel extends JPanel {
 
         final CompassPanel compass;
         final JPanel swatch = new JPanel();
-        final JLabel lblLab = new JLabel("L* 50  a* 0  b* 0");
+        final JLabel lblCoord = new JLabel();
         final JLabel lblHex = new JLabel("#808080");
-        final JLabel lblDE = new JLabel("ΔE reach: 30");
+        final JLabel lblReachVal = new JLabel();
         final JSlider slider = new JSlider(5, 80, 30);
+        final JPanel axisLegendPanel = new JPanel();
         final JPanel history = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
-        final ArrayList<double[]> picks = new ArrayList<>();
+        final ArrayList<Color> picks = new ArrayList<>();
 
         InfoPanel(CompassPanel compass) {
             this.compass = compass;
@@ -359,51 +678,72 @@ public class CielabCompass extends JFrame {
             setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
             setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 8));
 
+            JPanel modeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+            modeRow.setBackground(new Color(0x1a1a1a));
+            ButtonGroup group = new ButtonGroup();
+            for (Space s : Space.values()) {
+                JToggleButton btn = new JToggleButton(s.name());
+                btn.setSelected(s == compass.mode);
+                btn.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
+                btn.addActionListener(e -> {
+                    compass.setMode(s);
+                    refreshForMode();
+                    compass.repaint();
+                });
+                group.add(btn);
+                modeRow.add(btn);
+            }
+
             swatch.setPreferredSize(new Dimension(220, 70));
             swatch.setMaximumSize(new Dimension(Integer.MAX_VALUE, 70));
             swatch.setBackground(new Color(0x808080));
             swatch.setBorder(BorderFactory.createLineBorder(new Color(0x333333)));
 
             Font mono = new Font(Font.MONOSPACED, Font.PLAIN, 12);
-            lblLab.setForeground(new Color(0xaaaaaa));
-            lblLab.setFont(mono);
+            lblCoord.setForeground(new Color(0xaaaaaa));
+            lblCoord.setFont(mono);
             lblHex.setForeground(Color.WHITE);
             lblHex.setFont(mono);
-            lblDE.setForeground(new Color(0xaaaaaa));
-            lblDE.setFont(mono);
+            lblReachVal.setForeground(new Color(0xaaaaaa));
+            lblReachVal.setFont(mono);
 
             slider.setBackground(new Color(0x1a1a1a));
             slider.setForeground(new Color(0x888888));
 
-            JLabel lblReach = small("ΔE REACH");
+            JLabel lblReach = small("REACH");
             JLabel lblHist = small("HISTORY (click=center)");
             JLabel lblHint = small("LEFT CLICK=pick  RIGHT CLICK=set center");
 
             history.setBackground(new Color(0x1a1a1a));
             history.setMaximumSize(new Dimension(Integer.MAX_VALUE, 120));
 
+            axisLegendPanel.setLayout(new BoxLayout(axisLegendPanel, BoxLayout.Y_AXIS));
+            axisLegendPanel.setBackground(new Color(0x1a1a1a));
+
             slider.addChangeListener(e -> {
                 compass.setDeReach(slider.getValue());
-                lblDE.setText("ΔE reach: " + slider.getValue());
+                lblReachVal.setText(compass.mode.reachLabel + ": " + slider.getValue());
             });
 
+            add(modeRow);
+            add(Box.createVerticalStrut(8));
             add(swatch);
             add(Box.createVerticalStrut(8));
-            add(lblLab);
+            add(lblCoord);
             add(lblHex);
-            add(lblDE);
+            add(lblReachVal);
             add(Box.createVerticalStrut(4));
             add(lblReach);
             add(slider);
             add(Box.createVerticalStrut(8));
-            add(axisLegend());
+            add(axisLegendPanel);
             add(Box.createVerticalStrut(8));
             add(lblHist);
             add(history);
             add(Box.createVerticalGlue());
             add(lblHint);
 
-            update(compass.center, false);
+            refreshForMode();
         }
 
         JLabel small(String t) {
@@ -413,33 +753,53 @@ public class CielabCompass extends JFrame {
             return l;
         }
 
-        JPanel axisLegend() {
-            JPanel p = new JPanel();
-            p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
-            p.setBackground(new Color(0x1a1a1a));
-            String[] desc = {"↑ L+ lighter", "↓ L− darker", "↗ a+ red", "↙ a− green", "↘ b+ yellow", "↖ b− blue"};
+        /**
+         * Re-reads the active mode's axis vocabulary/labels and re-derives
+         * the current readouts from it; called after {@link Space}
+         * switches.
+         */
+        void refreshForMode() {
+            axisLegendPanel.removeAll();
+            String[] desc = compass.mode.axisLegend();
+            Color[] colors = compass.mode.axisColors();
             for (int i = 0; i < desc.length; i++) {
                 JLabel l = new JLabel(desc[i]);
                 l.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
-                l.setForeground(AXIS_COLORS[i]);
-                p.add(l);
+                l.setForeground(colors[i]);
+                axisLegendPanel.add(l);
             }
-            return p;
+            axisLegendPanel.revalidate();
+            axisLegendPanel.repaint();
+            lblReachVal.setText(compass.mode.reachLabel + ": " + slider.getValue());
+            update(compass.center, false);
+            rebuildHistory();
         }
 
-        void update(double[] lab, boolean picked) {
-            EnhancedColor rgb = EnhancedColor.fromCIELAB(lab[0], lab[1], lab[2]);
+        /**
+         * Extends the slider's range if needed, then sets it to {@code
+         * value} — used to snap the reach so a second colour lands at 2/3
+         * radius.
+         */
+        void snapReachTo(int value) {
+            if (value > slider.getMaximum()) {
+                slider.setMaximum(value);
+            }
+            slider.setValue(value);
+        }
+
+        void update(double[] v, boolean picked) {
+            Color rgb = compass.mode.toDisplayColor(v);
             swatch.setBackground(rgb);
-            lblLab.setText(String.format("L* %.1f  a* %.1f  b* %.1f", lab[0], lab[1], lab[2]));
+            lblCoord.setText(compass.mode.format(v));
             lblHex.setText(String.format("#%02x%02x%02x", rgb.getRed(), rgb.getGreen(), rgb.getBlue()));
         }
 
-        void pick(double[] lab) {
-            if (!inGamut(rawLinearRGB(lab[0], lab[1], lab[2]))) {
+        void pick(double[] v) {
+            if (!compass.mode.inGamut(v)) {
                 return; // out of gamut, skip
             }
-            update(lab, true);
-            picks.add(0, lab);
+            update(v, true);
+            picks.add(0, compass.mode.toDisplayColor(v));
             if (picks.size() > 20) {
                 picks.remove(picks.size() - 1);
             }
@@ -448,22 +808,19 @@ public class CielabCompass extends JFrame {
 
         void rebuildHistory() {
             history.removeAll();
-            for (int i = 0; i < picks.size(); i++) {
-                double[] lab = picks.get(i);
-                EnhancedColor rgb = EnhancedColor.fromCIELAB(lab[0], lab[1], lab[2]);
+            for (Color c : picks) {
                 JPanel chip = new JPanel();
                 chip.setPreferredSize(new Dimension(28, 28));
-                chip.setBackground(rgb);
+                chip.setBackground(c);
                 chip.setBorder(BorderFactory.createLineBorder(new Color(0x333333)));
-                chip.setToolTipText(String.format("L*%.1f a*%.1f b*%.1f  #%02x%02x%02x  [click=center]",
-                        lab[0], lab[1], lab[2], rgb.getRed(), rgb.getGreen(), rgb.getBlue()));
-                final double[] labRef = lab;
+                chip.setToolTipText(String.format("%s  #%02x%02x%02x  [click=center]",
+                        compass.mode.format(compass.mode.fromColor(c)), c.getRed(), c.getGreen(), c.getBlue()));
                 chip.addMouseListener(new MouseAdapter() {
                     public void mouseClicked(MouseEvent e) {
-                        compass.center = labRef.clone();
+                        compass.center = compass.mode.fromColor(c);
                         compass.rebuildImage();
                         compass.repaint();
-                        update(labRef, false);
+                        update(compass.center, false);
                     }
                 });
                 history.add(chip);
