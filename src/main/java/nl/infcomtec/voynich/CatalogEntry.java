@@ -32,6 +32,15 @@ public class CatalogEntry {
     public int width;
     public int height;
     public int uniqueColors;
+    /**
+     * Distinct colour count of the {@link Catalog#loadThumbnail}-stored
+     * thumbnail, not the source image. Smoothing during the downscale to
+     * {@link ColorImage#THUMB_SIZE}×{@link ColorImage#THUMB_SIZE} erases most
+     * of the fine antialiasing/scan noise that dominates {@link #uniqueColors},
+     * so the two counts measure different things and neither substitutes for
+     * the other.
+     */
+    public int thumbnailUniqueColors;
 
     /**
      * One sighting of {@link CatalogEntry#filename} at a specific path, with

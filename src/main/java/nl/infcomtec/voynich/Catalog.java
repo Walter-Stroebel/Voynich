@@ -64,13 +64,15 @@ public interface Catalog {
      * @param width image width, as decoded
      * @param height image height, as decoded
      * @param uniqueColors distinct colour count, as decoded
+     * @param thumbnailUniqueColors distinct colour count of the generated
+     * thumbnail, as decoded
      * @param thumbnail the thumbnail to store alongside it; may be
      * {@code null} if there isn't one yet
      * @return the merged, saved entry
      * @throws IOException if the underlying read/write fails
      */
     default CatalogEntry recordSighting(String filename, File file, int width, int height,
-            int uniqueColors, BufferedImage thumbnail) throws IOException {
+            int uniqueColors, int thumbnailUniqueColors, BufferedImage thumbnail) throws IOException {
         CatalogEntry entry = loadEntry(filename);
         if (null == entry) {
             entry = new CatalogEntry();
@@ -79,6 +81,7 @@ public interface Catalog {
         entry.width = width;
         entry.height = height;
         entry.uniqueColors = uniqueColors;
+        entry.thumbnailUniqueColors = thumbnailUniqueColors;
         String path = file.getAbsolutePath();
         CatalogEntry.Location match = null;
         for (CatalogEntry.Location loc : entry.locations) {

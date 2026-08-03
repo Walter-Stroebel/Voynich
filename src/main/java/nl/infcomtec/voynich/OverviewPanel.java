@@ -46,7 +46,22 @@ public class OverviewPanel extends JPanel {
         list.setLayoutOrientation(JList.HORIZONTAL_WRAP);
         list.setVisibleRowCount(-1);
         list.setCellRenderer(new EntryRenderer());
-        add(new JScrollPane(list), BorderLayout.CENTER);
+        // Every thumbnail is exactly THUMB_SIZE square, so a fixed cell size
+        // is both correct and required: without it JList falls onto its
+        // variable-cell-size layout path for HORIZONTAL_WRAP, which pads
+        // every column out to the single widest cell in the whole model
+        // (Swing's documented "slow and often surprising" mode) instead of
+        // packing columns tightly against the viewport width.
+        list.setFixedCellWidth(ColorImage.THUMB_SIZE + 12);
+        list.setFixedCellHeight(ColorImage.THUMB_SIZE + 12 + 20);
+        JScrollPane scroll = new JScrollPane(list);
+        // Reserve the vertical scrollbar's width up front. Otherwise the
+        // column count is computed against the full viewport width before
+        // the scrollbar exists; once enough rows accumulate to actually
+        // need it, the viewport narrows and a whole column of thumbnails
+        // that fit a moment ago no longer does.
+        scroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
+        add(scroll, BorderLayout.CENTER);
     }
 
     /**
@@ -107,23 +122,12 @@ public class OverviewPanel extends JPanel {
                 return Integer.compare(a.height, b.height);
             }
         },
-        COLOR_DENSITY("Colors / Megapixel") {
+        THUMBNAIL_COLORS("Color") {
             @Override
             public int compare(CatalogEntry a, CatalogEntry b) {
-                return Double.compare(colorsPerMegapixel(a), colorsPerMegapixel(b));
+                return Integer.compare(a.thumbnailUniqueColors, b.thumbnailUniqueColors);
             }
         };
-
-        /**
-         * {@link CatalogEntry#uniqueColors} scaled per megapixel of
-         * {@link CatalogEntry#width}×{@link CatalogEntry#height}, so foldout
-         * pages (scanned at 2x, 3x, or 3x2 the area of a normal page) don't
-         * simply win on pixel count alone.
-         */
-        private static double colorsPerMegapixel(CatalogEntry e) {
-            long pixels = (long) e.width * (long) e.height;
-            return pixels == 0 ? 0.0 : e.uniqueColors * 1_000_000.0 / pixels;
-        }
 
         private final String label;
 

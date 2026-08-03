@@ -103,7 +103,8 @@ public class ScanTaskWindow extends TaskWindow {
             } else {
                 ColorImage ci = new ColorImage(file);
                 CatalogEntry entry = catalog.recordSighting(
-                        file.getName(), file, ci.w, ci.h, ci.labIndex.size(), ci.thumbnail);
+                        file.getName(), file, ci.w, ci.h, ci.labIndex.size(),
+                        ci.thumbnailUniqueColors, ci.thumbnail);
                 overview.addOrUpdate(entry, ci.thumbnail);
                 publishLine(file.getName() + ": " + ci.w + "x" + ci.h + ", "
                         + ci.labIndex.size() + " colors.");

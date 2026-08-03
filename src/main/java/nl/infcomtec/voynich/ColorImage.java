@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import javax.imageio.ImageIO;
 
 /**
@@ -122,6 +123,15 @@ public class ColorImage {
     public ColorBase.TriLabColor[] labThumbnail;
 
     /**
+     * Distinct RGB count among {@link #labThumbnail}'s
+     * {@link #THUMB_SIZE}×{@link #THUMB_SIZE} entries. Unlike {@link
+     * #labIndex}'s size, this counts colours in the smoothed-down thumbnail,
+     * not the source pixels — heavy antialiasing/scan noise that inflates
+     * the source count is mostly averaged away by the downscale.
+     */
+    public int thumbnailUniqueColors;
+
+    /**
      * Reads an image file, builds the colour inventory, and records the
      * elapsed construction time in {@link #loadNanos}.
      *
@@ -203,9 +213,12 @@ public class ColorImage {
 
         labThumbnail = new ColorBase.TriLabColor[THUMB_SIZE * THUMB_SIZE];
         int[] thumbPixels = thumb.getRGB(0, 0, THUMB_SIZE, THUMB_SIZE, null, 0, THUMB_SIZE);
+        TreeSet<TriElm> distinct = new TreeSet<>();
         for (int i = 0; i < thumbPixels.length; i++) {
             labThumbnail[i] = ColorBase.resolve(new Color(thumbPixels[i]));
+            distinct.add(labThumbnail[i]);
         }
+        thumbnailUniqueColors = distinct.size();
     }
 
     /**
