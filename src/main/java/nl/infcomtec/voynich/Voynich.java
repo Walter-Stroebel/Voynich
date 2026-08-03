@@ -31,6 +31,12 @@ public class Voynich {
      */
     public static Config config;
 
+    /**
+     * Main.
+     *
+     * @param args Only one argument possible, if given the path to the
+     * configuration file.
+     */
     public static void main(String[] args) {
         FlatDarculaLaf.setup();
         if (args.length > 0) {
