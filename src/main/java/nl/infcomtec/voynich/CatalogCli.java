@@ -33,9 +33,14 @@ public class CatalogCli {
 
         String command = args[0];
         switch (command) {
-            case "list":
-                list(catalog, args.length > 1 ? args[1] : null);
+            case "list": {
+                List<String> rest = List.of(args).subList(1, args.length);
+                boolean invert = rest.contains("-v") || rest.contains("--invert");
+                String filter = rest.stream().filter(a -> !a.equals("-v") && !a.equals("--invert"))
+                        .findFirst().orElse(null);
+                list(catalog, filter, invert);
                 break;
+            }
             case "get":
                 requireArgs(args, 2, "get <filename>");
                 get(catalog, args[1]);
@@ -64,12 +69,15 @@ public class CatalogCli {
      * Matches {@code filter} the same way {@code OverviewPanel.filter()}
      * does: case-insensitive substring search over the entry's whole JSON
      * representation, not just the filename — so it also catches hits in
-     * tags, torrentJpg, locations, etc.
+     * tags, torrentJpg, locations, etc. {@code invert} flips the match, same
+     * as {@code OverviewPanel.filter()}'s checkbox — e.g. to find entries
+     * still missing a given tag.
      */
-    private static void list(Catalog catalog, String filter) throws IOException {
+    private static void list(Catalog catalog, String filter, boolean invert) throws IOException {
         String needle = null == filter ? null : filter.toLowerCase();
         for (CatalogEntry entry : catalog.listAll()) {
-            if (null == needle || JSON.writeValueAsString(entry).toLowerCase().contains(needle)) {
+            boolean matches = null == needle || JSON.writeValueAsString(entry).toLowerCase().contains(needle);
+            if (null == needle || matches != invert) {
                 System.out.println(entry.filename + "\t" + entry.width + "x" + entry.height
                         + "\ttags=" + entry.tags);
             }
@@ -133,7 +141,7 @@ public class CatalogCli {
 
     private static void usage() {
         System.err.println("Usage: CatalogCli <command> [args]");
-        System.err.println("  list [filter]              list filenames (optionally whose JSON contains 'filter', case-insensitive)");
+        System.err.println("  list [-v|--invert] [filter]  list filenames (optionally whose JSON contains/lacks 'filter', case-insensitive)");
         System.err.println("  get <filename>              print the entry's JSON");
         System.err.println("  tag <filename> <text...>    add a tag/note (no-op if already present)");
         System.err.println("  save <filename> [jsonFile]  replace the entry (reads stdin if jsonFile omitted)");

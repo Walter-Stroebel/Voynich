@@ -27,6 +27,7 @@ import javax.swing.DefaultListModel;
 import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JList;
@@ -34,6 +35,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
+import javax.swing.JTextField;
 import javax.swing.ListCellRenderer;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
@@ -233,26 +235,35 @@ public class OverviewPanel extends JPanel {
     }
 
     /**
-     * Prompts for free text (via {@link JOptionPane#showInputDialog}) and
-     * narrows the grid to entries whose JSON representation contains it,
-     * case-insensitively. Blank text (or an empty catalog match) clears
-     * the filter and shows everything again. Wired to the app toolbar's
-     * Filter button in {@link Voynich#main}; must be called from the EDT.
+     * Prompts for free text and an "invert" checkbox, then narrows the grid
+     * to entries whose JSON representation does (or, with the checkbox
+     * checked, does not) contain it, case-insensitively. Blank text (or an
+     * empty catalog match) clears the filter and shows everything again.
+     * Wired to the app toolbar's Filter button in {@link Voynich#main}; must
+     * be called from the EDT.
      */
     public void filter() {
-        String query = JOptionPane.showInputDialog(this, "Filter text (blank to clear):", "Filter",
-                JOptionPane.QUESTION_MESSAGE);
-        if (null == query) {
+        JTextField queryField = new JTextField(20);
+        JCheckBox invert = new JCheckBox("Not matching (invert)");
+        JPanel panel = new JPanel(new BorderLayout(0, 6));
+        panel.add(new JLabel("Filter text (blank to clear):"), BorderLayout.NORTH);
+        panel.add(queryField, BorderLayout.CENTER);
+        panel.add(invert, BorderLayout.SOUTH);
+        int choice = JOptionPane.showConfirmDialog(this, panel, "Filter",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
+        if (choice != JOptionPane.OK_OPTION) {
             return;
         }
-        query = query.trim();
+        String query = queryField.getText().trim();
         if (query.isEmpty()) {
             selectedFilenames = null;
         } else {
             String needle = query.toLowerCase();
+            boolean not = invert.isSelected();
             selectedFilenames = new LinkedHashSet<>();
             for (CatalogEntry entry : allEntries) {
-                if (JSON.writeValueAsString(entry).toLowerCase().contains(needle)) {
+                boolean matches = JSON.writeValueAsString(entry).toLowerCase().contains(needle);
+                if (matches != not) {
                     selectedFilenames.add(entry.filename);
                 }
             }
