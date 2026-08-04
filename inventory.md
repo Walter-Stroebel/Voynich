@@ -64,9 +64,12 @@ app's own catalog. Six `voynich*` directories:
   the set `data/voynich-page-index.json` maps to folio labels
 - `voynich.spec/Voynich_001r/` — 38 files, 3.6G — multispectral capture of
   f1r only, 37 wavelength-band TIFFs (`MB365UV` through `MB940IR`, plus
-  filter variants) from the Lazarus Project 2014 scan, per-file ~100MB;
-  see "Research findings" below — completely unanalyzed as of this
-  writing
+  filter variants) from the Lazarus Project 2014 scan, per-file ~100MB. A
+  large volume of data of questionable value/quality (unverified
+  provenance/calibration) — not worth the storage cost of a second copy,
+  so this exists **only** on the NAS, not on predator's NVMe or in
+  `voybak`. See "Research findings" below — completely unanalyzed as of
+  this writing.
 - `voynich_mysql_backups/` — 5 gzipped `mysqldump` files, 49M, nightly
   cron output from `scripts/mysql-backup.sh`, 14-day retention
 
