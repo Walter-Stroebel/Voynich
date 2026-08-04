@@ -1,0 +1,110 @@
+# Inventory
+
+A snapshot of what exists in this project, taken 2026-08-04. This is a
+point-in-time listing, not a maintained architecture doc — see `CLAUDE.md`
+for the actively-kept class rundown and `README.md` for current
+state/roadmap. Re-generate rather than hand-edit when it goes stale.
+
+## Code (`src/main/java/nl/infcomtec/voynich/`, 18 classes)
+
+- **App shell**: `Voynich` (entry point/JFrame), `Config`/`JSON` (settings,
+  Jackson wrappers), `EzAction` (styled Swing actions)
+- **Catalog layer**: `Catalog` (contract + `recordSighting`), `CatalogEntry`,
+  `MySqlCatalog`, `FileCatalog` — filename-keyed, MySQL or JSON+PNG sidecars
+- **UI**: `OverviewPanel` (thumbnail grid), `TaskWindow`/`ScanTaskWindow`
+  (background-task progress pattern)
+- **Colour pipeline**: `EnhancedColor` (RGB↔CIELAB↔XYZ↔YUV↔HSB, ΔE),
+  `FloatColor`, `YUV`, `ColorBase` (two-level RGB→LAB cache), `ColorImage`
+  (per-image colour inventory), `TriElm`
+- **Newest**: `RingDiagramSegmenter` — extracts upright figure crops from
+  circle-diagram pages, with seed-based local search (2026-08-04)
+
+Dependencies: FlatLaf 3.3, mysql-connector-java 8.0.27 (legacy artifact
+coordinate — `com.mysql:mysql-connector-j` is the maintained one, noted as
+minor housekeeping in the README roadmap), Jackson 2.18.2. No test
+framework yet.
+
+## Data
+
+- **210 PNG scans**, 3.8GB, at `/home/walter/voynich_png` (this machine's
+  configured `scanPath`)
+- `data/voynich-page-index.json` — Yale Beinecke IIIF manifest mapping
+  torrent-numbered JPGs (001–213) to canonical folio labels
+- `~/.voynich-catalog` (FileCatalog fallback dir) — empty on this machine;
+  the live catalog is MySQL on predator (192.168.2.23:13306)
+- `src/main/resources/stolfi/` (gitignored — third-party sourced + one
+  session's scratch analysis, not an app deliverable):
+  - `LSI_ivtff_0d.txt` (1.7M) — Landini-Stolfi Interlinear transcription
+    v1.6e6
+  - `voynichese_data/` + `.zip` — 225 XML files, per-folio word bounding
+    boxes
+  - `voynich_labels.json` / `voynich_labels_spatial.json` — 988 unique
+    labels across 51 folios, joining EVT transcription with voynichese.com
+    coordinates (a join that didn't exist anywhere before this project did
+    it), plus fitted-circle rotation geometry for zodiac-section folios
+  - `circle_diagram_census.md` — manual per-file diagram count (~28-30
+    diagrams; automated Hough-circle detection was tried and abandoned)
+  - `segments/70v2/` — extracted figure crops (1 folio so far)
+  - `read_this_first.txt` — session notes: pigment transfer findings,
+    multispectral data status
+
+## `/usb1` (NAS mount — present identically on this machine and on predator)
+
+Raw source material and backups, outside the git repo and outside the
+app's own catalog. Six `voynich*` directories:
+
+- `voynich_png/` — 210 files, 3.8G — the working set (`scanPath`)
+- `voynich_tiff/` — 210 files, 6.9G — original TIFF scans the PNGs were
+  converted from
+- `voynich_jpg/` — 213 files, 2.1G — the Yale Beinecke IIIF/torrent JPGs
+  (`001.jpg`–`213.jpg`) that `data/voynich-page-index.json` maps to folio
+  labels
+- `voynich_tor/` — 429 files, 2.7G — a second JPG set with matching
+  `*_thumb.jpg` thumbnails alongside each full image; relationship to
+  `voynich_jpg/` (same source re-fetched, or a different torrent) not yet
+  established
+- `voynich.spec/Voynich_001r/` — 38 files, 3.6G — multispectral capture of
+  f1r only, 37 wavelength-band TIFFs (`MB365UV` through `MB940IR`, plus
+  filter variants) from the Lazarus Project 2014 scan, per-file ~100MB;
+  see "Research findings" below — completely unanalyzed as of this
+  writing
+- `voynich_mysql_backups/` — 5 gzipped `mysqldump` files, 49M, nightly
+  cron output from `scripts/mysql-backup.sh`, 14-day retention
+
+## Infrastructure
+
+- `docker-compose.yml` + `.env.example` — single MySQL 8 container
+  (`voynich-mysql`, port 13306, non-default on purpose), option-file
+  credentials
+- `docker-compose.nas.yml` — NAS-side variant
+- `replication/` — GTID master-slave + master-master MySQL topology,
+  live-tested mach1↔mach2, not yet consumed by `Config`/`MySqlCatalog`
+  (roadmap item)
+- `scripts/mysql-backup.sh` — backup script, restore-tested
+- **Live services**: `voynich-mysql` running on predator
+  (192.168.2.23:13306), actively used by this app; predator also runs a
+  nightly NAS backup and hosts an unrelated local-LLM experiment
+  (gemma-4-e4b via LM Studio)
+
+## Documentation
+
+- `README.md` — project framing ("Lightroom for generic image
+  collections," Voynich as convenient dataset not subject), current-state/
+  roadmap, three tested configs
+- `CLAUDE.md` — build commands, architecture table, Java style rules
+- `replication/README.md` — replication setup walkthrough
+
+## Research findings (not yet in code)
+
+- f1r is a colour-transfer ghost of f1v (copper-green pigment, chroma
+  ratio ≈0.24)
+- f8r/f17r green pigment identity match (McCrone-consistent)
+- Unresolved anomaly: f17r azurite not degrading toward green as expected
+- "Demi-duplication": ring-figures that look like copy-paste repeats at a
+  glance are often individually distinct on closer inspection (hairstyle,
+  cheek color) — load-bearing for not treating figures as interchangeable
+  in segmentation work
+- Multispectral data (`/usb1/voynich.spec/`, above) exists for f1r only
+  and is unanalyzed — a candidate second encoding layer (color as
+  structured information, not just decoration) orthogonal to the
+  label/figure work, not yet started
