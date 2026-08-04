@@ -56,13 +56,12 @@ app's own catalog. Six `voynich*` directories:
 - `voynich_png/` — 210 files, 3.8G — the working set (`scanPath`)
 - `voynich_tiff/` — 210 files, 6.9G — original TIFF scans the PNGs were
   converted from
-- `voynich_jpg/` — 213 files, 2.1G — the Yale Beinecke IIIF/torrent JPGs
-  (`001.jpg`–`213.jpg`) that `data/voynich-page-index.json` maps to folio
-  labels
-- `voynich_tor/` — 429 files, 2.7G — a second JPG set with matching
-  `*_thumb.jpg` thumbnails alongside each full image; relationship to
-  `voynich_jpg/` (same source re-fetched, or a different torrent) not yet
-  established
+- `voynich_tor/` — 429 files, 2.7G — the original torrent download, as-is
+  (each image paired with a `*_thumb.jpg`), including a lot of non-page
+  filler files
+- `voynich_jpg/` — 213 files, 2.1G — `voynich_tor/` with the filler
+  stripped down to just the 213 real pages (`001.jpg`–`213.jpg`); this is
+  the set `data/voynich-page-index.json` maps to folio labels
 - `voynich.spec/Voynich_001r/` — 38 files, 3.6G — multispectral capture of
   f1r only, 37 wavelength-band TIFFs (`MB365UV` through `MB940IR`, plus
   filter variants) from the Lazarus Project 2014 scan, per-file ~100MB;
@@ -85,6 +84,14 @@ app's own catalog. Six `voynich*` directories:
   (192.168.2.23:13306), actively used by this app; predator also runs a
   nightly NAS backup and hosts an unrelated local-LLM experiment
   (gemma-4-e4b via LM Studio)
+- **`predator:/home/walter/voybak/Voynich/`** — a full rsync mirror of
+  this project directory (code + gitignored `stolfi/` research data), kept
+  on predator's own NVMe. Deliberate second-machine, second-disk backup —
+  predator and this machine are both commercial-grade hardware sharing one
+  hot office, so a single-machine failure is a real risk being backed up
+  against, not a hypothetical. Update with `rsync -av --exclude='target/'
+  /home/walter/github/Voynich/ predator:/home/walter/voybak/Voynich/`.
+  Freely usable over `ssh`/`scp`/`rsync` for read or write.
 
 ## Documentation
 
