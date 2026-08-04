@@ -4,6 +4,7 @@
 package nl.infcomtec.voynich;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;
@@ -96,17 +97,40 @@ public class OverviewPanel extends JPanel {
      * anything), and {@link CatalogEntry#locations} must not have gone from
      * non-empty to empty (the easiest field to accidentally delete a line of
      * and lose sighting history for).
+     * <p>
+     * {@link CatalogEntry#tags} gets its own plain one-tag-per-line box
+     * instead of living in the JSON blob — it's the field expected to be
+     * hand-edited the most, and JSON array syntax (quoting, commas) is real
+     * friction for what's just a short list of short strings. It's stripped
+     * out of the blob entirely rather than shown in both places, so there's
+     * never two open editors disagreeing about the same field.
      *
      * @param entry the entry to view/edit; must already be in the catalog
      */
     private void showJsonEditor(CatalogEntry entry) {
         Window owner = SwingUtilities.getWindowAncestor(this);
         JDialog dialog = new JDialog(owner, entry.filename, JDialog.ModalityType.APPLICATION_MODAL);
-        JTextArea text = new JTextArea(JSON.writeValueAsPretty(entry));
+
+        ObjectNode blob = JSON.getMapper().valueToTree(entry);
+        blob.remove("tags");
+        String blobText;
+        try {
+            blobText = JSON.getMapper().writerWithDefaultPrettyPrinter().writeValueAsString(blob);
+        } catch (JsonProcessingException ex) {
+            // Can't actually happen: blob was just built from a real object, not parsed input.
+            throw new IllegalStateException(ex);
+        }
+        JTextArea text = new JTextArea(blobText);
         text.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
         JScrollPane scroll = new JScrollPane(text);
-        scroll.setPreferredSize(new Dimension(600, 500));
+        scroll.setPreferredSize(new Dimension(600, 460));
         dialog.add(scroll, BorderLayout.CENTER);
+
+        JTextArea tagsText = new JTextArea(String.join("\n", entry.tags));
+        tagsText.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
+        JScrollPane tagsScroll = new JScrollPane(tagsText);
+        tagsScroll.setBorder(BorderFactory.createTitledBorder("Tags (one per line)"));
+        tagsScroll.setPreferredSize(new Dimension(600, 80));
 
         JButton save = new JButton("Save");
         JButton cancel = new JButton("Cancel");
@@ -131,6 +155,14 @@ public class OverviewPanel extends JPanel {
                         "Required field changed", JOptionPane.ERROR_MESSAGE);
                 return;
             }
+            List<String> newTags = new ArrayList<>();
+            for (String line : tagsText.getText().split("\n")) {
+                String trimmed = line.trim();
+                if (!trimmed.isEmpty()) {
+                    newTags.add(trimmed);
+                }
+            }
+            parsed.tags = newTags;
             try {
                 catalog.save(parsed, catalog.loadThumbnail(entry.filename));
             } catch (IOException ex) {
@@ -145,7 +177,11 @@ public class OverviewPanel extends JPanel {
         JPanel buttons = new JPanel();
         buttons.add(save);
         buttons.add(cancel);
-        dialog.add(buttons, BorderLayout.SOUTH);
+
+        JPanel south = new JPanel(new BorderLayout());
+        south.add(tagsScroll, BorderLayout.CENTER);
+        south.add(buttons, BorderLayout.SOUTH);
+        dialog.add(south, BorderLayout.SOUTH);
         dialog.pack();
         dialog.setLocationRelativeTo(owner);
         dialog.setVisible(true);
