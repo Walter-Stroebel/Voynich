@@ -3,8 +3,14 @@
  */
 package nl.infcomtec.voynich;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import java.awt.BorderLayout;
 import java.awt.Component;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.Window;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -17,11 +23,14 @@ import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
 import javax.swing.Icon;
 import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
 import javax.swing.ListCellRenderer;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
@@ -62,6 +71,84 @@ public class OverviewPanel extends JPanel {
         // that fit a moment ago no longer does.
         scroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
         add(scroll, BorderLayout.CENTER);
+        list.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent evt) {
+                int idx = list.locationToIndex(evt.getPoint());
+                if (idx < 0 || !list.getCellBounds(idx, idx).contains(evt.getPoint())) {
+                    return;
+                }
+                showJsonEditor(model.getElementAt(idx));
+            }
+        });
+    }
+
+    /**
+     * Opens a modal, editable raw-JSON view of {@code entry} — the catalog's
+     * per-file "notepad" ({@link CatalogEntry#tags}, {@link CatalogEntry#torrentJpg},
+     * etc.) has no dedicated UI yet, and the whole entry is small enough that
+     * hand-editing its JSON directly is simpler than building forms for each
+     * field as they get added. This is the app's own database, owned by the
+     * person running it, so the only validation on Save is against honest
+     * mistakes, not hostile input: the JSON must parse (via {@link JSON}),
+     * {@link CatalogEntry#filename} must be unchanged (it's the catalog key —
+     * editing it here would silently create/orphan a row instead of renaming
+     * anything), and {@link CatalogEntry#locations} must not have gone from
+     * non-empty to empty (the easiest field to accidentally delete a line of
+     * and lose sighting history for).
+     *
+     * @param entry the entry to view/edit; must already be in the catalog
+     */
+    private void showJsonEditor(CatalogEntry entry) {
+        Window owner = SwingUtilities.getWindowAncestor(this);
+        JDialog dialog = new JDialog(owner, entry.filename, JDialog.ModalityType.APPLICATION_MODAL);
+        JTextArea text = new JTextArea(JSON.writeValueAsPretty(entry));
+        text.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
+        JScrollPane scroll = new JScrollPane(text);
+        scroll.setPreferredSize(new Dimension(600, 500));
+        dialog.add(scroll, BorderLayout.CENTER);
+
+        JButton save = new JButton("Save");
+        JButton cancel = new JButton("Cancel");
+        save.addActionListener(evt -> {
+            CatalogEntry parsed;
+            try {
+                parsed = JSON.getMapper().readValue(text.getText(), CatalogEntry.class);
+            } catch (JsonProcessingException ex) {
+                JOptionPane.showMessageDialog(dialog, "Not valid JSON:\n" + ex.getMessage(),
+                        "Invalid JSON", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+            if (null == parsed.filename || !parsed.filename.equals(entry.filename)) {
+                JOptionPane.showMessageDialog(dialog,
+                        "filename must stay \"" + entry.filename + "\" — it's the catalog key.",
+                        "Required field changed", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+            if (!entry.locations.isEmpty() && parsed.locations.isEmpty()) {
+                JOptionPane.showMessageDialog(dialog,
+                        "locations went from " + entry.locations.size() + " entries to 0 — refusing to save.",
+                        "Required field changed", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+            try {
+                catalog.save(parsed, catalog.loadThumbnail(entry.filename));
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(dialog, "Save failed:\n" + ex.getMessage(),
+                        "Save failed", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+            addOrUpdate(parsed);
+            dialog.dispose();
+        });
+        cancel.addActionListener(evt -> dialog.dispose());
+        JPanel buttons = new JPanel();
+        buttons.add(save);
+        buttons.add(cancel);
+        dialog.add(buttons, BorderLayout.SOUTH);
+        dialog.pack();
+        dialog.setLocationRelativeTo(owner);
+        dialog.setVisible(true);
     }
 
     /**

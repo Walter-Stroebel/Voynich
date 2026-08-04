@@ -102,6 +102,27 @@ public interface Catalog {
     }
 
     /**
+     * Adds {@code tag} to {@code filename}'s {@link CatalogEntry#tags} if not
+     * already present, leaving everything else about the entry (including
+     * its stored thumbnail) untouched. No-op if the tag is already there.
+     *
+     * @param filename the catalog key; must already have an entry
+     * @param tag the free-text note to add
+     * @throws IOException if the underlying read/write fails
+     * @throws IllegalArgumentException if no entry exists for {@code filename}
+     */
+    default void addTag(String filename, String tag) throws IOException {
+        CatalogEntry entry = loadEntry(filename);
+        if (null == entry) {
+            throw new IllegalArgumentException("No catalog entry for " + filename);
+        }
+        if (!entry.tags.contains(tag)) {
+            entry.tags.add(tag);
+            save(entry, loadThumbnail(filename));
+        }
+    }
+
+    /**
      * Opens the catalog backend selected by {@code config}: {@link MySqlCatalog}
      * when {@link Config#db} and its {@code host}/{@code database}/{@code user}
      * are all populated, otherwise {@link FileCatalog} rooted at

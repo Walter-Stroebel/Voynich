@@ -41,6 +41,21 @@ public class CatalogEntry {
      * the other.
      */
     public int thumbnailUniqueColors;
+    /**
+     * The filename this image is known by in the original 2004/torrent JPG
+     * numbering (e.g. {@code "127.jpg"}), when known — see
+     * {@code data/voynich-page-index.json} for the full cross-reference.
+     * {@code null} if not yet established for this entry.
+     */
+    public String torrentJpg;
+    /**
+     * Free-text short notes about this page (e.g. {@code "circular diagram"},
+     * {@code "foldout"}) — a per-file notepad, not a fixed set of categories.
+     * New kinds of note keep turning up as the manuscript gets studied, so
+     * this deliberately isn't an enum or a set of booleans. Added via
+     * {@link Catalog#addTag}.
+     */
+    public List<String> tags = new ArrayList<>();
 
     /**
      * One sighting of {@link CatalogEntry#filename} at a specific path, with
