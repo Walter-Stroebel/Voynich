@@ -400,6 +400,81 @@ public class RingDiagramSegmenter {
     }
 
     /**
+     * Finds the largest connected ink blob within a square window around a
+     * ballpark seed point, rather than searching a whole radial band for
+     * every candidate. Existing size/dilation-based filtering couldn't
+     * reliably tell a figure from a clump of caption text on its own — both
+     * are comparably sparse thin-line ink at the pixel level, with no clean
+     * global discriminator. Given a seed already known to be near a real
+     * figure (placed by looking at the page, not detected), "biggest blob
+     * nearby" is a far easier and more reliable question than "biggest
+     * plausible blob anywhere in this annulus." Returns null if nothing
+     * ink-bearing large enough is found in the window.
+     */
+    public FigureBlob findLargestBlobNear(double seedX, double seedY, double windowRadius, int minPixels, int dilateRadius) {
+        int x0 = Math.max(0, (int) Math.floor(seedX - windowRadius));
+        int x1 = Math.min(scan.getWidth() - 1, (int) Math.ceil(seedX + windowRadius));
+        int y0 = Math.max(0, (int) Math.floor(seedY - windowRadius));
+        int y1 = Math.min(scan.getHeight() - 1, (int) Math.ceil(seedY + windowRadius));
+        int w = x1 - x0 + 1, h = y1 - y0 + 1;
+        boolean[] original = new boolean[w * h];
+        for (int y = y0; y <= y1; y++) {
+            for (int x = x0; x <= x1; x++) {
+                if (isInk(x, y)) {
+                    original[(y - y0) * w + (x - x0)] = true;
+                }
+            }
+        }
+        boolean[] mask = dilate(original, w, h, dilateRadius);
+        boolean[] visited = new boolean[w * h];
+        Deque<int[]> stack = new ArrayDeque<>();
+        FigureBlob best = null;
+        for (int y = y0; y <= y1; y++) {
+            for (int x = x0; x <= x1; x++) {
+                int idx = (y - y0) * w + (x - x0);
+                if (!mask[idx] || visited[idx]) {
+                    continue;
+                }
+                long sumX = 0, sumY = 0;
+                int count = 0;
+                int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE, minY = Integer.MAX_VALUE, maxY = Integer.MIN_VALUE;
+                visited[idx] = true;
+                stack.push(new int[]{x, y});
+                while (!stack.isEmpty()) {
+                    int[] p = stack.pop();
+                    int px = p[0], py = p[1];
+                    if (original[(py - y0) * w + (px - x0)]) {
+                        sumX += px;
+                        sumY += py;
+                        count++;
+                        if (px < minX) minX = px;
+                        if (px > maxX) maxX = px;
+                        if (py < minY) minY = py;
+                        if (py > maxY) maxY = py;
+                    }
+                    for (int ddy = -1; ddy <= 1; ddy++) {
+                        for (int ddx = -1; ddx <= 1; ddx++) {
+                            if (ddx == 0 && ddy == 0) continue;
+                            int nx = px + ddx, ny = py + ddy;
+                            if (nx < x0 || nx > x1 || ny < y0 || ny > y1) continue;
+                            int nidx = (ny - y0) * w + (nx - x0);
+                            if (mask[nidx] && !visited[nidx]) {
+                                visited[nidx] = true;
+                                stack.push(new int[]{nx, ny});
+                            }
+                        }
+                    }
+                }
+                if (count >= minPixels && (best == null || count > best.pixelCount)) {
+                    best = new FigureBlob(minX, minY, maxX, maxY,
+                            (double) sumX / count, (double) sumY / count, count);
+                }
+            }
+        }
+        return best;
+    }
+
+    /**
      * Crops a window around a figure blob's centroid, rotated so the
      * direction from the diagram's center to that centroid points straight
      * up — i.e. assumes the figure stands radially (head outward), which
@@ -466,6 +541,57 @@ public class RingDiagramSegmenter {
         pool.awaitTermination(2, TimeUnit.MINUTES);
     }
 
+    /**
+     * A ballpark figure location in polar coordinates relative to the
+     * diagram's center — placed by looking at the page (clock-angle
+     * estimate off a labeled overlay), not detected. See
+     * {@link #findLargestBlobNear}.
+     */
+    public static class RingSeed {
+
+        public final double radius, angleDeg;
+
+        public RingSeed(double radius, double angleDeg) {
+            this.radius = radius;
+            this.angleDeg = angleDeg;
+        }
+    }
+
+    /**
+     * Converts each seed's polar position to scan pixels, finds the largest
+     * ink blob nearby, and writes its upright crop — in parallel (capped at
+     * 8 concurrent tasks per Walter's steer). Seeds with no blob found
+     * nearby are logged and skipped rather than guessed at.
+     */
+    public void segmentFromSeeds(Circle boundary, List<RingSeed> seeds, File outDir, int outSize, double windowRadius, int minPixels, int dilateRadius) throws InterruptedException {
+        outDir.mkdirs();
+        ExecutorService pool = Executors.newFixedThreadPool(Math.min(8, Math.max(1, seeds.size())));
+        int i = 0;
+        for (RingSeed seed : seeds) {
+            final int idx = i++;
+            pool.submit(() -> {
+                double angleRad = Math.toRadians(seed.angleDeg);
+                double seedX = boundary.cx + seed.radius * Math.sin(angleRad);
+                double seedY = boundary.cy - seed.radius * Math.cos(angleRad);
+                FigureBlob blob = findLargestBlobNear(seedX, seedY, windowRadius, minPixels, dilateRadius);
+                if (blob == null) {
+                    System.out.println("seed " + idx + " (r=" + seed.radius + " a=" + seed.angleDeg + "): no blob found");
+                    return;
+                }
+                try {
+                    BufferedImage crop = cropUpright(boundary, blob, outSize);
+                    File out = new File(outDir, String.format("figure_%02d_a%03.0f.png", idx, seed.angleDeg));
+                    ImageIO.write(crop, "png", out);
+                    System.out.println("wrote " + out.getName() + " from " + blob);
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                }
+            });
+        }
+        pool.shutdown();
+        pool.awaitTermination(2, TimeUnit.MINUTES);
+    }
+
     public static void main(String[] args) throws Exception {
         File configFile = new File(System.getProperty("user.home"), ".infVoy.json");
         Config cfg = JSON.readValue(null, configFile, Config.class);
@@ -491,20 +617,27 @@ public class RingDiagramSegmenter {
         Circle boundary = new Circle(seedCx, seedCy, seedR);
         System.out.println("using seed boundary as-is: " + boundary + " score=" + seg.circleScore(boundary.cx, boundary.cy, boundary.r));
 
-        // Radial ink-density profiling (see findFigureBands) turned out not
-        // to distinguish figure bands from text/gap bands at all: figures
-        // here are thin pen-outline drawings, not filled shapes, so their
-        // average ink density is comparably low to the surrounding caption
-        // text - there's no density peak to threshold on. These two bands
-        // were instead read directly off a labeled ruler strip cropped
-        // straight up from center (ff70v2 specifically) - see project notes.
-        List<RadialBand> bands = new ArrayList<>();
-        bands.add(new RadialBand(380, 600));
-        bands.add(new RadialBand(760, 1100));
-        System.out.println("bands (measured, not detected): " + bands);
+        // Blind band-wide blob search (see segment()/findBlobsInBand) hit a
+        // recall ceiling around 6/15: figures and caption text are equally
+        // sparse thin-line ink, so no size/dilation filter alone reliably
+        // tells them apart, and figures whose ink partly falls outside the
+        // measured band got clipped. Switching to Walter's suggestion: place
+        // ballpark seeds by eye (clock-angle read off an overlay - see
+        // project notes) and search a small window around each one instead
+        // - "biggest blob near this point" is a far easier question.
+        List<RingSeed> seeds = new ArrayList<>();
+        double innerR = 490;
+        for (double a : new double[]{5, 50, 155, 215, 305}) {
+            seeds.add(new RingSeed(innerR, a));
+        }
+        double outerR = 930;
+        for (double a : new double[]{25, 75, 105, 135, 160, 190, 220, 255, 285, 320}) {
+            seeds.add(new RingSeed(outerR, a));
+        }
+        System.out.println("seeds: " + seeds.size());
 
         File outDir = new File("src/main/resources/stolfi/segments/70v2");
-        seg.segment(boundary, bands, outDir, 420, 800, 550, 12);
+        seg.segmentFromSeeds(boundary, seeds, outDir, 420, 220, 400, 12);
         System.out.println("done");
     }
 }
