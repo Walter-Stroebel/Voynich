@@ -2,7 +2,7 @@
   "source": "Yale Beinecke Rare Book & Manuscript Library, MS 408 (Voynich manuscript) IIIF manifest",
   "manifestId": "https://collections.library.yale.edu/manifests/2002046",
   "count": 213,
-  "note": "Maps the sequential jpg torrent numbering (001.jpg-213.jpg) to the canonical Beinecke folio labels and canvas IDs. 'png' gives the matching filename in the foliation-named PNG set (derived from the original tif scans) when one exists; three folio labels (70v (part), 72v (part), 102v (part)) each span two canvases here that collapse to a single merged PNG.",
+  "note": "Maps the sequential jpg torrent numbering (001.jpg-213.jpg) to the canonical Beinecke folio labels and canvas IDs. 'png' gives the matching filename in the foliation-named PNG set. Three folio labels (70v (part), 72v (part), 102v (part)) each span two distinct canvases that were originally miscollapsed onto one shared PNG filename by a buggy fetch job; fixed 2026-08-05 by pulling the missing canvas of each pair directly from Yale's IIIF tif endpoint and giving it its own '<label>_seq<jpgnum>.png' filename, so every seq now maps to a distinct file.",
   "pages": [
     {
       "seq": 1,
@@ -891,7 +891,7 @@
       "jpg": "127.jpg",
       "canvasId": "https://collections.library.yale.edu/manifests/oid/2002046/canvas/1006200",
       "label": "70v (part)",
-      "png": "70v_(part).png"
+      "png": "70v_(part)_seq127.png"
     },
     {
       "seq": 128,
@@ -919,7 +919,7 @@
       "jpg": "131.jpg",
       "canvasId": "https://collections.library.yale.edu/manifests/oid/2002046/canvas/1006204",
       "label": "72v (part)",
-      "png": "72v_(part).png"
+      "png": "72v_(part)_seq131.png"
     },
     {
       "seq": 132,
@@ -1269,7 +1269,7 @@
       "jpg": "181.jpg",
       "canvasId": "https://collections.library.yale.edu/manifests/oid/2002046/canvas/1006252",
       "label": "102v (part)",
-      "png": "102v_(part).png"
+      "png": "102v_(part)_seq181.png"
     },
     {
       "seq": 182,
