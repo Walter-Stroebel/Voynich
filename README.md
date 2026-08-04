@@ -54,6 +54,25 @@ gap.
 - Re-scans skip any file whose catalog entry already matches its on-disk
   `size`/`mtime`, so a repeat scan with nothing changed completes in seconds
   instead of re-decoding all 210+ images
+- A free-form per-entry "notepad" — `CatalogEntry.torrentJpg` (a cross-reference
+  to the original 2004/torrent JPG numbering, when known) and `CatalogEntry.tags`
+  (short free-text notes like `"circular diagram"` or `"foldout"`;
+  deliberately not a fixed set of categories, since new kinds of note keep
+  turning up). Clicking a thumbnail in `OverviewPanel` now opens a modal
+  editor instead of doing nothing — a raw-JSON view of the entry (everything
+  except `tags`, which gets its own one-note-per-line box so adding a note
+  doesn't mean hand-typing JSON array syntax), Jackson-validated on Save
+  and guarded against the two easy ways to corrupt an entry by hand
+  (changing `filename`, the catalog key, or emptying `locations`)
+- `CatalogCli` (`list`/`get`/`tag`/`save`), a standalone command-line tool
+  against the same `Catalog` the GUI uses — for scripted or one-off catalog
+  reads/edits without opening the app; see its class doc for exact usage
+
+**Manuscript-specific, not part of the generic library:** `RingDiagramSegmenter`,
+a first-pass tool for extracting individual upright figure crops from the
+Voynich manuscript's circle/ring diagram pages. Unlike everything above, it
+assumes manuscript content and isn't wired into the main GUI — currently
+invoked standalone against a hardcoded scan file, not from a toolbar action.
 
 ## Roadmap
 

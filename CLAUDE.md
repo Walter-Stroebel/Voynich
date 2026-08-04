@@ -37,10 +37,15 @@ Single Maven module, Java 17, Swing UI with **FlatDarculaLaf** dark theme.
 | `Config` | Plain POJO serialized to/from `~/.infVoy.json` via `JSON`. Add fields here for new persistent settings. |
 | `JSON` | Thin Jackson wrapper. Two `ObjectMapper` instances: `mapper` (pretty/indented) and `liner` (single-line). Always use these rather than creating a new `ObjectMapper`. |
 | `EzAction` | `AbstractAction` subclass with optional fluent color/font hints. Call `applyTo(component)` after constructing the button to apply styling. |
+| `OverviewPanel` | Main content view: a `JList` grid of catalog thumbnails, `HORIZONTAL_WRAP`. Clicking a thumbnail opens a modal JSON editor for that entry — see "Catalog persistence" below. |
+| `TaskWindow` | Abstract `JFrame` + `SwingWorker` wrapper for a background task: progress bar, log, Cancel button. One window per task-type, reused (not recreated) on repeat runs via a static registry. |
+| `ScanTaskWindow` | `TaskWindow` that walks `config.scanPath`, decodes each image via `ColorImage`, and records it into the catalog with `Catalog.recordSighting`. |
 | `Catalog` | Persistence contract for the image catalog: one `CatalogEntry` + one thumbnail per filename. `Catalog.open(Config)` picks the backend. |
 | `CatalogEntry` | JSON-serializable catalog record, keyed by filename (not path) — see "Catalog persistence" below. |
 | `MySqlCatalog` | `Catalog` backed by one MySQL table: `JSON` column for the entry, `MEDIUMBLOB` for the thumbnail. Plain JDBC, no ORM. |
 | `FileCatalog` | `Catalog` backed by `<filename>.json` + `<filename>.png` sidecar files under a catalog directory. The fallback when no DB is configured. |
+| `CatalogCli` | Command-line access to the catalog (`list`/`get`/`tag`/`save`), through the same `Catalog.open(Config)` the GUI uses — works against either backend. Run via `java -cp target/Voynich-1.0-jar-with-dependencies.jar nl.infcomtec.voynich.CatalogCli <command>`, bypassing the fat jar's GUI `Main-Class`. |
+| `RingDiagramSegmenter` | Manuscript-specific, not part of the generic library: extracts upright figure crops from the Voynich manuscript's circle/ring diagram pages. Standalone — not wired into `Voynich`'s GUI. |
 
 ### Catalog persistence
 `Catalog.open(config)` picks `MySqlCatalog` when `Config.db` (host/database/user)
@@ -55,6 +60,18 @@ speed), and those must collapse into one entry with two
 `Catalog.recordSighting` (a default method on `Catalog`, implemented once on
 top of `loadEntry`/`save`) to record or update a sighting — don't build entries
 by hand and call `save` directly unless you're deliberately overwriting.
+
+`CatalogEntry` also carries a free-form per-file "notepad" — `torrentJpg`
+(cross-reference to the original 2004/torrent JPG numbering) and `tags`
+(short free-text notes; deliberately not a fixed set of categories, since
+new kinds of note keep turning up). Both fields needed no schema/migration
+work to add, since `CatalogEntry` is stored as a single JSON blob either
+way — that's the whole point of it being a JSON column/file rather than
+normalized columns. Add a tag via `Catalog.addTag` (preserves the stored
+thumbnail; no-ops on a duplicate) rather than loading, mutating, and
+`save`-ing by hand. Both `OverviewPanel` (click a thumbnail) and
+`CatalogCli` (`tag`/`save`) edit entries through this same notepad —
+neither is a special case of the other.
 
 MySQL runs via the repo's `docker-compose.yml`; copy `.env.example` to `.env`
 (gitignored) and fill in real credentials before `docker compose up -d`. The
