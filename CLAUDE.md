@@ -37,14 +37,17 @@ Single Maven module, Java 17, Swing UI with **FlatDarculaLaf** dark theme.
 | `Config` | Plain POJO serialized to/from `~/.infVoy.json` via `JSON`. Add fields here for new persistent settings. |
 | `JSON` | Thin Jackson wrapper. Two `ObjectMapper` instances: `mapper` (pretty/indented) and `liner` (single-line). Always use these rather than creating a new `ObjectMapper`. |
 | `EzAction` | `AbstractAction` subclass with optional fluent color/font hints. Call `applyTo(component)` after constructing the button to apply styling. |
-| `OverviewPanel` | Main content view: a `JList` grid of catalog thumbnails, `HORIZONTAL_WRAP`. Clicking a thumbnail opens a modal JSON editor for that entry — see "Catalog persistence" below. |
+| `OverviewPanel` | Main content view: a `JList` grid of catalog thumbnails, `HORIZONTAL_WRAP`. Clicking a thumbnail opens `CatalogEntryEditor.edit` for that entry — see "Catalog persistence" below. |
+| `CatalogEntryEditor` | Modal editor over one or more `CatalogEntry` records: the entry's actual image (via `ImageDisplay`) alongside an editable raw-JSON view and a tags box. Two modes share the same window and save-time guards: `edit` (single entry, opened by `OverviewPanel`) and `review` (a shuffled whole-catalog pass driven by a `RapidReviewAction`, e.g. the toolbar's "Wash Review" — clicking the image stages a tag in the box; nothing persists until Done). |
+| `RapidReviewAction` | Pluggable judgment for `CatalogEntryEditor.review`: just a label plus a tag template built from the click point. The dialog itself has no notion of what a "wash" or any other judgment means — only an implementation of this interface does. |
+| `ImageDisplay` | Loads and scale-to-fits a `CatalogEntry`'s actual image file (not its stored thumbnail) into a Swing component, plus the inverse: mapping a click back to the original image's pixel coordinates. Used by `CatalogEntryEditor`. |
 | `TaskWindow` | Abstract `JFrame` + `SwingWorker` wrapper for a background task: progress bar, log, Cancel button. One window per task-type, reused (not recreated) on repeat runs via a static registry. |
 | `ScanTaskWindow` | `TaskWindow` that walks `config.scanPath`, decodes each image via `ColorImage`, and records it into the catalog with `Catalog.recordSighting`. |
 | `Catalog` | Persistence contract for the image catalog: one `CatalogEntry` + one thumbnail per filename. `Catalog.open(Config)` picks the backend. |
 | `CatalogEntry` | JSON-serializable catalog record, keyed by filename (not path) — see "Catalog persistence" below. |
 | `MySqlCatalog` | `Catalog` backed by one MySQL table: `JSON` column for the entry, `MEDIUMBLOB` for the thumbnail. Plain JDBC, no ORM. |
 | `FileCatalog` | `Catalog` backed by `<filename>.json` + `<filename>.png` sidecar files under a catalog directory. The fallback when no DB is configured. |
-| `CatalogCli` | Command-line access to the catalog (`list`/`get`/`tag`/`save`), through the same `Catalog.open(Config)` the GUI uses — works against either backend. Run via `java -cp target/Voynich-1.0-jar-with-dependencies.jar nl.infcomtec.voynich.CatalogCli <command>`, bypassing the fat jar's GUI `Main-Class`. |
+| `CatalogCli` | Command-line access to the catalog (`list`, with an optional case-insensitive/invertible text filter over an entry's whole JSON; `get`/`tag`/`save`; `checkpoint`/`restore`), through the same `Catalog.open(Config)` the GUI uses — works against either backend. Run via `java -cp target/Voynich-1.0-jar-with-dependencies.jar nl.infcomtec.voynich.CatalogCli <command>`, bypassing the fat jar's GUI `Main-Class`. |
 | `RingDiagramSegmenter` | Manuscript-specific, not part of the generic library: extracts upright figure crops from the Voynich manuscript's circle/ring diagram pages. Standalone — not wired into `Voynich`'s GUI. |
 
 ### Catalog persistence
@@ -69,9 +72,20 @@ work to add, since `CatalogEntry` is stored as a single JSON blob either
 way — that's the whole point of it being a JSON column/file rather than
 normalized columns. Add a tag via `Catalog.addTag` (preserves the stored
 thumbnail; no-ops on a duplicate) rather than loading, mutating, and
-`save`-ing by hand. Both `OverviewPanel` (click a thumbnail) and
+`save`-ing by hand. Both `OverviewPanel` (via `CatalogEntryEditor`, click a thumbnail) and
 `CatalogCli` (`tag`/`save`) edit entries through this same notepad —
 neither is a special case of the other.
+
+`Catalog.checkpoint()`/`Catalog.restoreLatestCheckpoint()` give a manual,
+whole-catalog undo: `checkpoint()` clones the entire current state under a
+new timestamp (a sibling directory for `FileCatalog`, a
+`CREATE TABLE ... AS SELECT` clone of `images` for `MySqlCatalog`);
+`restoreLatestCheckpoint()` replaces the whole catalog with the newest such
+clone, discarding anything written since — a full replace, not a merge, and
+not a stack (always the single most recent checkpoint, never an older one).
+Old checkpoints are never pruned automatically; that's deliberate, left for
+hand cleanup rather than built speculatively. Wired to the toolbar's
+Checkpoint/Undo buttons and `CatalogCli checkpoint`/`restore`.
 
 MySQL runs via the repo's `docker-compose.yml`; copy `.env.example` to `.env`
 (gitignored) and fill in real credentials before `docker compose up -d`. The

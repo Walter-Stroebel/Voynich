@@ -5,14 +5,20 @@ point-in-time listing, not a maintained architecture doc — see `CLAUDE.md`
 for the actively-kept class rundown and `README.md` for current
 state/roadmap. Re-generate rather than hand-edit when it goes stale.
 
-## Code (`src/main/java/nl/infcomtec/voynich/`, 18 classes)
+## Code (`src/main/java/nl/infcomtec/voynich/`, 21 classes)
 
 - **App shell**: `Voynich` (entry point/JFrame), `Config`/`JSON` (settings,
   Jackson wrappers), `EzAction` (styled Swing actions)
-- **Catalog layer**: `Catalog` (contract + `recordSighting`), `CatalogEntry`,
-  `MySqlCatalog`, `FileCatalog` — filename-keyed, MySQL or JSON+PNG sidecars
+- **Catalog layer**: `Catalog` (contract + `recordSighting`/`checkpoint`/
+  `restoreLatestCheckpoint`), `CatalogEntry`, `MySqlCatalog`, `FileCatalog` —
+  filename-keyed, MySQL or JSON+PNG sidecars; manual whole-catalog
+  checkpoint/undo on both backends (2026-08-04)
 - **UI**: `OverviewPanel` (thumbnail grid), `TaskWindow`/`ScanTaskWindow`
-  (background-task progress pattern)
+  (background-task progress pattern), `CatalogEntryEditor` (modal per-entry
+  edit and shuffled whole-catalog review, sharing one window/save path),
+  `RapidReviewAction` (pluggable review judgment, e.g. toolbar's "Wash
+  Review"), `ImageDisplay` (scale-to-fit + click-to-pixel mapping for an
+  entry's actual image)
 - **Colour pipeline**: `EnhancedColor` (RGB↔CIELAB↔XYZ↔YUV↔HSB, ΔE),
   `FloatColor`, `YUV`, `ColorBase` (two-level RGB→LAB cache), `ColorImage`
   (per-image colour inventory), `TriElm`
