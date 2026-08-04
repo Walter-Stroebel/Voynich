@@ -64,9 +64,28 @@ gap.
   doesn't mean hand-typing JSON array syntax), Jackson-validated on Save
   and guarded against the two easy ways to corrupt an entry by hand
   (changing `filename`, the catalog key, or emptying `locations`)
-- `CatalogCli` (`list`/`get`/`tag`/`save`), a standalone command-line tool
-  against the same `Catalog` the GUI uses — for scripted or one-off catalog
-  reads/edits without opening the app; see its class doc for exact usage
+- `CatalogCli` (`list`, with an optional case-insensitive/`-v`-invertible text
+  filter over an entry's whole JSON; `get`/`tag`/`save`; `checkpoint`/`restore`),
+  a standalone command-line tool against the same `Catalog` the GUI uses — for
+  scripted or one-off catalog reads/edits without opening the app; see its
+  class doc for exact usage
+- A case-insensitive JSON text filter (`OverviewPanel.filter()`, mirrored in
+  `CatalogCli list`) — substring match over an entry's whole JSON, not just
+  its filename, so it also catches hits in tags/`torrentJpg`/locations; an
+  invert checkbox (GUI) or `-v`/`--invert` flag (CLI) flips it, e.g. to find
+  entries still missing a given tag
+- A general click/skip/note/abort review pass (`CatalogEntryEditor.review()`)
+  over a shuffled queue of every catalog entry — the toolbar's "Wash Review"
+  action is one instance of it (`RapidReviewAction`), not a special case.
+  Clicking the shown image stages a tag in an editable box; nothing is
+  persisted until Done, so a whole pass is reviewable/correctable before any
+  of it hits storage
+- Manual checkpoint/undo for the whole catalog (`Catalog.checkpoint()`/
+  `Catalog.restoreLatestCheckpoint()`) — a coarse, whole-catalog clone
+  (a timestamped sibling directory for `FileCatalog`, a `CREATE TABLE ... AS
+  SELECT` clone of the `images` table for `MySqlCatalog`), restorable via the
+  toolbar's Checkpoint/Undo buttons or `CatalogCli checkpoint`/`restore`. No
+  automatic pruning of old checkpoints — deliberate, left for hand cleanup
 
 **Manuscript-specific, not part of the generic library:** `RingDiagramSegmenter`,
 a first-pass tool for extracting individual upright figure crops from the
