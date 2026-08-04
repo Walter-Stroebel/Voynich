@@ -89,6 +89,12 @@ public class Voynich {
                 overview.sort();
             }
         }));
+        toolBar.add(new JButton(new EzAction("Filter") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                overview.filter();
+            }
+        }));
         toolBar.add(new JButton(new EzAction("Exit") {
             @Override
             public void actionPerformed(ActionEvent e) {

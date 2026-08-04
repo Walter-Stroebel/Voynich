@@ -18,8 +18,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
 import javax.swing.Icon;
@@ -46,9 +48,25 @@ import javax.swing.SwingUtilities;
 public class OverviewPanel extends JPanel {
 
     private final Catalog catalog;
+    /**
+     * Every known entry, in the app's current sort order — the ground
+     * truth. {@link #model} is a filtered view onto this list, never the
+     * other way around: {@link #sort()} and {@link #addOrUpdate} mutate
+     * this list first, then call {@link #applyFilter()} to rebuild
+     * {@link #model} from it.
+     */
+    private final List<CatalogEntry> allEntries = new ArrayList<>();
     private final DefaultListModel<CatalogEntry> model = new DefaultListModel<>();
     private final JList<CatalogEntry> list = new JList<>(model);
     private final Map<String, Icon> thumbnails = new HashMap<>();
+    /**
+     * Filenames currently passing {@link #filter()}'s search text, or
+     * {@code null} when no filter is active (show everything). In-memory
+     * only, never persisted to the catalog — the "selected thumbnails"
+     * this exposes is expected to grow other uses (bulk tagging, etc.)
+     * beyond just driving {@link #applyFilter()}.
+     */
+    private Set<String> selectedFilenames;
 
     public OverviewPanel(Catalog catalog) {
         super(new BorderLayout());
@@ -210,15 +228,49 @@ public class OverviewPanel extends JPanel {
         if (choice == JOptionPane.CLOSED_OPTION) {
             return;
         }
-        Comparator<CatalogEntry> comparator = comparators[choice];
-        List<CatalogEntry> entries = new ArrayList<>(model.size());
-        for (int i = 0; i < model.size(); i++) {
-            entries.add(model.get(i));
+        Collections.sort(allEntries, comparators[choice]);
+        applyFilter();
+    }
+
+    /**
+     * Prompts for free text (via {@link JOptionPane#showInputDialog}) and
+     * narrows the grid to entries whose JSON representation contains it,
+     * case-insensitively. Blank text (or an empty catalog match) clears
+     * the filter and shows everything again. Wired to the app toolbar's
+     * Filter button in {@link Voynich#main}; must be called from the EDT.
+     */
+    public void filter() {
+        String query = JOptionPane.showInputDialog(this, "Filter text (blank to clear):", "Filter",
+                JOptionPane.QUESTION_MESSAGE);
+        if (null == query) {
+            return;
         }
-        Collections.sort(entries, comparator);
+        query = query.trim();
+        if (query.isEmpty()) {
+            selectedFilenames = null;
+        } else {
+            String needle = query.toLowerCase();
+            selectedFilenames = new LinkedHashSet<>();
+            for (CatalogEntry entry : allEntries) {
+                if (JSON.writeValueAsString(entry).toLowerCase().contains(needle)) {
+                    selectedFilenames.add(entry.filename);
+                }
+            }
+        }
+        applyFilter();
+    }
+
+    /**
+     * Rebuilds {@link #model} from {@link #allEntries}, keeping only
+     * entries in {@link #selectedFilenames} ({@code null} meaning
+     * "keep all"). Call after any change to either.
+     */
+    private void applyFilter() {
         model.clear();
-        for (CatalogEntry entry : entries) {
-            model.addElement(entry);
+        for (CatalogEntry entry : allEntries) {
+            if (null == selectedFilenames || selectedFilenames.contains(entry.filename)) {
+                model.addElement(entry);
+            }
         }
     }
 
@@ -313,10 +365,11 @@ public class OverviewPanel extends JPanel {
                 thumbnails.put(entry.filename, icon);
                 int idx = indexOf(entry.filename);
                 if (idx >= 0) {
-                    model.set(idx, entry);
+                    allEntries.set(idx, entry);
                 } else {
-                    model.addElement(entry);
+                    allEntries.add(entry);
                 }
+                applyFilter();
             }
         };
         if (SwingUtilities.isEventDispatchThread()) {
@@ -327,8 +380,8 @@ public class OverviewPanel extends JPanel {
     }
 
     private int indexOf(String filename) {
-        for (int i = 0; i < model.size(); i++) {
-            if (model.get(i).filename.equals(filename)) {
+        for (int i = 0; i < allEntries.size(); i++) {
+            if (allEntries.get(i).filename.equals(filename)) {
                 return i;
             }
         }

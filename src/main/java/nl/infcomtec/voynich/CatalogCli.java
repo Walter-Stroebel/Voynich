@@ -60,9 +60,16 @@ public class CatalogCli {
         }
     }
 
+    /**
+     * Matches {@code filter} the same way {@code OverviewPanel.filter()}
+     * does: case-insensitive substring search over the entry's whole JSON
+     * representation, not just the filename — so it also catches hits in
+     * tags, torrentJpg, locations, etc.
+     */
     private static void list(Catalog catalog, String filter) throws IOException {
+        String needle = null == filter ? null : filter.toLowerCase();
         for (CatalogEntry entry : catalog.listAll()) {
-            if (null == filter || entry.filename.contains(filter)) {
+            if (null == needle || JSON.writeValueAsString(entry).toLowerCase().contains(needle)) {
                 System.out.println(entry.filename + "\t" + entry.width + "x" + entry.height
                         + "\ttags=" + entry.tags);
             }
@@ -126,7 +133,7 @@ public class CatalogCli {
 
     private static void usage() {
         System.err.println("Usage: CatalogCli <command> [args]");
-        System.err.println("  list [filter]              list filenames (optionally containing 'filter')");
+        System.err.println("  list [filter]              list filenames (optionally whose JSON contains 'filter', case-insensitive)");
         System.err.println("  get <filename>              print the entry's JSON");
         System.err.println("  tag <filename> <text...>    add a tag/note (no-op if already present)");
         System.err.println("  save <filename> [jsonFile]  replace the entry (reads stdin if jsonFile omitted)");
