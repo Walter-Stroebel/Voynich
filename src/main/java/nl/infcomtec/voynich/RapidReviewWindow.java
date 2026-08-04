@@ -5,20 +5,19 @@ package nl.infcomtec.voynich;
 
 import java.awt.BorderLayout;
 import java.awt.Dimension;
-import java.awt.Graphics2D;
 import java.awt.GraphicsDevice;
 import java.awt.GraphicsEnvironment;
+import java.awt.Point;
 import java.awt.Rectangle;
-import java.awt.RenderingHints;
 import java.awt.Window;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseMotionAdapter;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
-import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -26,8 +25,8 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import javax.imageio.ImageIO;
 import javax.swing.AbstractAction;
+import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.BorderFactory;
@@ -62,6 +61,15 @@ import javax.swing.WindowConstants;
  * reused for any future single-glance judgment over the catalog by
  * supplying a different action, not rebuilt per task.
  * <p>
+ * Accepting doesn't just record a bare judgment — it records *where* on the
+ * image the reviewer was pointing: {@link RapidReviewAction#tagTemplate()}
+ * is filled in with that point's x/y in the original image's pixel
+ * coordinates (tracked via mouse movement over the image, so clicking,
+ * pressing Enter, and the Accept button all use wherever the pointer
+ * currently is; hovering without ever moving the mouse falls back to the
+ * image's center) and the resulting tag is written via
+ * {@link Catalog#addTag}.
+ * <p>
  * Separately from the pluggable accept judgment, every review also has a
  * free-text note field (type, Enter or the Note button — adds the text to
  * {@link CatalogEntry#tags} via {@link Catalog#addTag} and moves on). This
@@ -69,7 +77,10 @@ import javax.swing.WindowConstants;
  * accept contract ("only click the unambiguous ones") only stays usable if
  * there's somewhere to put the ones that don't cleanly fit it — a stain
  * that looks like a wash, a page worth a second look later, anything the
- * reviewer doesn't want to just lose by skipping.
+ * reviewer doesn't want to just lose by skipping. A "View/Edit JSON" button
+ * opens the same {@link CatalogEntryEditor} dialog {@link OverviewPanel}
+ * uses on a thumbnail click, so the full entry is reachable without leaving
+ * the review pass.
  */
 public class RapidReviewWindow extends JFrame {
 
@@ -87,6 +98,15 @@ public class RapidReviewWindow extends JFrame {
     private CatalogEntry current;
     private boolean currentLoaded;
     private CompletableFuture<BufferedImage> prefetched;
+    /**
+     * Where the pointer last was over {@link #imageLabel}, in that label's
+     * own coordinate space — updated by both hovering and clicking, reset on
+     * every {@link #advance()} so a stale point from the previous image is
+     * never reused. {@code null} means "the pointer hasn't been over the
+     * image yet"; {@link #resolveAcceptPoint()} falls back to the image's
+     * center in that case.
+     */
+    private Point lastLabelPoint;
 
     /**
      * @param catalog source of entries to review
@@ -102,7 +122,7 @@ public class RapidReviewWindow extends JFrame {
 
         queue = new ArrayList<>();
         for (CatalogEntry entry : catalog.listAll()) {
-            if (null != pickExistingFile(entry)) {
+            if (null != ImageDisplay.pickExistingFile(entry)) {
                 queue.add(entry);
             }
         }
@@ -123,13 +143,16 @@ public class RapidReviewWindow extends JFrame {
         JButton accept = new JButton("Accept: " + action.label() + "  (Enter / click image)");
         JButton skip = new JButton("Skip  (Space)");
         JButton abort = new JButton("Abort  (Esc)");
+        JButton viewJson = new JButton("View/Edit JSON");
         accept.addActionListener(e -> doAccept());
         skip.addActionListener(e -> doSkip());
         abort.addActionListener(e -> doAbort());
+        viewJson.addActionListener(e -> doViewJson());
         JPanel buttonRow = new JPanel();
         buttonRow.add(accept);
         buttonRow.add(skip);
         buttonRow.add(abort);
+        buttonRow.add(viewJson);
 
         JButton noteButton = new JButton("Note & move on");
         noteField.addActionListener(e -> doNote());
@@ -148,7 +171,14 @@ public class RapidReviewWindow extends JFrame {
         imageLabel.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent evt) {
+                lastLabelPoint = evt.getPoint();
                 doAccept();
+            }
+        });
+        imageLabel.addMouseMotionListener(new MouseMotionAdapter() {
+            @Override
+            public void mouseMoved(MouseEvent evt) {
+                lastLabelPoint = evt.getPoint();
             }
         });
         bindKey(KeyEvent.VK_ENTER, "accept", this::doAccept);
@@ -191,14 +221,60 @@ public class RapidReviewWindow extends JFrame {
         if (null == current || !currentLoaded) {
             return;
         }
+        Point imagePoint = resolveAcceptPoint();
+        String tag = String.format(action.tagTemplate(), imagePoint.x, imagePoint.y);
         try {
-            action.onAccept(current);
+            catalog.addTag(current.filename, tag);
         } catch (IOException ex) {
             JOptionPane.showMessageDialog(this, "Could not record judgment for " + current.filename
                     + ":\n" + ex.getMessage(), "Save failed", JOptionPane.ERROR_MESSAGE);
             return;
         }
         advance();
+    }
+
+    /**
+     * @return {@link #lastLabelPoint} converted to the current entry's
+     * original (unscaled) image pixel coordinates, or the image's center if
+     * the pointer hasn't been over it yet this image.
+     */
+    private Point resolveAcceptPoint() {
+        Point labelPoint = null != lastLabelPoint ? lastLabelPoint
+                : new Point(imageLabel.getWidth() / 2, imageLabel.getHeight() / 2);
+        return toImageCoordinates(labelPoint);
+    }
+
+    /**
+     * Converts a point in {@link #imageLabel}'s coordinate space to the
+     * current entry's original image pixel coordinates, accounting for both
+     * the scale-to-fit shrink and the label centering its (usually smaller)
+     * icon within its own bounds. Clamped to the icon's bounds, since a
+     * point can land in the letterboxed margin around a non-square image.
+     */
+    private Point toImageCoordinates(Point labelPoint) {
+        Icon icon = imageLabel.getIcon();
+        int iconW = icon.getIconWidth();
+        int iconH = icon.getIconHeight();
+        int offX = (imageLabel.getWidth() - iconW) / 2;
+        int offY = (imageLabel.getHeight() - iconH) / 2;
+        int ix = Math.max(0, Math.min(iconW - 1, labelPoint.x - offX));
+        int iy = Math.max(0, Math.min(iconH - 1, labelPoint.y - offY));
+        double scaleX = current.width / (double) iconW;
+        double scaleY = current.height / (double) iconH;
+        return new Point((int) Math.round(ix * scaleX), (int) Math.round(iy * scaleY));
+    }
+
+    /**
+     * Opens the shared {@link CatalogEntryEditor} on the currently displayed
+     * entry, so the reviewer can see or hand-edit the full record without
+     * leaving the review pass. Doesn't advance — the reviewer still has to
+     * accept, skip, or note afterward.
+     */
+    private void doViewJson() {
+        if (null == current) {
+            return;
+        }
+        CatalogEntryEditor.edit(this, catalog, current, saved -> current = saved);
     }
 
     private void doSkip() {
@@ -241,6 +317,7 @@ public class RapidReviewWindow extends JFrame {
         }
         current = queue.get(index);
         currentLoaded = false;
+        lastLabelPoint = null;
         noteField.setText("");
         statusLabel.setText(String.format("%d / %d — %s", index + 1, queue.size(), current.filename));
         imageLabel.setIcon(null);
@@ -268,42 +345,7 @@ public class RapidReviewWindow extends JFrame {
     }
 
     private CompletableFuture<BufferedImage> loadAsync(CatalogEntry entry) {
-        return CompletableFuture.supplyAsync(() -> loadScaled(entry), loader);
-    }
-
-    private BufferedImage loadScaled(CatalogEntry entry) {
-        File file = pickExistingFile(entry);
-        if (null == file) {
-            return null;
-        }
-        try {
-            BufferedImage full = ImageIO.read(file);
-            return null == full ? null : scaleToFit(full, imageBox.width, imageBox.height);
-        } catch (IOException ex) {
-            return null;
-        }
-    }
-
-    private static File pickExistingFile(CatalogEntry entry) {
-        for (CatalogEntry.Location loc : entry.locations) {
-            File f = new File(loc.path);
-            if (f.isFile()) {
-                return f;
-            }
-        }
-        return null;
-    }
-
-    private static BufferedImage scaleToFit(BufferedImage src, int maxW, int maxH) {
-        double scale = Math.min((double) maxW / src.getWidth(), (double) maxH / src.getHeight());
-        int w = Math.max(1, (int) Math.round(src.getWidth() * scale));
-        int h = Math.max(1, (int) Math.round(src.getHeight() * scale));
-        BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
-        Graphics2D g = out.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-        g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-        g.drawImage(src, 0, 0, w, h, null);
-        g.dispose();
-        return out;
+        return CompletableFuture.supplyAsync(
+                () -> ImageDisplay.loadScaled(entry, imageBox.width, imageBox.height), loader);
     }
 }

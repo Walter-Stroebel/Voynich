@@ -107,8 +107,8 @@ public class Voynich {
                         }
 
                         @Override
-                        public void onAccept(CatalogEntry entry) throws IOException {
-                            catalog.addTag(entry.filename, "wash");
+                        public String tagTemplate() {
+                            return "wash@%d,%d";
                         }
                     }, fr);
                     review.setVisible(true);

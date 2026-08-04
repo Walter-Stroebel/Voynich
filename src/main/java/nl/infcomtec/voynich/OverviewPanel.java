@@ -3,13 +3,8 @@
  */
 package nl.infcomtec.voynich;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.awt.BorderLayout;
 import java.awt.Component;
-import java.awt.Dimension;
-import java.awt.Font;
-import java.awt.Window;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
@@ -26,15 +21,12 @@ import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
 import javax.swing.Icon;
 import javax.swing.ImageIcon;
-import javax.swing.JButton;
 import javax.swing.JCheckBox;
-import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
-import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.ListCellRenderer;
 import javax.swing.SwingConstants;
@@ -99,112 +91,10 @@ public class OverviewPanel extends JPanel {
                 if (idx < 0 || !list.getCellBounds(idx, idx).contains(evt.getPoint())) {
                     return;
                 }
-                showJsonEditor(model.getElementAt(idx));
+                CatalogEntryEditor.edit(SwingUtilities.getWindowAncestor(OverviewPanel.this), catalog,
+                        model.getElementAt(idx), OverviewPanel.this::addOrUpdate);
             }
         });
-    }
-
-    /**
-     * Opens a modal, editable raw-JSON view of {@code entry} — the catalog's
-     * per-file "notepad" ({@link CatalogEntry#tags}, {@link CatalogEntry#torrentJpg},
-     * etc.) has no dedicated UI yet, and the whole entry is small enough that
-     * hand-editing its JSON directly is simpler than building forms for each
-     * field as they get added. This is the app's own database, owned by the
-     * person running it, so the only validation on Save is against honest
-     * mistakes, not hostile input: the JSON must parse (via {@link JSON}),
-     * {@link CatalogEntry#filename} must be unchanged (it's the catalog key —
-     * editing it here would silently create/orphan a row instead of renaming
-     * anything), and {@link CatalogEntry#locations} must not have gone from
-     * non-empty to empty (the easiest field to accidentally delete a line of
-     * and lose sighting history for).
-     * <p>
-     * {@link CatalogEntry#tags} gets its own plain one-tag-per-line box
-     * instead of living in the JSON blob — it's the field expected to be
-     * hand-edited the most, and JSON array syntax (quoting, commas) is real
-     * friction for what's just a short list of short strings. It's stripped
-     * out of the blob entirely rather than shown in both places, so there's
-     * never two open editors disagreeing about the same field.
-     *
-     * @param entry the entry to view/edit; must already be in the catalog
-     */
-    private void showJsonEditor(CatalogEntry entry) {
-        Window owner = SwingUtilities.getWindowAncestor(this);
-        JDialog dialog = new JDialog(owner, entry.filename, JDialog.ModalityType.APPLICATION_MODAL);
-
-        ObjectNode blob = JSON.getMapper().valueToTree(entry);
-        blob.remove("tags");
-        String blobText;
-        try {
-            blobText = JSON.getMapper().writerWithDefaultPrettyPrinter().writeValueAsString(blob);
-        } catch (JsonProcessingException ex) {
-            // Can't actually happen: blob was just built from a real object, not parsed input.
-            throw new IllegalStateException(ex);
-        }
-        JTextArea text = new JTextArea(blobText);
-        text.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
-        JScrollPane scroll = new JScrollPane(text);
-        scroll.setPreferredSize(new Dimension(600, 460));
-        dialog.add(scroll, BorderLayout.CENTER);
-
-        JTextArea tagsText = new JTextArea(String.join("\n", entry.tags));
-        tagsText.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
-        JScrollPane tagsScroll = new JScrollPane(tagsText);
-        tagsScroll.setBorder(BorderFactory.createTitledBorder("Tags (one per line)"));
-        tagsScroll.setPreferredSize(new Dimension(600, 80));
-
-        JButton save = new JButton("Save");
-        JButton cancel = new JButton("Cancel");
-        save.addActionListener(evt -> {
-            CatalogEntry parsed;
-            try {
-                parsed = JSON.getMapper().readValue(text.getText(), CatalogEntry.class);
-            } catch (JsonProcessingException ex) {
-                JOptionPane.showMessageDialog(dialog, "Not valid JSON:\n" + ex.getMessage(),
-                        "Invalid JSON", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            if (null == parsed.filename || !parsed.filename.equals(entry.filename)) {
-                JOptionPane.showMessageDialog(dialog,
-                        "filename must stay \"" + entry.filename + "\" — it's the catalog key.",
-                        "Required field changed", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            if (!entry.locations.isEmpty() && parsed.locations.isEmpty()) {
-                JOptionPane.showMessageDialog(dialog,
-                        "locations went from " + entry.locations.size() + " entries to 0 — refusing to save.",
-                        "Required field changed", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            List<String> newTags = new ArrayList<>();
-            for (String line : tagsText.getText().split("\n")) {
-                String trimmed = line.trim();
-                if (!trimmed.isEmpty()) {
-                    newTags.add(trimmed);
-                }
-            }
-            parsed.tags = newTags;
-            try {
-                catalog.save(parsed, catalog.loadThumbnail(entry.filename));
-            } catch (IOException ex) {
-                JOptionPane.showMessageDialog(dialog, "Save failed:\n" + ex.getMessage(),
-                        "Save failed", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            addOrUpdate(parsed);
-            dialog.dispose();
-        });
-        cancel.addActionListener(evt -> dialog.dispose());
-        JPanel buttons = new JPanel();
-        buttons.add(save);
-        buttons.add(cancel);
-
-        JPanel south = new JPanel(new BorderLayout());
-        south.add(tagsScroll, BorderLayout.CENTER);
-        south.add(buttons, BorderLayout.SOUTH);
-        dialog.add(south, BorderLayout.SOUTH);
-        dialog.pack();
-        dialog.setLocationRelativeTo(owner);
-        dialog.setVisible(true);
     }
 
     /**
