@@ -4,6 +4,7 @@
 package nl.infcomtec.voynich;
 
 import java.awt.Graphics2D;
+import java.awt.Point;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -12,11 +13,12 @@ import javax.imageio.ImageIO;
 
 /**
  * Loading and scale-to-fit math for showing a {@link CatalogEntry}'s actual
- * image file (not its stored thumbnail) in a Swing component. Shared by
- * {@link RapidReviewWindow} and {@link CatalogEntryEditor} so there's one
- * implementation of "which of an entry's locations still exists on disk"
- * and one implementation of the scaling math, not two copies drifting
- * apart.
+ * image file (not its stored thumbnail) in a Swing component, plus the
+ * inverse: mapping a click back from displayed coordinates to the original
+ * image's pixel coordinates. Used by {@link CatalogEntryEditor} so there's
+ * one implementation of "which of an entry's locations still exists on
+ * disk," one implementation of the scaling math, and one implementation of
+ * its inverse, not copies drifting apart.
  */
 final class ImageDisplay {
 
@@ -59,6 +61,26 @@ final class ImageDisplay {
         } catch (IOException ex) {
             return null;
         }
+    }
+
+    /**
+     * Maps a click at {@code labelPoint} — in the coordinate space of the
+     * {@code JLabel} showing a {@code iconW}x{@code iconH} scaled icon
+     * within a {@code labelW}x{@code labelH} label (centered, per
+     * {@code JLabel}'s default alignment when the icon is smaller than the
+     * label) — back to {@code entry}'s original image pixel coordinates.
+     * Clamped to the icon's bounds, since a click can land in the
+     * letterboxed margin around a non-square image.
+     */
+    static Point toImageCoordinates(CatalogEntry entry, int iconW, int iconH, int labelW, int labelH,
+            Point labelPoint) {
+        int offX = (labelW - iconW) / 2;
+        int offY = (labelH - iconH) / 2;
+        int ix = Math.max(0, Math.min(iconW - 1, labelPoint.x - offX));
+        int iy = Math.max(0, Math.min(iconH - 1, labelPoint.y - offY));
+        double scaleX = entry.width / (double) iconW;
+        double scaleY = entry.height / (double) iconH;
+        return new Point((int) Math.round(ix * scaleX), (int) Math.round(iy * scaleY));
     }
 
     /**

@@ -100,7 +100,7 @@ public class Voynich {
             @Override
             public void actionPerformed(ActionEvent e) {
                 try {
-                    RapidReviewWindow review = new RapidReviewWindow(catalog, new RapidReviewAction() {
+                    CatalogEntryEditor.review(fr, catalog, new RapidReviewAction() {
                         @Override
                         public String label() {
                             return "wash";
@@ -110,8 +110,7 @@ public class Voynich {
                         public String tagTemplate() {
                             return "wash@%d,%d";
                         }
-                    }, fr);
-                    review.setVisible(true);
+                    }, overview::addOrUpdate);
                 } catch (IOException ex) {
                     JOptionPane.showMessageDialog(fr, "Could not start review: " + ex.getMessage(),
                             "Review failed", JOptionPane.ERROR_MESSAGE);
