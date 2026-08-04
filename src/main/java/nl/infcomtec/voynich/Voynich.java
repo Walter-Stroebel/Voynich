@@ -10,6 +10,7 @@ import java.io.File;
 import java.io.IOException;
 import javax.swing.JButton;
 import javax.swing.JFrame;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JToolBar;
 import javax.swing.SwingUtilities;
@@ -93,6 +94,28 @@ public class Voynich {
             @Override
             public void actionPerformed(ActionEvent e) {
                 overview.filter();
+            }
+        }));
+        toolBar.add(new JButton(new EzAction("Wash Review") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                try {
+                    RapidReviewWindow review = new RapidReviewWindow(catalog, new RapidReviewAction() {
+                        @Override
+                        public String label() {
+                            return "wash";
+                        }
+
+                        @Override
+                        public void onAccept(CatalogEntry entry) throws IOException {
+                            catalog.addTag(entry.filename, "wash");
+                        }
+                    }, fr);
+                    review.setVisible(true);
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(fr, "Could not start review: " + ex.getMessage(),
+                            "Review failed", JOptionPane.ERROR_MESSAGE);
+                }
             }
         }));
         toolBar.add(new JButton(new EzAction("Exit") {
