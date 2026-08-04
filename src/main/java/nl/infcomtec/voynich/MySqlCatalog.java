@@ -193,4 +193,90 @@ public class MySqlCatalog implements Catalog {
         }
         return null;
     }
+
+    /**
+     * Prefix shared by every checkpoint table, e.g. {@code images_ckpt_1770326400000}.
+     * The suffix is the epoch-millis timestamp the checkpoint was taken at,
+     * so the latest checkpoint is just the lexically/numerically greatest
+     * suffix.
+     */
+    private static final String CHECKPOINT_PREFIX = "images_ckpt_";
+
+    @Override
+    public synchronized void checkpoint() throws IOException {
+        String table = CHECKPOINT_PREFIX + System.currentTimeMillis();
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                reconnectIfBroken();
+                try (Statement st = conn.createStatement()) {
+                    st.execute("CREATE TABLE " + table + " AS SELECT * FROM images");
+                }
+                return;
+            } catch (SQLException ex) {
+                if (attempt == 2) {
+                    throw new IOException("Could not create checkpoint " + table, ex);
+                }
+            }
+        }
+    }
+
+    @Override
+    public synchronized void restoreLatestCheckpoint() throws IOException {
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                reconnectIfBroken();
+                String latest = latestCheckpointTable();
+                if (null == latest) {
+                    throw new IllegalStateException("No checkpoint to restore");
+                }
+                boolean autoCommit = conn.getAutoCommit();
+                conn.setAutoCommit(false);
+                try (Statement st = conn.createStatement()) {
+                    st.execute("DELETE FROM images");
+                    st.execute("INSERT INTO images SELECT * FROM " + latest);
+                    conn.commit();
+                } catch (SQLException ex) {
+                    conn.rollback();
+                    throw ex;
+                } finally {
+                    conn.setAutoCommit(autoCommit);
+                }
+                return;
+            } catch (SQLException ex) {
+                if (attempt == 2) {
+                    throw new IOException("Could not restore latest checkpoint", ex);
+                }
+            }
+        }
+    }
+
+    /**
+     * @return the table name of the most recent checkpoint, or {@code null}
+     * if none exists
+     */
+    private String latestCheckpointTable() throws SQLException {
+        String latest = null;
+        long latestMillis = -1;
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT table_name FROM information_schema.tables "
+                + "WHERE table_schema = ? AND table_name LIKE ?")) {
+            ps.setString(1, db.database);
+            ps.setString(2, CHECKPOINT_PREFIX + "%");
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String name = rs.getString(1);
+                    try {
+                        long millis = Long.parseLong(name.substring(CHECKPOINT_PREFIX.length()));
+                        if (millis > latestMillis) {
+                            latestMillis = millis;
+                            latest = name;
+                        }
+                    } catch (NumberFormatException ignored) {
+                        // not one of ours; skip it
+                    }
+                }
+            }
+        }
+        return latest;
+    }
 }

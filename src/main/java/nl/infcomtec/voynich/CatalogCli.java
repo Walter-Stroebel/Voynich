@@ -53,6 +53,19 @@ public class CatalogCli {
                 requireArgs(args, 2, "save <filename> [jsonFile, else stdin]");
                 save(catalog, args[1], args.length > 2 ? args[2] : null);
                 break;
+            case "checkpoint":
+                catalog.checkpoint();
+                System.out.println("checkpointed");
+                break;
+            case "restore":
+                try {
+                    catalog.restoreLatestCheckpoint();
+                    System.out.println("restored latest checkpoint");
+                } catch (IllegalStateException ex) {
+                    System.err.println(ex.getMessage());
+                    System.exit(1);
+                }
+                break;
             default:
                 usage();
         }
@@ -145,5 +158,7 @@ public class CatalogCli {
         System.err.println("  get <filename>              print the entry's JSON");
         System.err.println("  tag <filename> <text...>    add a tag/note (no-op if already present)");
         System.err.println("  save <filename> [jsonFile]  replace the entry (reads stdin if jsonFile omitted)");
+        System.err.println("  checkpoint                  clone the whole catalog's current state");
+        System.err.println("  restore                     discard everything since the last checkpoint");
     }
 }

@@ -117,6 +117,38 @@ public class Voynich {
                 }
             }
         }));
+        toolBar.add(new JButton(new EzAction("Checkpoint") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                try {
+                    catalog.checkpoint();
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(fr, "Could not checkpoint: " + ex.getMessage(),
+                            "Checkpoint failed", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }));
+        toolBar.add(new JButton(new EzAction("Undo") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                int choice = JOptionPane.showConfirmDialog(fr,
+                        "Discard everything since the last checkpoint?",
+                        "Restore checkpoint", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+                if (choice != JOptionPane.YES_OPTION) {
+                    return;
+                }
+                try {
+                    catalog.restoreLatestCheckpoint();
+                    overview.loadFromCatalog();
+                } catch (IllegalStateException ex) {
+                    JOptionPane.showMessageDialog(fr, ex.getMessage(),
+                            "Nothing to restore", JOptionPane.INFORMATION_MESSAGE);
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(fr, "Could not restore checkpoint: " + ex.getMessage(),
+                            "Restore failed", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }));
         toolBar.add(new JButton(new EzAction("Exit") {
             @Override
             public void actionPerformed(ActionEvent e) {

@@ -50,6 +50,30 @@ public interface Catalog {
     List<CatalogEntry> listAll() throws IOException;
 
     /**
+     * Clones the entire catalog's current state under a new, timestamped
+     * checkpoint. Coarse-grained (the whole catalog, not one entry) and
+     * cheap — a directory copy or a {@code CREATE TABLE ... AS SELECT},
+     * depending on backend. Checkpoints accumulate; nothing prunes them
+     * automatically, by design — pruning is a separate, low-stakes concern
+     * left for hand cleanup.
+     *
+     * @throws IOException if the clone fails
+     */
+    void checkpoint() throws IOException;
+
+    /**
+     * Replaces the entire catalog's current state with its most recent
+     * {@link #checkpoint()}. A full replace, not a merge: any entry written
+     * since that checkpoint is discarded, including one written after the
+     * checkpoint but never checkpointed itself. Not a stack — this always
+     * targets the single most recent checkpoint, never an older one.
+     *
+     * @throws IOException if the restore fails
+     * @throws IllegalStateException if no checkpoint exists yet
+     */
+    void restoreLatestCheckpoint() throws IOException;
+
+    /**
      * Records that {@code filename} was seen at {@code file}'s path, merging
      * into any existing entry rather than replacing it — the mechanism that
      * makes a NAS copy and a local copy of the same file collapse into one
