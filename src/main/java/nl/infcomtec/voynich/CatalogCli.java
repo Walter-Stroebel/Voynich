@@ -3,8 +3,11 @@
  */
 package nl.infcomtec.voynich;
 
+import java.awt.Color;
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.List;
@@ -52,6 +55,10 @@ public class CatalogCli {
             case "save":
                 requireArgs(args, 2, "save <filename> [jsonFile, else stdin]");
                 save(catalog, args[1], args.length > 2 ? args[2] : null);
+                break;
+            case "extract":
+                requireArgs(args, 3, "extract <filename> --pixel x,y | --region x,y,w,h [--format rgb|lab|hex] [--out path]");
+                extract(catalog, args);
                 break;
             case "checkpoint":
                 catalog.checkpoint();
@@ -152,12 +159,206 @@ public class CatalogCli {
         System.out.println("saved: " + filename);
     }
 
+    /**
+     * Prints or exports real pixel colour, decoded and Lab-converted through
+     * the same {@link ColorImage}/{@link ColorBase} path the GUI's colour
+     * views use — not a reimplementation, so results are guaranteed
+     * consistent with {@code FrequencyBarChart}/{@code DeltaEHeatmap}.
+     * <p>
+     * {@code --pixel x,y} prints one line to stdout in the requested format
+     * ({@code rgb}|{@code lab}|{@code hex}, default all three). {@code
+     * --region x,y,w,h} writes a binary blob — row-major, no header — to
+     * {@code --out} if given, else stdout; a one-line JSON manifest
+     * (dimensions, format, dtype, byte count) always goes to stderr, so
+     * piping stdout straight into a numpy {@code fromfile} never sees it
+     * mixed in with the data.
+     * </p>
+     */
+    private static void extract(Catalog catalog, String[] args) throws IOException {
+        String filename = args[1];
+        CatalogEntry entry = catalog.loadEntry(filename);
+        if (null == entry) {
+            System.err.println("No entry for " + filename);
+            System.exit(1);
+            return;
+        }
+        File imgFile = resolveExistingLocation(entry);
+        if (null == imgFile) {
+            System.err.println("No on-disk location found for " + filename);
+            System.exit(1);
+            return;
+        }
+
+        int[] pixel = null;
+        int[] region = null;
+        String format = null;
+        String out = null;
+        for (int i = 2; i < args.length; i++) {
+            switch (args[i]) {
+                case "--pixel":
+                    pixel = parseInts(args[++i], 2, "--pixel x,y");
+                    break;
+                case "--region":
+                    region = parseInts(args[++i], 4, "--region x,y,w,h");
+                    break;
+                case "--format":
+                    format = args[++i];
+                    break;
+                case "--out":
+                    out = args[++i];
+                    break;
+                default:
+                    System.err.println("Unknown option: " + args[i]);
+                    System.exit(1);
+                    return;
+            }
+        }
+        if (null == pixel && null == region) {
+            System.err.println("Need --pixel x,y or --region x,y,w,h");
+            System.exit(1);
+            return;
+        }
+
+        ColorImage img = new ColorImage(imgFile);
+
+        if (null != pixel) {
+            int x = pixel[0], y = pixel[1];
+            if (x < 0 || y < 0 || x >= img.w || y >= img.h) {
+                System.err.println("Pixel (" + x + "," + y + ") outside " + img.w + "x" + img.h);
+                System.exit(1);
+                return;
+            }
+            printPixel(img.pixels[y * img.w + x], null == format ? List.of("rgb", "lab", "hex") : List.of(format));
+            return;
+        }
+
+        int x0 = region[0], y0 = region[1], rw = region[2], rh = region[3];
+        if (rw <= 0 || rh <= 0 || x0 < 0 || y0 < 0 || x0 + rw > img.w || y0 + rh > img.h) {
+            System.err.println("Region outside " + img.w + "x" + img.h);
+            System.exit(1);
+            return;
+        }
+        if (null == format) {
+            format = "lab";
+        }
+        byte[] blob = buildBlob(img, x0, y0, rw, rh, format);
+        if (null == out) {
+            System.out.write(blob);
+            System.out.flush();
+        } else {
+            Files.write(new File(out).toPath(), blob);
+        }
+        System.err.println(String.format(
+                "{\"filename\":\"%s\",\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d,"
+                + "\"format\":\"%s\",\"dtype\":\"%s\",\"order\":\"row-major\",\"bytes\":%d%s}",
+                filename, x0, y0, rw, rh, format, "rgb".equals(format) ? "uint8" : "float32", blob.length,
+                null == out ? "" : ",\"path\":\"" + out + "\""));
+    }
+
+    private static File resolveExistingLocation(CatalogEntry entry) {
+        for (CatalogEntry.Location loc : entry.locations) {
+            File f = new File(loc.path);
+            if (f.exists()) {
+                return f;
+            }
+        }
+        return null;
+    }
+
+    private static int[] parseInts(String s, int count, String usageMsg) {
+        String[] parts = s.split(",");
+        if (parts.length != count) {
+            System.err.println("Usage: " + usageMsg);
+            System.exit(1);
+        }
+        int[] out = new int[count];
+        for (int i = 0; i < count; i++) {
+            out[i] = Integer.parseInt(parts[i].trim());
+        }
+        return out;
+    }
+
+    private static void printPixel(int rgb, List<String> formats) {
+        int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+        for (String format : formats) {
+            switch (format) {
+                case "rgb":
+                    System.out.println("rgb=" + r + "," + g + "," + b);
+                    break;
+                case "lab": {
+                    ColorBase.TriLabColor lab = ColorBase.resolve(new Color(rgb));
+                    System.out.printf("lab=%.2f,%.2f,%.2f%n", lab.l / 100.0, lab.a / 100.0, lab.b / 100.0);
+                    break;
+                }
+                case "hex":
+                    System.out.printf("hex=#%06x%n", rgb & 0xFFFFFF);
+                    break;
+                default:
+                    System.err.println("Unknown format: " + format + " (expected rgb|lab|hex)");
+                    System.exit(1);
+            }
+        }
+    }
+
+    /**
+     * @param format {@code rgb} (3× uint8/pixel), {@code lab} (3× float32/pixel,
+     * unscaled L*, a*, b*, little-endian), or {@code hex} ({@code #rrggbb} per
+     * pixel, UTF-8 text — the one non-binary option, for spot-checking a small
+     * region by eye rather than feeding a numpy array)
+     */
+    private static byte[] buildBlob(ColorImage img, int x0, int y0, int w, int h, String format) {
+        switch (format) {
+            case "rgb": {
+                byte[] blob = new byte[w * h * 3];
+                int i = 0;
+                for (int y = y0; y < y0 + h; y++) {
+                    for (int x = x0; x < x0 + w; x++) {
+                        int rgb = img.pixels[y * img.w + x];
+                        blob[i++] = (byte) ((rgb >> 16) & 0xFF);
+                        blob[i++] = (byte) ((rgb >> 8) & 0xFF);
+                        blob[i++] = (byte) (rgb & 0xFF);
+                    }
+                }
+                return blob;
+            }
+            case "lab": {
+                ByteBuffer buf = ByteBuffer.allocate(w * h * 3 * 4).order(ByteOrder.LITTLE_ENDIAN);
+                for (int y = y0; y < y0 + h; y++) {
+                    for (int x = x0; x < x0 + w; x++) {
+                        ColorBase.TriLabColor lab = ColorBase.resolve(new Color(img.pixels[y * img.w + x]));
+                        buf.putFloat((float) (lab.l / 100.0));
+                        buf.putFloat((float) (lab.a / 100.0));
+                        buf.putFloat((float) (lab.b / 100.0));
+                    }
+                }
+                return buf.array();
+            }
+            case "hex": {
+                StringBuilder sb = new StringBuilder();
+                for (int y = y0; y < y0 + h; y++) {
+                    for (int x = x0; x < x0 + w; x++) {
+                        sb.append(String.format("#%06x%n", img.pixels[y * img.w + x] & 0xFFFFFF));
+                    }
+                }
+                return sb.toString().getBytes(StandardCharsets.UTF_8);
+            }
+            default:
+                System.err.println("Unknown format: " + format + " (expected rgb|lab|hex)");
+                System.exit(1);
+                return new byte[0];
+        }
+    }
+
     private static void usage() {
         System.err.println("Usage: CatalogCli <command> [args]");
         System.err.println("  list [-v|--invert] [filter]  list filenames (optionally whose JSON contains/lacks 'filter', case-insensitive)");
         System.err.println("  get <filename>              print the entry's JSON");
         System.err.println("  tag <filename> <text...>    add a tag/note (no-op if already present)");
         System.err.println("  save <filename> [jsonFile]  replace the entry (reads stdin if jsonFile omitted)");
+        System.err.println("  extract <filename> --pixel x,y | --region x,y,w,h [--format rgb|lab|hex] [--out path]");
+        System.err.println("                              real decoded pixel colour via ColorImage/ColorBase;");
+        System.err.println("                              --pixel prints to stdout, --region writes a binary blob");
+        System.err.println("                              (stdout or --out) plus a JSON manifest on stderr");
         System.err.println("  checkpoint                  clone the whole catalog's current state");
         System.err.println("  restore                     discard everything since the last checkpoint");
     }
