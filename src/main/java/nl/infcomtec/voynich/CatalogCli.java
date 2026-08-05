@@ -10,6 +10,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -173,6 +174,17 @@ public class CatalogCli {
      * piping stdout straight into a numpy {@code fromfile} never sees it
      * mixed in with the data.
      * </p>
+     * <p>
+     * {@code --region} may be repeated to pull several regions from one
+     * decode — {@link ColorImage}'s constructor (full-page decode plus the
+     * colour-cache scan) dominates runtime for these manuscript-sized scans,
+     * far more than extracting any one region does, so re-invoking the JVM
+     * per region would mean paying that cost again for no reason. With more
+     * than one {@code --region}, {@code --out} is required and used as a
+     * prefix — region <i>n</i> (in the order given) is written to
+     * {@code <out>.<n>} — and stderr gets one JSON object per line instead
+     * of a single line.
+     * </p>
      */
     private static void extract(Catalog catalog, String[] args) throws IOException {
         String filename = args[1];
@@ -190,7 +202,7 @@ public class CatalogCli {
         }
 
         int[] pixel = null;
-        int[] region = null;
+        List<int[]> regions = new ArrayList<>();
         String format = null;
         String out = null;
         for (int i = 2; i < args.length; i++) {
@@ -199,7 +211,7 @@ public class CatalogCli {
                     pixel = parseInts(args[++i], 2, "--pixel x,y");
                     break;
                 case "--region":
-                    region = parseInts(args[++i], 4, "--region x,y,w,h");
+                    regions.add(parseInts(args[++i], 4, "--region x,y,w,h"));
                     break;
                 case "--format":
                     format = args[++i];
@@ -213,8 +225,13 @@ public class CatalogCli {
                     return;
             }
         }
-        if (null == pixel && null == region) {
+        if (null == pixel && regions.isEmpty()) {
             System.err.println("Need --pixel x,y or --region x,y,w,h");
+            System.exit(1);
+            return;
+        }
+        if (regions.size() > 1 && null == out) {
+            System.err.println("Multiple --region needs --out (used as a prefix: <out>.0, <out>.1, ...)");
             System.exit(1);
             return;
         }
@@ -232,27 +249,31 @@ public class CatalogCli {
             return;
         }
 
-        int x0 = region[0], y0 = region[1], rw = region[2], rh = region[3];
-        if (rw <= 0 || rh <= 0 || x0 < 0 || y0 < 0 || x0 + rw > img.w || y0 + rh > img.h) {
-            System.err.println("Region outside " + img.w + "x" + img.h);
-            System.exit(1);
-            return;
-        }
         if (null == format) {
             format = "lab";
         }
-        byte[] blob = buildBlob(img, x0, y0, rw, rh, format);
-        if (null == out) {
-            System.out.write(blob);
-            System.out.flush();
-        } else {
-            Files.write(new File(out).toPath(), blob);
+        for (int n = 0; n < regions.size(); n++) {
+            int[] region = regions.get(n);
+            int x0 = region[0], y0 = region[1], rw = region[2], rh = region[3];
+            if (rw <= 0 || rh <= 0 || x0 < 0 || y0 < 0 || x0 + rw > img.w || y0 + rh > img.h) {
+                System.err.println("Region " + n + " outside " + img.w + "x" + img.h);
+                System.exit(1);
+                return;
+            }
+            byte[] blob = buildBlob(img, x0, y0, rw, rh, format);
+            String regionOut = regions.size() > 1 ? out + "." + n : out;
+            if (null == regionOut) {
+                System.out.write(blob);
+                System.out.flush();
+            } else {
+                Files.write(new File(regionOut).toPath(), blob);
+            }
+            System.err.println(String.format(
+                    "{\"filename\":\"%s\",\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d,"
+                    + "\"format\":\"%s\",\"dtype\":\"%s\",\"order\":\"row-major\",\"bytes\":%d%s}",
+                    filename, x0, y0, rw, rh, format, "rgb".equals(format) ? "uint8" : "float32", blob.length,
+                    null == regionOut ? "" : ",\"path\":\"" + regionOut + "\""));
         }
-        System.err.println(String.format(
-                "{\"filename\":\"%s\",\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d,"
-                + "\"format\":\"%s\",\"dtype\":\"%s\",\"order\":\"row-major\",\"bytes\":%d%s}",
-                filename, x0, y0, rw, rh, format, "rgb".equals(format) ? "uint8" : "float32", blob.length,
-                null == out ? "" : ",\"path\":\"" + out + "\""));
     }
 
     private static File resolveExistingLocation(CatalogEntry entry) {
@@ -355,10 +376,12 @@ public class CatalogCli {
         System.err.println("  get <filename>              print the entry's JSON");
         System.err.println("  tag <filename> <text...>    add a tag/note (no-op if already present)");
         System.err.println("  save <filename> [jsonFile]  replace the entry (reads stdin if jsonFile omitted)");
-        System.err.println("  extract <filename> --pixel x,y | --region x,y,w,h [--format rgb|lab|hex] [--out path]");
+        System.err.println("  extract <filename> --pixel x,y | --region x,y,w,h [--region ...] [--format rgb|lab|hex] [--out path]");
         System.err.println("                              real decoded pixel colour via ColorImage/ColorBase;");
         System.err.println("                              --pixel prints to stdout, --region writes a binary blob");
-        System.err.println("                              (stdout or --out) plus a JSON manifest on stderr");
+        System.err.println("                              (stdout or --out) plus a JSON manifest on stderr; repeat");
+        System.err.println("                              --region to pull several regions from one decode (needs --out,");
+        System.err.println("                              used as a prefix: <out>.0, <out>.1, ...)");
         System.err.println("  checkpoint                  clone the whole catalog's current state");
         System.err.println("  restore                     discard everything since the last checkpoint");
     }
