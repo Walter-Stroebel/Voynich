@@ -63,7 +63,7 @@ public class CatalogCli {
                 break;
             case "extract":
                 requireArgs(args, 3, "extract <filename> --pixel x,y | --region x,y,w,h [--format rgb|lab|hex] "
-                        + "| --working-area [--out path]");
+                        + "| --content-area [--out path]");
                 extract(catalog, args);
                 break;
             case "checkpoint":
@@ -210,7 +210,7 @@ public class CatalogCli {
         List<int[]> regions = new ArrayList<>();
         String format = null;
         String out = null;
-        boolean workingArea = false;
+        boolean contentArea = false;
         for (int i = 2; i < args.length; i++) {
             switch (args[i]) {
                 case "--pixel":
@@ -219,8 +219,8 @@ public class CatalogCli {
                 case "--region":
                     regions.add(parseInts(args[++i], 4, "--region x,y,w,h"));
                     break;
-                case "--working-area":
-                    workingArea = true;
+                case "--content-area":
+                    contentArea = true;
                     break;
                 case "--format":
                     format = args[++i];
@@ -234,14 +234,14 @@ public class CatalogCli {
                     return;
             }
         }
-        int modes = (null != pixel ? 1 : 0) + (!regions.isEmpty() ? 1 : 0) + (workingArea ? 1 : 0);
+        int modes = (null != pixel ? 1 : 0) + (!regions.isEmpty() ? 1 : 0) + (contentArea ? 1 : 0);
         if (0 == modes) {
-            System.err.println("Need --pixel x,y, --region x,y,w,h, or --working-area");
+            System.err.println("Need --pixel x,y, --region x,y,w,h, or --content-area");
             System.exit(1);
             return;
         }
         if (modes > 1) {
-            System.err.println("--pixel, --region, and --working-area are mutually exclusive");
+            System.err.println("--pixel, --region, and --content-area are mutually exclusive");
             System.exit(1);
             return;
         }
@@ -251,8 +251,8 @@ public class CatalogCli {
             return;
         }
 
-        if (workingArea) {
-            extractWorkingArea(entry, imgFile, out);
+        if (contentArea) {
+            extractContentArea(entry, imgFile, out);
             return;
         }
 
@@ -297,21 +297,21 @@ public class CatalogCli {
     }
 
     /**
-     * {@code --working-area}: crops {@code imgFile} to {@code entry}'s
-     * traced {@link CatalogEntry#workingArea} bounding box and writes it as
+     * {@code --content-area}: crops {@code imgFile} to {@code entry}'s
+     * traced {@link CatalogEntry#contentArea} bounding box and writes it as
      * a PNG — either to {@code out} or, if {@code null}, straight to
      * stdout. Doesn't go through {@link ColorImage} (no CIELab decode
      * needed for a raw crop), so it's cheaper than the {@code --pixel}/
      * {@code --region} modes above.
      */
-    private static void extractWorkingArea(CatalogEntry entry, File imgFile, String out) throws IOException {
-        if (entry.workingArea.size() < 3) {
-            System.err.println("No working area traced yet for " + entry.filename);
+    private static void extractContentArea(CatalogEntry entry, File imgFile, String out) throws IOException {
+        if (entry.contentArea.size() < 3) {
+            System.err.println("No content area traced yet for " + entry.filename);
             System.exit(1);
             return;
         }
         BufferedImage full = ImageIO.read(imgFile);
-        BufferedImage cropped = cropToWorkingArea(full, entry.workingArea);
+        BufferedImage cropped = cropToContentArea(full, entry.contentArea);
 
         if (null == out) {
             ByteArrayOutputStream buf = new ByteArrayOutputStream();
@@ -323,28 +323,28 @@ public class CatalogCli {
         }
         System.err.println(String.format(
                 "{\"filename\":\"%s\",\"width\":%d,\"height\":%d,\"vertices\":%d%s}",
-                entry.filename, cropped.getWidth(), cropped.getHeight(), entry.workingArea.size(),
+                entry.filename, cropped.getWidth(), cropped.getHeight(), entry.contentArea.size(),
                 null == out ? "" : ",\"path\":\"" + out + "\""));
     }
 
     /**
-     * Crops {@code full} to {@code workingArea}'s bounding box, then blacks
+     * Crops {@code full} to {@code contentArea}'s bounding box, then blacks
      * out every pixel inside that box but outside the polygon itself —
-     * backdrop, frayed vellum edge, other pages in the stack, whatever the
-     * trace excluded. Uses {@link BitSet2D#createFromPolygon} for the mask,
-     * the same fast scanline fill {@code CatalogEntryEditor}'s "Show Mask"
-     * toggle builds — never {@code Shape.contains()}.
+     * blank vellum, backdrop, frayed edge, other pages in the stack,
+     * whatever the trace excluded. Uses {@link BitSet2D#createFromPolygon}
+     * for the mask, the same fast scanline fill {@code CatalogEntryEditor}'s
+     * "Show Mask" toggle builds — never {@code Shape.contains()}.
      *
      * @param full the entry's full-resolution image
-     * @param workingArea the entry's traced boundary, in {@code full}'s own
+     * @param contentArea the entry's traced boundary, in {@code full}'s own
      * pixel coordinates; must have at least 3 vertices
-     * @return a new, smaller {@code BufferedImage} — just the working
+     * @return a new, smaller {@code BufferedImage} — just the content
      * area's bounding box, masked
      */
-    private static BufferedImage cropToWorkingArea(BufferedImage full, List<CatalogEntry.Vertex> workingArea) {
+    private static BufferedImage cropToContentArea(BufferedImage full, List<CatalogEntry.Vertex> contentArea) {
         int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE;
-        List<Point> vertices = new ArrayList<>(workingArea.size());
-        for (CatalogEntry.Vertex v : workingArea) {
+        List<Point> vertices = new ArrayList<>(contentArea.size());
+        for (CatalogEntry.Vertex v : contentArea) {
             vertices.add(new Point(v.x, v.y));
             minX = Math.min(minX, v.x);
             minY = Math.min(minY, v.y);
@@ -474,13 +474,13 @@ public class CatalogCli {
         System.err.println("  tag <filename> <text...>    add a tag/note (no-op if already present)");
         System.err.println("  save <filename> [jsonFile]  replace the entry (reads stdin if jsonFile omitted)");
         System.err.println("  extract <filename> --pixel x,y | --region x,y,w,h [--region ...] [--format rgb|lab|hex]");
-        System.err.println("                      | --working-area [--out path]");
+        System.err.println("                      | --content-area [--out path]");
         System.err.println("                              real decoded pixel colour via ColorImage/ColorBase;");
         System.err.println("                              --pixel prints to stdout, --region writes a binary blob");
         System.err.println("                              (stdout or --out) plus a JSON manifest on stderr; repeat");
         System.err.println("                              --region to pull several regions from one decode (needs --out,");
-        System.err.println("                              used as a prefix: <out>.0, <out>.1, ...); --working-area writes");
-        System.err.println("                              a PNG cropped to the traced CatalogEntry.workingArea's bounding");
+        System.err.println("                              used as a prefix: <out>.0, <out>.1, ...); --content-area writes");
+        System.err.println("                              a PNG cropped to the traced CatalogEntry.contentArea's bounding");
         System.err.println("                              box, black outside the polygon (stdout or --out)");
         System.err.println("  checkpoint                  clone the whole catalog's current state");
         System.err.println("  restore                     discard everything since the last checkpoint");

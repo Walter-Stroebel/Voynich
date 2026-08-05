@@ -81,15 +81,15 @@ import javax.swing.SwingWorker;
  * rather than shown in both places, so there's never two open editors
  * disagreeing about the same field.
  * <p>
- * {@link CatalogEntry#workingArea} gets the same treatment for a different
- * reason: it's edited by {@code WorkingAreaEditor}, a separate window over
+ * {@link CatalogEntry#contentArea} gets the same treatment for a different
+ * reason: it's edited by {@code ContentAreaEditor}, a separate window over
  * the same {@link #entry}, which can save it to the catalog while this
  * dialog is still open — but the JSON text box was rendered once at load
  * time and has no way to know that happened. So it's stripped from the blob
  * (nothing useful to hand-edit in a list of vertex coordinates anyway), and
  * {@link #save} always writes {@link #entry}'s live value rather than
  * whatever the stale blob text says, so a later Save here can never clobber
- * a trace that {@code WorkingAreaEditor} already committed.
+ * a trace that {@code ContentAreaEditor} already committed.
  */
 final class CatalogEntryEditor {
 
@@ -107,7 +107,7 @@ final class CatalogEntryEditor {
     private final JTextArea tagsText = new JTextArea();
     private final JButton freqButton = new JButton("Color Frequency");
     private final JButton heatButton = new JButton("ΔE Heatmap");
-    private final JButton areaButton = new JButton("Working Area");
+    private final JButton areaButton = new JButton("Content Area");
     private final JToggleButton maskButton = new JToggleButton("Show Mask");
     private final int imageMaxW;
     private final int imageMaxH;
@@ -173,8 +173,8 @@ final class CatalogEntryEditor {
         freqButton.addActionListener(e -> openColorVisualization(freqButton, "Color Frequency",
                 ci -> new JScrollPane(new FrequencyBarChart(ci))));
         heatButton.addActionListener(e -> openColorVisualization(heatButton, "ΔE Heatmap", DeltaEHeatmap::new));
-        areaButton.addActionListener(e -> WorkingAreaEditor.open(dialog.getOwner(), catalog, entry, fullImage,
-                this::onWorkingAreaCommitted));
+        areaButton.addActionListener(e -> ContentAreaEditor.open(dialog.getOwner(), catalog, entry, fullImage,
+                this::onContentAreaCommitted));
         maskButton.addActionListener(e -> {
             if (maskButton.isSelected()) {
                 if (null != maskedIcon) {
@@ -325,17 +325,17 @@ final class CatalogEntryEditor {
     }
 
     /**
-     * Called by {@code WorkingAreaEditor} right after it commits a trace for
+     * Called by {@code ContentAreaEditor} right after it commits a trace for
      * {@link #entry} to the catalog. The mask overlay was built from
-     * whatever {@link CatalogEntry#workingArea} was when it was last built —
+     * whatever {@link CatalogEntry#contentArea} was when it was last built —
      * possibly nothing, possibly a now-outdated trace — so it's discarded
      * rather than trusted, same reasoning as the JSON blob staleness fix
      * above: a background window mutated {@link #entry} and this dialog has
      * no other way to find out.
      */
-    private void onWorkingAreaCommitted() {
+    private void onContentAreaCommitted() {
         maskedIcon = null;
-        maskButton.setEnabled(null != fullImage && entry.workingArea.size() >= 3);
+        maskButton.setEnabled(null != fullImage && entry.contentArea.size() >= 3);
         if (maskButton.isSelected()) {
             maskButton.setSelected(false);
             imageLabel.setIcon(plainIcon);
@@ -343,7 +343,7 @@ final class CatalogEntryEditor {
     }
 
     /**
-     * Rasterizes {@link CatalogEntry#workingArea} into a {@link BitSet2D}
+     * Rasterizes {@link CatalogEntry#contentArea} into a {@link BitSet2D}
      * (see its {@code createFromPolygon}) and darkens every pixel outside
      * it, off-EDT since this is a full-resolution pass over what can be an
      * 8000px-wide scan. Caches the result in {@link #maskedIcon} so toggling
@@ -357,7 +357,7 @@ final class CatalogEntryEditor {
             @Override
             protected ImageIcon doInBackground() {
                 List<Point> vertices = new ArrayList<>();
-                for (CatalogEntry.Vertex v : forEntry.workingArea) {
+                for (CatalogEntry.Vertex v : forEntry.contentArea) {
                     vertices.add(new Point(v.x, v.y));
                 }
                 BitSet2D mask = BitSet2D.createFromPolygon(vertices, source.getWidth(), source.getHeight());
@@ -399,7 +399,7 @@ final class CatalogEntryEditor {
 
     /**
      * @return {@code rgb} at a quarter brightness, for dimming everything
-     * {@link CatalogEntry#workingArea} excludes
+     * {@link CatalogEntry#contentArea} excludes
      */
     private static int darken(int rgb) {
         int r = ((rgb >> 16) & 0xFF) / 4;
@@ -452,11 +452,11 @@ final class CatalogEntryEditor {
             }
         }
         parsed.tags = newTags;
-        // entry.workingArea can be mutated and saved directly by
-        // WorkingAreaEditor while this dialog is open, but jsonText was
+        // entry.contentArea can be mutated and saved directly by
+        // ContentAreaEditor while this dialog is open, but jsonText was
         // rendered once at load time and never refreshed — so it can't be
         // trusted as the source of truth for this field, same as tags.
-        parsed.workingArea = entry.workingArea;
+        parsed.contentArea = entry.contentArea;
         try {
             catalog.save(parsed, catalog.loadThumbnail(entry.filename));
         } catch (IOException ex) {
@@ -490,7 +490,7 @@ final class CatalogEntryEditor {
 
         ObjectNode blob = JSON.getMapper().valueToTree(entry);
         blob.remove("tags");
-        blob.remove("workingArea");
+        blob.remove("contentArea");
         String blobText;
         try {
             blobText = JSON.getMapper().writerWithDefaultPrettyPrinter().writeValueAsString(blob);
@@ -518,7 +518,7 @@ final class CatalogEntryEditor {
         heatButton.setEnabled(null != fullImage);
         areaButton.setEnabled(null != fullImage);
         maskButton.setSelected(false);
-        maskButton.setEnabled(null != fullImage && entry.workingArea.size() >= 3);
+        maskButton.setEnabled(null != fullImage && entry.contentArea.size() >= 3);
 
         statusLabel.setText(null != action
                 ? String.format("%d / %d — %s — click the image to add a \"%s\" tag",

@@ -25,13 +25,11 @@ import javax.swing.SwingUtilities;
 
 /**
  * Interactive tracing surface for one {@link CatalogEntry}'s
- * {@link CatalogEntry#workingArea} polygon, over its full-resolution image.
- * A human clicks a sequence of vertices around the manuscript page's actual
- * boundary — never the photography backdrop, never a fold, and routing
- * around whatever "chasm" of frayed edge/other-page-stack the corner shows —
- * closing the path by clicking near its start. See
- * {@link WorkingAreaEditor} for why this is a human-traced tool rather than
- * an auto-detector.
+ * {@link CatalogEntry#contentArea} polygon, over its full-resolution image.
+ * A human clicks a sequence of vertices around the actual content — text,
+ * illustration, wash — deliberately tight, not the physical page, closing
+ * the path by clicking near its start. See {@link ContentAreaEditor} for why
+ * this is a human-traced tool rather than an auto-detector.
  * <p>
  * While tracing, the live segment from the last placed vertex to the cursor
  * is drawn with {@link Graphics2D#setXORMode}, not a full repaint: the same
@@ -60,7 +58,7 @@ import javax.swing.SwingUtilities;
  * the underlying multi-thousand-pixel image.
  * </p>
  */
-final class WorkingAreaCanvas extends JComponent {
+final class ContentAreaCanvas extends JComponent {
 
     private static final int CLOSE_RADIUS_PX = 10;
     private static final int HANDLE_RADIUS_PX = 6;
@@ -95,11 +93,11 @@ final class WorkingAreaCanvas extends JComponent {
 
     /**
      * @param image the entry's full-resolution image to trace over
-     * @param initial the entry's existing {@link CatalogEntry#workingArea},
+     * @param initial the entry's existing {@link CatalogEntry#contentArea},
      * pre-loaded (already closed) for review/adjustment rather than starting
      * from scratch; empty for a fresh trace
      */
-    WorkingAreaCanvas(BufferedImage image, List<CatalogEntry.Vertex> initial) {
+    ContentAreaCanvas(BufferedImage image, List<CatalogEntry.Vertex> initial) {
         this.image = image;
         for (CatalogEntry.Vertex v : initial) {
             vertices.add(new Point(v.x, v.y));

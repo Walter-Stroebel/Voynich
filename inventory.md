@@ -65,6 +65,21 @@ Note (2026-08-05, one more time): `CatalogCli extract` gained
 writes a PNG (stdout or `--out`), black outside the polygon. Second
 `BitSet2D.createFromPolygon` consumer. Verified end-to-end against 1r.png.
 
+Note (2026-08-05, yet again): added a cursor-tracking loupe pair (plain 4x
++ contrast-boosted 4x, opposite-corner anchored, hysteresis around the
+center axes) to `WorkingAreaCanvas`, live-tested and confirmed working.
+Then: `workingArea` renamed to `contentArea` everywhere (field, both
+tracing classes → `ContentAreaCanvas`/`ContentAreaEditor`, CLI flag
+`--content-area`, button label "Content Area") — the documented "full
+physical page" contract was never actually followed in practice (tight
+content-hugging boxes felt natural, exhaustively including blank vellum
+didn't), so the name was changed to match the real, human-incentive-aligned
+behavior instead of asking the behavior to match the name. The 5 entries
+already traced at rename time were migrated in place (checkpoint, then
+each entry's stored JSON key rewritten via `CatalogCli save`, vertex
+counts diffed against a pre-rename backup to confirm nothing was lost) —
+see CLAUDE.md's Catalog persistence section for the full rationale.
+
 Dependencies: FlatLaf 3.3, mysql-connector-java 8.0.27 (legacy artifact
 coordinate — `com.mysql:mysql-connector-j` is the maintained one, noted as
 minor housekeeping in the README roadmap), Jackson 2.18.2. No test

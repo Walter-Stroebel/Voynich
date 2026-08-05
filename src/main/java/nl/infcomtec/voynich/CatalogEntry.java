@@ -57,17 +57,17 @@ public class CatalogEntry {
      */
     public List<String> tags = new ArrayList<>();
     /**
-     * Human-traced boundary of this scan's actual manuscript page, in this
-     * image's own pixel coordinates — excludes photography backdrop, frayed
-     * vellum edges, and the other pages visible in the stack beneath it.
-     * Never auto-detected: the boundary between "this page" and "the pages
-     * underneath it" isn't a colour/lightness distinction (same material),
-     * and no fold — however severe — is ever a true boundary, since content
-     * routinely runs right through them. Empty until a human has traced it
-     * via {@code WorkingAreaEditor}; a real polygon always has at least 3
-     * vertices.
+     * Human-traced boundary around this scan's actual content — text,
+     * illustration, wash — in this image's own pixel coordinates. Not the
+     * physical page: a tight bound on the "good stuff," deliberately
+     * excluding blank vellum margins as well as photography backdrop,
+     * frayed edges, and the other pages visible in the stack beneath it.
+     * Never auto-detected: no fold — however severe — is ever a true
+     * boundary, since content routinely runs right through them. Empty
+     * until a human has traced it via {@code ContentAreaEditor}; a real
+     * polygon always has at least 3 vertices.
      */
-    public List<Vertex> workingArea = new ArrayList<>();
+    public List<Vertex> contentArea = new ArrayList<>();
 
     /**
      * One sighting of {@link CatalogEntry#filename} at a specific path, with
@@ -82,7 +82,7 @@ public class CatalogEntry {
     }
 
     /**
-     * One point of a {@link #workingArea} polygon, in this image's own
+     * One point of a {@link #contentArea} polygon, in this image's own
      * pixel coordinates.
      */
     public static class Vertex {
