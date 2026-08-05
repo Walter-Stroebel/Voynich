@@ -25,10 +25,15 @@ public interface RapidReviewAction {
     String label();
 
     /**
-     * @return a {@link String#format} template for the tag staged on a
-     * click; takes exactly two {@code %d} arguments, the clicked point's x
-     * and y in the original (unscaled) image's pixel coordinates — e.g.
-     * {@code "wash@%d,%d"}
+     * @return a template for the tag staged on a click, with these
+     * placeholders substituted from the clicked point:
+     * <ul>
+     * <li>{@code $X}, {@code $Y} — pixel coordinates in the original
+     * (unscaled) image</li>
+     * <li>{@code $RGB} — the pixel's colour as {@code r,g,b} (0-255 each)</li>
+     * <li>{@code $LAB} — the pixel's colour as CIELAB {@code L,a,b}</li>
+     * </ul>
+     * e.g. {@code "wash@$X,$Y"} or {@code "wash@$X,$Y $LAB"}
      */
     String tagTemplate();
 }

@@ -75,23 +75,18 @@ gap.
   invert checkbox (GUI) or `-v`/`--invert` flag (CLI) flips it, e.g. to find
   entries still missing a given tag
 - A general click/skip/note/abort review pass (`CatalogEntryEditor.review()`)
-  over a shuffled queue of every catalog entry — the toolbar's "Wash Review"
-  action is one instance of it (`RapidReviewAction`), not a special case.
-  Clicking the shown image stages a tag in an editable box; nothing is
-  persisted until Done, so a whole pass is reviewable/correctable before any
-  of it hits storage
+  over a shuffled queue of every catalog entry — the toolbar's "MarkUp"
+  action is one instance of it (`RapidReviewAction`), not a special case. A
+  tag template field next to the button supports `$X`/`$Y`/`$RGB`/`$LAB`
+  placeholders, filled in from the clicked pixel. Clicking the shown image
+  stages a tag in an editable box; nothing is persisted until Done, so a
+  whole pass is reviewable/correctable before any of it hits storage
 - Manual checkpoint/undo for the whole catalog (`Catalog.checkpoint()`/
   `Catalog.restoreLatestCheckpoint()`) — a coarse, whole-catalog clone
   (a timestamped sibling directory for `FileCatalog`, a `CREATE TABLE ... AS
   SELECT` clone of the `images` table for `MySqlCatalog`), restorable via the
   toolbar's Checkpoint/Undo buttons or `CatalogCli checkpoint`/`restore`. No
   automatic pruning of old checkpoints — deliberate, left for hand cleanup
-
-**Manuscript-specific, not part of the generic library:** `RingDiagramSegmenter`,
-a first-pass tool for extracting individual upright figure crops from the
-Voynich manuscript's circle/ring diagram pages. Unlike everything above, it
-assumes manuscript content and isn't wired into the main GUI — currently
-invoked standalone against a hardcoded scan file, not from a toolbar action.
 
 ## Roadmap
 

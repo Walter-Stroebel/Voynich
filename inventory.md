@@ -16,14 +16,17 @@ state/roadmap. Re-generate rather than hand-edit when it goes stale.
 - **UI**: `OverviewPanel` (thumbnail grid), `TaskWindow`/`ScanTaskWindow`
   (background-task progress pattern), `CatalogEntryEditor` (modal per-entry
   edit and shuffled whole-catalog review, sharing one window/save path),
-  `RapidReviewAction` (pluggable review judgment, e.g. toolbar's "Wash
-  Review"), `ImageDisplay` (scale-to-fit + click-to-pixel mapping for an
-  entry's actual image)
+  `RapidReviewAction` (pluggable review judgment, e.g. toolbar's "MarkUp"),
+  `ImageDisplay` (scale-to-fit + click-to-pixel mapping for an entry's
+  actual image)
 - **Colour pipeline**: `EnhancedColor` (RGB↔CIELAB↔XYZ↔YUV↔HSB, ΔE),
   `FloatColor`, `YUV`, `ColorBase` (two-level RGB→LAB cache), `ColorImage`
   (per-image colour inventory), `TriElm`
-- **Newest**: `RingDiagramSegmenter` — extracts upright figure crops from
-  circle-diagram pages, with seed-based local search (2026-08-04)
+
+Note (2026-08-05): `RingDiagramSegmenter` was deleted — a failed first-pass
+experiment at extracting upright figure crops from circle-diagram pages,
+superseded by the page-level `Circular diagram` tagging pass via MarkUp.
+Otherwise this inventory still reflects 2026-08-04.
 
 Dependencies: FlatLaf 3.3, mysql-connector-java 8.0.27 (legacy artifact
 coordinate — `com.mysql:mysql-connector-j` is the maintained one, noted as

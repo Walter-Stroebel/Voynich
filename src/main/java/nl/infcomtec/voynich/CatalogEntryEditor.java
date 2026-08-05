@@ -6,6 +6,7 @@ package nl.infcomtec.voynich;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.GraphicsDevice;
@@ -96,6 +97,7 @@ final class CatalogEntryEditor {
     private int index = -1;
     private CatalogEntry entry;
     private Point lastLabelPoint;
+    private BufferedImage fullImage;
 
     /**
      * @param owner window the dialog is sized/centered against; may be
@@ -201,9 +203,10 @@ final class CatalogEntryEditor {
     /**
      * Appends a tag built from {@link RapidReviewAction#tagTemplate()} and
      * the last known pointer position (translated to the entry's original
-     * image pixel coordinates) to the tags box. Purely a text edit — nothing
-     * is written to the catalog until {@link #save()}, so a mis-click is
-     * corrected by deleting the line, not by undoing a database write.
+     * image pixel coordinates, plus the colour sampled there) to the tags
+     * box. Purely a text edit — nothing is written to the catalog until
+     * {@link #save()}, so a mis-click is corrected by deleting the line, not
+     * by undoing a database write.
      */
     private void addTemplatedTag() {
         Icon icon = imageLabel.getIcon();
@@ -212,11 +215,47 @@ final class CatalogEntryEditor {
         }
         Point imgPoint = ImageDisplay.toImageCoordinates(entry, icon.getIconWidth(), icon.getIconHeight(),
                 imageLabel.getWidth(), imageLabel.getHeight(), lastLabelPoint);
-        String tag = String.format(action.tagTemplate(), imgPoint.x, imgPoint.y);
+        String tag = action.tagTemplate().replace("$X", String.valueOf(imgPoint.x))
+                .replace("$Y", String.valueOf(imgPoint.y))
+                .replace("$RGB", sampleRGB(imgPoint))
+                .replace("$LAB", sampleLAB(imgPoint));
         String existing = tagsText.getText().stripTrailing();
         String updated = existing.isEmpty() ? tag : existing + "\n" + tag;
         tagsText.setText(updated);
         tagsText.setCaretPosition(updated.length());
+    }
+
+    /**
+     * @return {@code "r,g,b"} sampled from {@link #fullImage} at {@code p},
+     * or {@code "?,?,?"} if there is no full-resolution image to sample (a
+     * decode failure that still left the scaled preview showing)
+     */
+    private String sampleRGB(Point p) {
+        Color c = pixelAt(p);
+        return null == c ? "?,?,?" : c.getRed() + "," + c.getGreen() + "," + c.getBlue();
+    }
+
+    /**
+     * @return {@code "L,a,b"} (CIELAB, one decimal place) sampled from
+     * {@link #fullImage} at {@code p}, or {@code "?,?,?"} if there is no
+     * full-resolution image to sample
+     */
+    private String sampleLAB(Point p) {
+        Color c = pixelAt(p);
+        if (null == c) {
+            return "?,?,?";
+        }
+        double[] lab = EnhancedColor.getCIELAB(c);
+        return String.format("%.1f,%.1f,%.1f", lab[0], lab[1], lab[2]);
+    }
+
+    private Color pixelAt(Point p) {
+        if (null == fullImage) {
+            return null;
+        }
+        int x = Math.max(0, Math.min(fullImage.getWidth() - 1, p.x));
+        int y = Math.max(0, Math.min(fullImage.getHeight() - 1, p.y));
+        return new Color(fullImage.getRGB(x, y));
     }
 
     /**
@@ -299,13 +338,13 @@ final class CatalogEntryEditor {
         tagsText.setText(String.join("\n", entry.tags));
         tagsText.setCaretPosition(0);
 
-        BufferedImage scaled = ImageDisplay.loadScaled(entry, imageMaxW, imageMaxH);
-        if (null == scaled) {
+        fullImage = ImageDisplay.loadFull(entry);
+        if (null == fullImage) {
             imageLabel.setIcon(null);
             imageLabel.setText("No readable file for " + entry.filename);
         } else {
             imageLabel.setText(null);
-            imageLabel.setIcon(new ImageIcon(scaled));
+            imageLabel.setIcon(new ImageIcon(ImageDisplay.scaleToFit(fullImage, imageMaxW, imageMaxH)));
         }
 
         statusLabel.setText(null != action

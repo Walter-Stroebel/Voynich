@@ -12,6 +12,7 @@ import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JTextField;
 import javax.swing.JToolBar;
 import javax.swing.SwingUtilities;
 
@@ -96,19 +97,26 @@ public class Voynich {
                 overview.filter();
             }
         }));
-        toolBar.add(new JButton(new EzAction("Wash Review") {
+        JTextField markupTemplate = new JTextField("was@$X,$Y", 20);
+        markupTemplate.setMaximumSize(markupTemplate.getPreferredSize());
+        markupTemplate.setToolTipText("<html>Tag template for MarkUp review. Placeholders:<br>"
+                + "$X, $Y — clicked pixel, original image coordinates<br>"
+                + "$RGB — clicked pixel's colour as r,g,b<br>"
+                + "$LAB — clicked pixel's colour as CIELAB L,a,b</html>");
+        toolBar.add(new JButton(new EzAction("MarkUp") {
             @Override
             public void actionPerformed(ActionEvent e) {
+                String template = markupTemplate.getText();
                 try {
                     CatalogEntryEditor.review(fr, catalog, new RapidReviewAction() {
                         @Override
                         public String label() {
-                            return "wash";
+                            return "MarkUp";
                         }
 
                         @Override
                         public String tagTemplate() {
-                            return "wash@%d,%d";
+                            return template;
                         }
                     }, overview::addOrUpdate);
                 } catch (IOException ex) {
@@ -117,6 +125,7 @@ public class Voynich {
                 }
             }
         }));
+        toolBar.add(markupTemplate);
         toolBar.add(new JButton(new EzAction("Checkpoint") {
             @Override
             public void actionPerformed(ActionEvent e) {

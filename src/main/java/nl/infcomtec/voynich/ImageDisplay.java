@@ -41,26 +41,37 @@ final class ImageDisplay {
     }
 
     /**
-     * Reads {@code entry}'s image off disk (via {@link #pickExistingFile})
-     * and scales it to fit within {@code maxW}x{@code maxH}, preserving
-     * aspect ratio. Decodes at full resolution first, so this can be slow
-     * and memory-heavy for the largest scans (some merged foldout pages
-     * exceed 8000px wide) — call off the EDT when responsiveness matters.
+     * Reads {@code entry}'s image off disk (via {@link #pickExistingFile}) at
+     * full resolution. Can be slow and memory-heavy for the largest scans
+     * (some merged foldout pages exceed 8000px wide) — call off the EDT when
+     * responsiveness matters.
      *
-     * @return the scaled image, or {@code null} if no location is readable
+     * @return the decoded image, or {@code null} if no location is readable
      * or decoding fails
      */
-    static BufferedImage loadScaled(CatalogEntry entry, int maxW, int maxH) {
+    static BufferedImage loadFull(CatalogEntry entry) {
         File file = pickExistingFile(entry);
         if (null == file) {
             return null;
         }
         try {
-            BufferedImage full = ImageIO.read(file);
-            return null == full ? null : scaleToFit(full, maxW, maxH);
+            return ImageIO.read(file);
         } catch (IOException ex) {
             return null;
         }
+    }
+
+    /**
+     * Convenience for callers that only need a display-sized image, not the
+     * full-resolution pixels: {@link #loadFull} followed by
+     * {@link #scaleToFit}.
+     *
+     * @return the scaled image, or {@code null} if no location is readable
+     * or decoding fails
+     */
+    static BufferedImage loadScaled(CatalogEntry entry, int maxW, int maxH) {
+        BufferedImage full = loadFull(entry);
+        return null == full ? null : scaleToFit(full, maxW, maxH);
     }
 
     /**
