@@ -39,6 +39,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
+import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
 import javax.swing.SwingConstants;
 import javax.swing.SwingWorker;
@@ -79,6 +80,16 @@ import javax.swing.SwingWorker;
  * just a short list of short strings. It's stripped out of the blob entirely
  * rather than shown in both places, so there's never two open editors
  * disagreeing about the same field.
+ * <p>
+ * {@link CatalogEntry#workingArea} gets the same treatment for a different
+ * reason: it's edited by {@code WorkingAreaEditor}, a separate window over
+ * the same {@link #entry}, which can save it to the catalog while this
+ * dialog is still open — but the JSON text box was rendered once at load
+ * time and has no way to know that happened. So it's stripped from the blob
+ * (nothing useful to hand-edit in a list of vertex coordinates anyway), and
+ * {@link #save} always writes {@link #entry}'s live value rather than
+ * whatever the stale blob text says, so a later Save here can never clobber
+ * a trace that {@code WorkingAreaEditor} already committed.
  */
 final class CatalogEntryEditor {
 
@@ -96,6 +107,8 @@ final class CatalogEntryEditor {
     private final JTextArea tagsText = new JTextArea();
     private final JButton freqButton = new JButton("Color Frequency");
     private final JButton heatButton = new JButton("ΔE Heatmap");
+    private final JButton areaButton = new JButton("Working Area");
+    private final JToggleButton maskButton = new JToggleButton("Show Mask");
     private final int imageMaxW;
     private final int imageMaxH;
 
@@ -103,6 +116,8 @@ final class CatalogEntryEditor {
     private CatalogEntry entry;
     private Point lastLabelPoint;
     private BufferedImage fullImage;
+    private Icon plainIcon;
+    private Icon maskedIcon;
 
     /**
      * @param owner window the dialog is sized/centered against; may be
@@ -158,9 +173,24 @@ final class CatalogEntryEditor {
         freqButton.addActionListener(e -> openColorVisualization(freqButton, "Color Frequency",
                 ci -> new JScrollPane(new FrequencyBarChart(ci))));
         heatButton.addActionListener(e -> openColorVisualization(heatButton, "ΔE Heatmap", DeltaEHeatmap::new));
+        areaButton.addActionListener(e -> WorkingAreaEditor.open(dialog.getOwner(), catalog, entry, fullImage,
+                this::onWorkingAreaCommitted));
+        maskButton.addActionListener(e -> {
+            if (maskButton.isSelected()) {
+                if (null != maskedIcon) {
+                    imageLabel.setIcon(maskedIcon);
+                } else {
+                    buildMaskedIcon();
+                }
+            } else {
+                imageLabel.setIcon(plainIcon);
+            }
+        });
         JPanel vizButtons = new JPanel();
         vizButtons.add(freqButton);
         vizButtons.add(heatButton);
+        vizButtons.add(areaButton);
+        vizButtons.add(maskButton);
 
         JPanel south = new JPanel(new BorderLayout());
         south.add(vizButtons, BorderLayout.NORTH);
@@ -285,13 +315,97 @@ final class CatalogEntryEditor {
             protected void done() {
                 source.setEnabled(null != fullImage);
                 try {
-                    ViewFrame.open(viewName, dialog.getOwner(), panelFactory.apply(get()), true);
+                    ViewFrame.open(viewName, dialog.getOwner(), panelFactory.apply(get()), true, false);
                 } catch (Exception ex) {
                     JOptionPane.showMessageDialog(dialog, "Could not analyse image:\n" + ex.getMessage(),
                             "Analysis failed", JOptionPane.ERROR_MESSAGE);
                 }
             }
         }.execute();
+    }
+
+    /**
+     * Called by {@code WorkingAreaEditor} right after it commits a trace for
+     * {@link #entry} to the catalog. The mask overlay was built from
+     * whatever {@link CatalogEntry#workingArea} was when it was last built —
+     * possibly nothing, possibly a now-outdated trace — so it's discarded
+     * rather than trusted, same reasoning as the JSON blob staleness fix
+     * above: a background window mutated {@link #entry} and this dialog has
+     * no other way to find out.
+     */
+    private void onWorkingAreaCommitted() {
+        maskedIcon = null;
+        maskButton.setEnabled(null != fullImage && entry.workingArea.size() >= 3);
+        if (maskButton.isSelected()) {
+            maskButton.setSelected(false);
+            imageLabel.setIcon(plainIcon);
+        }
+    }
+
+    /**
+     * Rasterizes {@link CatalogEntry#workingArea} into a {@link BitSet2D}
+     * (see its {@code createFromPolygon}) and darkens every pixel outside
+     * it, off-EDT since this is a full-resolution pass over what can be an
+     * 8000px-wide scan. Caches the result in {@link #maskedIcon} so toggling
+     * back on doesn't recompute.
+     */
+    private void buildMaskedIcon() {
+        CatalogEntry forEntry = entry;
+        BufferedImage source = fullImage;
+        maskButton.setEnabled(false);
+        new SwingWorker<ImageIcon, Void>() {
+            @Override
+            protected ImageIcon doInBackground() {
+                List<Point> vertices = new ArrayList<>();
+                for (CatalogEntry.Vertex v : forEntry.workingArea) {
+                    vertices.add(new Point(v.x, v.y));
+                }
+                BitSet2D mask = BitSet2D.createFromPolygon(vertices, source.getWidth(), source.getHeight());
+                int w = source.getWidth();
+                int h = source.getHeight();
+                int[] pixels = source.getRGB(0, 0, w, h, null, 0, w);
+                for (int y = 0; y < h; y++) {
+                    int rowOffset = y * w;
+                    for (int x = 0; x < w; x++) {
+                        if (!mask.get2D(x, y)) {
+                            pixels[rowOffset + x] = darken(pixels[rowOffset + x]);
+                        }
+                    }
+                }
+                BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+                out.setRGB(0, 0, w, h, pixels, 0, w);
+                return new ImageIcon(ImageDisplay.scaleToFit(out, imageMaxW, imageMaxH));
+            }
+
+            @Override
+            protected void done() {
+                if (forEntry != entry) {
+                    return; // moved on to a different entry while this was computing
+                }
+                maskButton.setEnabled(null != fullImage);
+                try {
+                    maskedIcon = get();
+                    if (maskButton.isSelected()) {
+                        imageLabel.setIcon(maskedIcon);
+                    }
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(dialog, "Could not build mask overlay:\n" + ex.getMessage(),
+                            "Mask failed", JOptionPane.ERROR_MESSAGE);
+                    maskButton.setSelected(false);
+                }
+            }
+        }.execute();
+    }
+
+    /**
+     * @return {@code rgb} at a quarter brightness, for dimming everything
+     * {@link CatalogEntry#workingArea} excludes
+     */
+    private static int darken(int rgb) {
+        int r = ((rgb >> 16) & 0xFF) / 4;
+        int g = ((rgb >> 8) & 0xFF) / 4;
+        int b = (rgb & 0xFF) / 4;
+        return (r << 16) | (g << 8) | b;
     }
 
     private Color pixelAt(Point p) {
@@ -338,6 +452,11 @@ final class CatalogEntryEditor {
             }
         }
         parsed.tags = newTags;
+        // entry.workingArea can be mutated and saved directly by
+        // WorkingAreaEditor while this dialog is open, but jsonText was
+        // rendered once at load time and never refreshed — so it can't be
+        // trusted as the source of truth for this field, same as tags.
+        parsed.workingArea = entry.workingArea;
         try {
             catalog.save(parsed, catalog.loadThumbnail(entry.filename));
         } catch (IOException ex) {
@@ -371,6 +490,7 @@ final class CatalogEntryEditor {
 
         ObjectNode blob = JSON.getMapper().valueToTree(entry);
         blob.remove("tags");
+        blob.remove("workingArea");
         String blobText;
         try {
             blobText = JSON.getMapper().writerWithDefaultPrettyPrinter().writeValueAsString(blob);
@@ -384,15 +504,21 @@ final class CatalogEntryEditor {
         tagsText.setCaretPosition(0);
 
         fullImage = ImageDisplay.loadFull(entry);
+        maskedIcon = null;
         if (null == fullImage) {
+            plainIcon = null;
             imageLabel.setIcon(null);
             imageLabel.setText("No readable file for " + entry.filename);
         } else {
             imageLabel.setText(null);
-            imageLabel.setIcon(new ImageIcon(ImageDisplay.scaleToFit(fullImage, imageMaxW, imageMaxH)));
+            plainIcon = new ImageIcon(ImageDisplay.scaleToFit(fullImage, imageMaxW, imageMaxH));
+            imageLabel.setIcon(plainIcon);
         }
         freqButton.setEnabled(null != fullImage);
         heatButton.setEnabled(null != fullImage);
+        areaButton.setEnabled(null != fullImage);
+        maskButton.setSelected(false);
+        maskButton.setEnabled(null != fullImage && entry.workingArea.size() >= 3);
 
         statusLabel.setText(null != action
                 ? String.format("%d / %d — %s — click the image to add a \"%s\" tag",

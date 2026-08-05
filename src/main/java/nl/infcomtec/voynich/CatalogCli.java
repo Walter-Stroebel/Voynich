@@ -4,6 +4,9 @@
 package nl.infcomtec.voynich;
 
 import java.awt.Color;
+import java.awt.Point;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -12,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
+import javax.imageio.ImageIO;
 
 /**
  * Command-line access to whichever {@link Catalog} backend {@code ~/.infVoy.json}
@@ -58,7 +62,8 @@ public class CatalogCli {
                 save(catalog, args[1], args.length > 2 ? args[2] : null);
                 break;
             case "extract":
-                requireArgs(args, 3, "extract <filename> --pixel x,y | --region x,y,w,h [--format rgb|lab|hex] [--out path]");
+                requireArgs(args, 3, "extract <filename> --pixel x,y | --region x,y,w,h [--format rgb|lab|hex] "
+                        + "| --working-area [--out path]");
                 extract(catalog, args);
                 break;
             case "checkpoint":
@@ -205,6 +210,7 @@ public class CatalogCli {
         List<int[]> regions = new ArrayList<>();
         String format = null;
         String out = null;
+        boolean workingArea = false;
         for (int i = 2; i < args.length; i++) {
             switch (args[i]) {
                 case "--pixel":
@@ -212,6 +218,9 @@ public class CatalogCli {
                     break;
                 case "--region":
                     regions.add(parseInts(args[++i], 4, "--region x,y,w,h"));
+                    break;
+                case "--working-area":
+                    workingArea = true;
                     break;
                 case "--format":
                     format = args[++i];
@@ -225,14 +234,25 @@ public class CatalogCli {
                     return;
             }
         }
-        if (null == pixel && regions.isEmpty()) {
-            System.err.println("Need --pixel x,y or --region x,y,w,h");
+        int modes = (null != pixel ? 1 : 0) + (!regions.isEmpty() ? 1 : 0) + (workingArea ? 1 : 0);
+        if (0 == modes) {
+            System.err.println("Need --pixel x,y, --region x,y,w,h, or --working-area");
+            System.exit(1);
+            return;
+        }
+        if (modes > 1) {
+            System.err.println("--pixel, --region, and --working-area are mutually exclusive");
             System.exit(1);
             return;
         }
         if (regions.size() > 1 && null == out) {
             System.err.println("Multiple --region needs --out (used as a prefix: <out>.0, <out>.1, ...)");
             System.exit(1);
+            return;
+        }
+
+        if (workingArea) {
+            extractWorkingArea(entry, imgFile, out);
             return;
         }
 
@@ -274,6 +294,83 @@ public class CatalogCli {
                     filename, x0, y0, rw, rh, format, "rgb".equals(format) ? "uint8" : "float32", blob.length,
                     null == regionOut ? "" : ",\"path\":\"" + regionOut + "\""));
         }
+    }
+
+    /**
+     * {@code --working-area}: crops {@code imgFile} to {@code entry}'s
+     * traced {@link CatalogEntry#workingArea} bounding box and writes it as
+     * a PNG — either to {@code out} or, if {@code null}, straight to
+     * stdout. Doesn't go through {@link ColorImage} (no CIELab decode
+     * needed for a raw crop), so it's cheaper than the {@code --pixel}/
+     * {@code --region} modes above.
+     */
+    private static void extractWorkingArea(CatalogEntry entry, File imgFile, String out) throws IOException {
+        if (entry.workingArea.size() < 3) {
+            System.err.println("No working area traced yet for " + entry.filename);
+            System.exit(1);
+            return;
+        }
+        BufferedImage full = ImageIO.read(imgFile);
+        BufferedImage cropped = cropToWorkingArea(full, entry.workingArea);
+
+        if (null == out) {
+            ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            ImageIO.write(cropped, "png", buf);
+            System.out.write(buf.toByteArray());
+            System.out.flush();
+        } else {
+            ImageIO.write(cropped, "png", new File(out));
+        }
+        System.err.println(String.format(
+                "{\"filename\":\"%s\",\"width\":%d,\"height\":%d,\"vertices\":%d%s}",
+                entry.filename, cropped.getWidth(), cropped.getHeight(), entry.workingArea.size(),
+                null == out ? "" : ",\"path\":\"" + out + "\""));
+    }
+
+    /**
+     * Crops {@code full} to {@code workingArea}'s bounding box, then blacks
+     * out every pixel inside that box but outside the polygon itself —
+     * backdrop, frayed vellum edge, other pages in the stack, whatever the
+     * trace excluded. Uses {@link BitSet2D#createFromPolygon} for the mask,
+     * the same fast scanline fill {@code CatalogEntryEditor}'s "Show Mask"
+     * toggle builds — never {@code Shape.contains()}.
+     *
+     * @param full the entry's full-resolution image
+     * @param workingArea the entry's traced boundary, in {@code full}'s own
+     * pixel coordinates; must have at least 3 vertices
+     * @return a new, smaller {@code BufferedImage} — just the working
+     * area's bounding box, masked
+     */
+    private static BufferedImage cropToWorkingArea(BufferedImage full, List<CatalogEntry.Vertex> workingArea) {
+        int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE;
+        List<Point> vertices = new ArrayList<>(workingArea.size());
+        for (CatalogEntry.Vertex v : workingArea) {
+            vertices.add(new Point(v.x, v.y));
+            minX = Math.min(minX, v.x);
+            minY = Math.min(minY, v.y);
+            maxX = Math.max(maxX, v.x);
+            maxY = Math.max(maxY, v.y);
+        }
+        minX = Math.max(0, minX);
+        minY = Math.max(0, minY);
+        maxX = Math.min(full.getWidth() - 1, maxX);
+        maxY = Math.min(full.getHeight() - 1, maxY);
+        int w = maxX - minX + 1;
+        int h = maxY - minY + 1;
+
+        BitSet2D mask = BitSet2D.createFromPolygon(vertices, full.getWidth(), full.getHeight());
+        int[] pixels = full.getRGB(minX, minY, w, h, null, 0, w);
+        for (int y = 0; y < h; y++) {
+            int rowOffset = y * w;
+            for (int x = 0; x < w; x++) {
+                if (!mask.get2D(minX + x, minY + y)) {
+                    pixels[rowOffset + x] = 0xFF000000;
+                }
+            }
+        }
+        BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        out.setRGB(0, 0, w, h, pixels, 0, w);
+        return out;
     }
 
     private static File resolveExistingLocation(CatalogEntry entry) {
@@ -376,12 +473,15 @@ public class CatalogCli {
         System.err.println("  get <filename>              print the entry's JSON");
         System.err.println("  tag <filename> <text...>    add a tag/note (no-op if already present)");
         System.err.println("  save <filename> [jsonFile]  replace the entry (reads stdin if jsonFile omitted)");
-        System.err.println("  extract <filename> --pixel x,y | --region x,y,w,h [--region ...] [--format rgb|lab|hex] [--out path]");
+        System.err.println("  extract <filename> --pixel x,y | --region x,y,w,h [--region ...] [--format rgb|lab|hex]");
+        System.err.println("                      | --working-area [--out path]");
         System.err.println("                              real decoded pixel colour via ColorImage/ColorBase;");
         System.err.println("                              --pixel prints to stdout, --region writes a binary blob");
         System.err.println("                              (stdout or --out) plus a JSON manifest on stderr; repeat");
         System.err.println("                              --region to pull several regions from one decode (needs --out,");
-        System.err.println("                              used as a prefix: <out>.0, <out>.1, ...)");
+        System.err.println("                              used as a prefix: <out>.0, <out>.1, ...); --working-area writes");
+        System.err.println("                              a PNG cropped to the traced CatalogEntry.workingArea's bounding");
+        System.err.println("                              box, black outside the polygon (stdout or --out)");
         System.err.println("  checkpoint                  clone the whole catalog's current state");
         System.err.println("  restore                     discard everything since the last checkpoint");
     }

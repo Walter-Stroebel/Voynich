@@ -35,6 +35,36 @@ scaling bug that made `deltaE`/`distanceTo` results ~100x too small;
 `CatalogEntryEditor` and the new viz windows are now deliberately
 non-modal. Otherwise this inventory still reflects 2026-08-04.
 
+Note (2026-08-05, still later): added `CatalogEntry.workingArea`/`Vertex`
+(human-traced page-boundary polygon, excluding backdrop/frayed edge/other
+pages in the stack — never auto-detected), `WorkingAreaCanvas`/
+`WorkingAreaEditor` (the tracing tool, spawned from `CatalogEntryEditor`'s
+new "Working Area" button). Also converted `ViewFrame` from an
+owner-of-the-main-frame `JDialog` to a plain, ownerless `JFrame` — windows
+don't own windows in this app — and added its `maximizeInitially` option
+(real `JFrame.MAXIMIZED_BOTH`, used by `WorkingAreaEditor`). 26 classes now.
+
+Note (2026-08-05, still later still): added `BitSet2D` — Walter's own
+bit-per-pixel 2D mask class, ported in from his personal CodeLibrary and
+adapted here (dropped `BaseImage`-dependent Sobel/edge-detect factories not
+worth importing; fixed a real pre-existing iterator bug where `hasNext()`
+used `idx > 0` instead of `idx >= 0`, silently returning zero points
+whenever pixel (0,0) was set; added `createFromPolygon`, a scanline fill
+straight from vertices that avoids `Shape.contains()` entirely). This is
+the intended storage/query layer for turning a `workingArea` polygon into
+fast per-pixel ROI membership. 27 classes now.
+
+Note (2026-08-05, still later again): wired up `BitSet2D`'s first consumer —
+`CatalogEntryEditor` gained a "Show Mask" toggle button that darkens
+everything `workingArea` excludes on the inline image (built off-EDT via
+`BitSet2D.createFromPolygon`, cached per entry, invalidated if
+`WorkingAreaEditor` commits a new trace while this dialog is still open).
+
+Note (2026-08-05, one more time): `CatalogCli extract` gained
+`--working-area` — crops to `CatalogEntry.workingArea`'s bounding box and
+writes a PNG (stdout or `--out`), black outside the polygon. Second
+`BitSet2D.createFromPolygon` consumer. Verified end-to-end against 1r.png.
+
 Dependencies: FlatLaf 3.3, mysql-connector-java 8.0.27 (legacy artifact
 coordinate — `com.mysql:mysql-connector-j` is the maintained one, noted as
 minor housekeeping in the README roadmap), Jackson 2.18.2. No test
