@@ -34,7 +34,7 @@ gap.
 - Two-level RGB→CIELab cache (`ColorBase`): per-image plus a JVM-wide static cache, so a colour repeated across an entire collection is converted once
 - Per-image colour inventory — every distinct colour in a decoded image with its pixel count (`ColorImage.cb`, `ColorImage.labIndex`)
 - Fixed 256×256 thumbnail generated on load (aspect-preserved, black-letterboxed to match real scanbed edges), matching the freedesktop.org thumbnail-spec "large" size so a single 4K monitor can host a proper contact sheet
-- A CIELab-thumbnail distance metric (`ColorImage.distanceTo`) — mean per-cell ΔE between two images' thumbnails, resolution-independent, the basis for "is this a copy of that" comparisons across a collection
+- A CIELab-thumbnail distance metric (`ColorImage.distanceTo`) — mean per-cell ΔE between two images' thumbnails, resolution-independent, the basis for "is this a copy of that" comparisons across a collection. A scaling bug in `ColorBase` made every `deltaE`/`distanceTo` result ~100× too small until fixed 2026-08-05 (nothing had consumed the numbers yet, so nothing else was silently affected)
 - A catalog persistence layer (`Catalog`/`CatalogEntry`, with `MySqlCatalog` and `FileCatalog` backends) — one record + thumbnail per filename, keyed by filename rather than path so the same file at two locations (e.g. a NAS copy and a local NVMe copy) is one entry, not two. MySQL is optional (runs via `docker-compose.yml`) and falls back automatically to plain JSON+PNG sidecar files when unconfigured
 
 **Implemented (app level):**
@@ -58,7 +58,7 @@ gap.
   to the original 2004/torrent JPG numbering, when known) and `CatalogEntry.tags`
   (short free-text notes like `"circular diagram"` or `"foldout"`;
   deliberately not a fixed set of categories, since new kinds of note keep
-  turning up). Clicking a thumbnail in `OverviewPanel` now opens a modal
+  turning up). Clicking a thumbnail in `OverviewPanel` now opens a non-modal
   editor instead of doing nothing — a raw-JSON view of the entry (everything
   except `tags`, which gets its own one-note-per-line box so adding a note
   doesn't mean hand-typing JSON array syntax), Jackson-validated on Save
@@ -87,6 +87,18 @@ gap.
   SELECT` clone of the `images` table for `MySqlCatalog`), restorable via the
   toolbar's Checkpoint/Undo buttons or `CatalogCli checkpoint`/`restore`. No
   automatic pruning of old checkpoints — deliberate, left for hand cleanup
+- Two per-entry colour visualizations in `CatalogEntryEditor`, opened as
+  independent windows via `ViewFrame`: `FrequencyBarChart` (ranked swatch
+  bars, colours grouped into perceptual CIELab bins rather than ranked by
+  exact RGB, since a flat photo backdrop otherwise buries the paper/ink
+  colours under scan noise) and `DeltaEHeatmap` (per-cell ΔE from the page's
+  average colour, spatially exposing ink/staining/pigment anomalies a
+  frequency count alone can't show *where*). `ViewFrame` remembers each
+  named window's on-screen position/size in `Config.viewBounds` across
+  restarts. No modality anywhere in this stack — the app doesn't limit how
+  many entry editors or tool windows a user has open at once; `JOptionPane`
+  confirm/error prompts are the one deliberate exception, since those are
+  synchronous answers, not parallel windows
 
 ## Roadmap
 

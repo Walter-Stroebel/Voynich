@@ -8,6 +8,8 @@ import java.awt.BorderLayout;
 import java.awt.event.ActionEvent;
 import java.io.File;
 import java.io.IOException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
@@ -32,6 +34,20 @@ public class Voynich {
      * The config loaded from {@link #configFile} at startup.
      */
     public static Config config;
+
+    /**
+     * Writes {@link #config} back to {@link #configFile}. Called after every
+     * change to {@link Config#viewBounds} (see {@link ViewFrame}); an NVMe
+     * write on every window move/resize is cheap enough that there's no
+     * reason to batch or debounce it.
+     */
+    public static void saveConfig() {
+        try {
+            JSON.getMapper().writerWithDefaultPrettyPrinter().writeValue(configFile, config);
+        } catch (IOException ex) {
+            Logger.getLogger(Voynich.class.getName()).log(Level.WARNING, "Could not save config", ex);
+        }
+    }
 
     /**
      * Main.

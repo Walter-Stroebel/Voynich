@@ -20,11 +20,13 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
 import java.awt.image.BufferedImage;
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.Icon;
@@ -39,10 +41,11 @@ import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.KeyStroke;
 import javax.swing.SwingConstants;
+import javax.swing.SwingWorker;
 
 /**
- * A modal view of one or more {@link CatalogEntry} records, one at a time:
- * the entry's actual image in {@link BorderLayout#CENTER} (via
+ * A non-modal view of one or more {@link CatalogEntry} records, one at a
+ * time: the entry's actual image in {@link BorderLayout#CENTER} (via
  * {@link ImageDisplay}, since the image is the information the JSON is
  * annotating), an editable raw-JSON view and a plain tags box docked
  * {@link BorderLayout#EAST}. Two ways to use it:
@@ -91,6 +94,8 @@ final class CatalogEntryEditor {
     private final JLabel imageLabel = new JLabel("", SwingConstants.CENTER);
     private final JTextArea jsonText = new JTextArea();
     private final JTextArea tagsText = new JTextArea();
+    private final JButton freqButton = new JButton("Color Frequency");
+    private final JButton heatButton = new JButton("ΔE Heatmap");
     private final int imageMaxW;
     private final int imageMaxH;
 
@@ -117,7 +122,7 @@ final class CatalogEntryEditor {
         this.onSaved = onSaved;
 
         String title = null != action ? action.label() + " review" : queue.get(0).filename;
-        dialog = new JDialog(owner, title, JDialog.ModalityType.APPLICATION_MODAL);
+        dialog = new JDialog(owner, title, JDialog.ModalityType.MODELESS);
         dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
         dialog.setLayout(new BorderLayout());
 
@@ -150,7 +155,15 @@ final class CatalogEntryEditor {
         buttons.add(primary);
         buttons.add(cancel);
 
+        freqButton.addActionListener(e -> openColorVisualization(freqButton, "Color Frequency",
+                ci -> new JScrollPane(new FrequencyBarChart(ci))));
+        heatButton.addActionListener(e -> openColorVisualization(heatButton, "ΔE Heatmap", DeltaEHeatmap::new));
+        JPanel vizButtons = new JPanel();
+        vizButtons.add(freqButton);
+        vizButtons.add(heatButton);
+
         JPanel south = new JPanel(new BorderLayout());
+        south.add(vizButtons, BorderLayout.NORTH);
         south.add(tagsScroll, BorderLayout.CENTER);
         south.add(buttons, BorderLayout.SOUTH);
 
@@ -247,6 +260,38 @@ final class CatalogEntryEditor {
         }
         double[] lab = EnhancedColor.getCIELAB(c);
         return String.format("%.1f,%.1f,%.1f", lab[0], lab[1], lab[2]);
+    }
+
+    /**
+     * Re-reads {@link #entry}'s file off the EDT into a fresh
+     * {@link ColorImage} (a full per-pixel CIELab pass — can take a while on
+     * the largest foldout scans), then hands it to {@code panelFactory} and
+     * opens the result via {@link ViewFrame#open}. A no-op if the entry has
+     * no readable file.
+     */
+    private void openColorVisualization(JButton source, String viewName, Function<ColorImage, JComponent> panelFactory) {
+        File file = ImageDisplay.pickExistingFile(entry);
+        if (null == file) {
+            return;
+        }
+        source.setEnabled(false);
+        new SwingWorker<ColorImage, Void>() {
+            @Override
+            protected ColorImage doInBackground() throws IOException {
+                return new ColorImage(file);
+            }
+
+            @Override
+            protected void done() {
+                source.setEnabled(null != fullImage);
+                try {
+                    ViewFrame.open(viewName, dialog.getOwner(), panelFactory.apply(get()), true);
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(dialog, "Could not analyse image:\n" + ex.getMessage(),
+                            "Analysis failed", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }.execute();
     }
 
     private Color pixelAt(Point p) {
@@ -346,6 +391,8 @@ final class CatalogEntryEditor {
             imageLabel.setText(null);
             imageLabel.setIcon(new ImageIcon(ImageDisplay.scaleToFit(fullImage, imageMaxW, imageMaxH)));
         }
+        freqButton.setEnabled(null != fullImage);
+        heatButton.setEnabled(null != fullImage);
 
         statusLabel.setText(null != action
                 ? String.format("%d / %d — %s — click the image to add a \"%s\" tag",

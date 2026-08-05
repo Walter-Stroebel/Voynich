@@ -362,9 +362,9 @@ public class ColorBase {
         tc.v0 = key.v0;
         tc.v1 = key.v1;
         tc.v2 = key.v2;
-        tc.l = (short) Math.max(0, Math.min(10000, cielab[0]));
-        tc.a = (short) Math.max(-12800, Math.min(12800, cielab[1]));
-        tc.b = (short) Math.max(-12800, Math.min(12800, cielab[2]));
+        tc.l = (short) Math.max(0, Math.min(10000, Math.round(cielab[0] * 100)));
+        tc.a = (short) Math.max(-12800, Math.min(12800, Math.round(cielab[1] * 100)));
+        tc.b = (short) Math.max(-12800, Math.min(12800, Math.round(cielab[2] * 100)));
         convert.put(tc, tc);
         return tc;
     }
@@ -640,9 +640,9 @@ public class ColorBase {
             }
             if (null == lu) {
                 double[] cielab = EnhancedColor.getCIELAB(c);
-                l = (short) Math.max(0, Math.min(10000, cielab[0]));
-                a = (short) Math.max(-12800, Math.min(12800, cielab[1]));
-                b = (short) Math.max(-12800, Math.min(12800, cielab[2]));
+                l = (short) Math.max(0, Math.min(10000, Math.round(cielab[0] * 100)));
+                a = (short) Math.max(-12800, Math.min(12800, Math.round(cielab[1] * 100)));
+                b = (short) Math.max(-12800, Math.min(12800, Math.round(cielab[2] * 100)));
                 cb.cache.put(this, this);
                 convert.put(this, this);
             } else {

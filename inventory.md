@@ -5,7 +5,7 @@ point-in-time listing, not a maintained architecture doc — see `CLAUDE.md`
 for the actively-kept class rundown and `README.md` for current
 state/roadmap. Re-generate rather than hand-edit when it goes stale.
 
-## Code (`src/main/java/nl/infcomtec/voynich/`, 21 classes)
+## Code (`src/main/java/nl/infcomtec/voynich/`, 24 classes)
 
 - **App shell**: `Voynich` (entry point/JFrame), `Config`/`JSON` (settings,
   Jackson wrappers), `EzAction` (styled Swing actions)
@@ -14,11 +14,13 @@ state/roadmap. Re-generate rather than hand-edit when it goes stale.
   filename-keyed, MySQL or JSON+PNG sidecars; manual whole-catalog
   checkpoint/undo on both backends (2026-08-04)
 - **UI**: `OverviewPanel` (thumbnail grid), `TaskWindow`/`ScanTaskWindow`
-  (background-task progress pattern), `CatalogEntryEditor` (modal per-entry
-  edit and shuffled whole-catalog review, sharing one window/save path),
-  `RapidReviewAction` (pluggable review judgment, e.g. toolbar's "MarkUp"),
-  `ImageDisplay` (scale-to-fit + click-to-pixel mapping for an entry's
-  actual image)
+  (background-task progress pattern), `CatalogEntryEditor` (non-modal
+  per-entry edit and shuffled whole-catalog review, sharing one
+  window/save path), `RapidReviewAction` (pluggable review judgment, e.g.
+  toolbar's "MarkUp"), `ImageDisplay` (scale-to-fit + click-to-pixel
+  mapping for an entry's actual image), `ViewFrame` (named tool window
+  with remembered bounds), `FrequencyBarChart`/`DeltaEHeatmap` (per-entry
+  colour visualizations, opened via `ViewFrame`)
 - **Colour pipeline**: `EnhancedColor` (RGB↔CIELAB↔XYZ↔YUV↔HSB, ΔE),
   `FloatColor`, `YUV`, `ColorBase` (two-level RGB→LAB cache), `ColorImage`
   (per-image colour inventory), `TriElm`
@@ -26,7 +28,12 @@ state/roadmap. Re-generate rather than hand-edit when it goes stale.
 Note (2026-08-05): `RingDiagramSegmenter` was deleted — a failed first-pass
 experiment at extracting upright figure crops from circle-diagram pages,
 superseded by the page-level `Circular diagram` tagging pass via MarkUp.
-Otherwise this inventory still reflects 2026-08-04.
+
+Note (2026-08-05, later same day): added `ViewFrame`, `FrequencyBarChart`,
+`DeltaEHeatmap` (see CLAUDE.md for what each does); fixed a `ColorBase`
+scaling bug that made `deltaE`/`distanceTo` results ~100x too small;
+`CatalogEntryEditor` and the new viz windows are now deliberately
+non-modal. Otherwise this inventory still reflects 2026-08-04.
 
 Dependencies: FlatLaf 3.3, mysql-connector-java 8.0.27 (legacy artifact
 coordinate — `com.mysql:mysql-connector-j` is the maintained one, noted as
