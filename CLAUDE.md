@@ -1,6 +1,14 @@
 # CLAUDE.md
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Memory
+At the start of a new session, actively recall your memories for this project
+(`/home/walter/.claude/projects/-home-walter-github-Voynich/memory/`) rather
+than waiting for a memory to happen to become relevant — a saved memory
+doesn't surface itself. This matters especially for the "how do we already
+do X" class of question (e.g. mirror/sync commands, established scripts):
+check memory before falling back to grepping the repo.
+
 ## Build and Run
 All commands run from the repo root (`/home/walter/github/Voynich/`).
 ```bash
