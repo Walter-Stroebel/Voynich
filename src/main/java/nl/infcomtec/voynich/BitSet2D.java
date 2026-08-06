@@ -625,6 +625,7 @@ public class BitSet2D extends BitSet implements Cloneable, Iterable<Point> {
      * @deprecated use getRealBounds.
      * @return see getRealBounds.
      */
+    @Deprecated
     public Rectangle getOutline() {
         return getRealBounds();
     }

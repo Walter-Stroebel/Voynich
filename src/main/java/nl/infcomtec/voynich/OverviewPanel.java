@@ -107,12 +107,14 @@ public class OverviewPanel extends JPanel {
     public void sort() {
         SortKey[] keys = SortKey.values();
         String[] labels = new String[keys.length * 2];
-        Comparator<CatalogEntry>[] comparators = new Comparator[keys.length * 2];
+        List<Comparator<CatalogEntry>> comparators = new ArrayList<>(keys.length * 2);
+        for (SortKey key : keys) {
+            comparators.add(key);
+            comparators.add(key.reversed());
+        }
         for (int i = 0; i < keys.length; i++) {
             labels[i * 2] = keys[i] + " ↑";
-            comparators[i * 2] = keys[i];
             labels[i * 2 + 1] = keys[i] + " ↓";
-            comparators[i * 2 + 1] = keys[i].reversed();
         }
         int choice = JOptionPane.showOptionDialog(this, "Sort by:", "Sort",
                 JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
@@ -120,7 +122,7 @@ public class OverviewPanel extends JPanel {
         if (choice == JOptionPane.CLOSED_OPTION) {
             return;
         }
-        Collections.sort(allEntries, comparators[choice]);
+        Collections.sort(allEntries, comparators.get(choice));
         applyFilter();
     }
 
