@@ -9,11 +9,9 @@ import java.io.IOException;
 import java.util.List;
 
 /**
- * Persistence for the image catalog: one {@link CatalogEntry} plus one
- * thumbnail per filename. Two backends implement this identically —
- * {@link MySqlCatalog} (JSON + BLOB columns) and {@link FileCatalog} (JSON +
- * PNG sidecar files) — chosen by {@link #open(Config)} depending on whether
- * {@link Config#db} is populated.
+ * Persistence for the image catalog: one {@link CatalogEntry} (thumbnail
+ * inlined as base64 in its JSON) per filename. {@link FileCatalog} is the
+ * only backend — see {@link #open(Config)}.
  */
 public interface Catalog {
 
@@ -147,27 +145,14 @@ public interface Catalog {
     }
 
     /**
-     * Opens the catalog backend selected by {@code config}: {@link MySqlCatalog}
-     * when {@link Config#db} and its {@code host}/{@code database}/{@code user}
-     * are all populated, otherwise {@link FileCatalog} rooted at
-     * {@code ~/.voynich-catalog}. A populated {@link Config#db} that fails to
-     * connect throws rather than silently degrading to the file backend —
-     * that failure means something is actually wrong, not that MySQL wasn't
-     * configured.
+     * Opens the catalog: {@link FileCatalog} rooted at
+     * {@code ~/.voynich-catalog}.
      *
      * @param config the loaded application config
      * @return an open {@code Catalog}
-     * @throws IOException if the selected backend can't be opened
+     * @throws IOException if the backend can't be opened
      */
     static Catalog open(Config config) throws IOException {
-        Config.Db db = config.db;
-        if (null != db && notBlank(db.host) && notBlank(db.database) && notBlank(db.user)) {
-            return new MySqlCatalog(db);
-        }
         return new FileCatalog(new File(System.getProperty("user.home"), ".voynich-catalog"));
-    }
-
-    private static boolean notBlank(String s) {
-        return null != s && !s.isBlank();
     }
 }

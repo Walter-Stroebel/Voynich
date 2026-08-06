@@ -49,17 +49,22 @@ Single Maven module, Java 17, Swing UI with **FlatDarculaLaf** dark theme.
 | `BitSet2D` | A bit-per-pixel 2D mask (`BitSet` under the hood — real word-level range operations, not one call per pixel) plus utilities: flood fill (`oilSpill`), grow/shrink, invert, image conversion. `createFromPolygon` rasterizes a `List<Point>` (e.g. a decoded `CatalogEntry.contentArea`) via a real scanline fill straight into the bits — deliberately not through `java.awt.Shape#contains`, which is the trap `createFromShape`/`copy`/`setOrClear` (kept, `@Deprecated`) fall into: recomputing the winding number from every edge on every pixel query is fine once, ruinous over millions. First consumer: `CatalogEntryEditor`'s "Show Mask" toggle. |
 | `TaskWindow` | Abstract `JFrame` + `SwingWorker` wrapper for a background task: progress bar, log, Cancel button. One window per task-type, reused (not recreated) on repeat runs via a static registry. |
 | `ScanTaskWindow` | `TaskWindow` that walks `config.scanPath`, decodes each image via `ColorImage`, and records it into the catalog with `Catalog.recordSighting`. |
-| `Catalog` | Persistence contract for the image catalog: one `CatalogEntry` + one thumbnail per filename. `Catalog.open(Config)` picks the backend. |
+| `Catalog` | Persistence contract for the image catalog: one `CatalogEntry` (thumbnail inlined as base64) per filename. `Catalog.open(Config)` opens the `FileCatalog` backend. |
 | `CatalogEntry` | JSON-serializable catalog record, keyed by filename (not path) — see "Catalog persistence" below. |
-| `MySqlCatalog` | `Catalog` backed by one MySQL table: `JSON` column for the entry, `MEDIUMBLOB` for the thumbnail. Plain JDBC, no ORM. |
-| `FileCatalog` | `Catalog` backed by `<filename>.json` + `<filename>.png` sidecar files under a catalog directory. The fallback when no DB is configured. |
-| `CatalogCli` | Command-line access to the catalog (`list`, with an optional case-insensitive/invertible text filter over an entry's whole JSON; `get`/`tag`/`save`; `checkpoint`/`restore`), through the same `Catalog.open(Config)` the GUI uses — works against either backend. Run via `java -cp target/Voynich-1.0-jar-with-dependencies.jar nl.infcomtec.voynich.CatalogCli <command>`, bypassing the fat jar's GUI `Main-Class`. `extract` pulls real decoded pixels: `--pixel x,y`/`--region x,y,w,h` (repeatable) go through `ColorImage`/`ColorBase` for rgb/lab/hex output, same colour math the GUI views use; `--content-area` skips that (no Lab decode needed for a raw crop) and instead writes a PNG cropped to `CatalogEntry.contentArea`'s bounding box, black outside the polygon (via `BitSet2D.createFromPolygon`). |
+| `FileCatalog` | `Catalog` backed by a `<filename>.json` sidecar file per entry under a catalog directory, thumbnail included inline as `CatalogEntry.thumbnailPng` (base64 via Jackson). The only backend. |
+| `CatalogCli` | Command-line access to the catalog (`list`, with an optional case-insensitive/invertible text filter over an entry's whole JSON; `get`/`tag`/`save`; `checkpoint`/`restore`), through the same `Catalog.open(Config)` the GUI uses. Run via `java -cp target/Voynich-1.0-jar-with-dependencies.jar nl.infcomtec.voynich.CatalogCli <command>`, bypassing the fat jar's GUI `Main-Class`. `extract` pulls real decoded pixels: `--pixel x,y`/`--region x,y,w,h` (repeatable) go through `ColorImage`/`ColorBase` for rgb/lab/hex output, same colour math the GUI views use; `--content-area` skips that (no Lab decode needed for a raw crop) and instead writes a PNG cropped to `CatalogEntry.contentArea`'s bounding box, black outside the polygon (via `BitSet2D.createFromPolygon`). |
 
 ### Catalog persistence
-`Catalog.open(config)` picks `MySqlCatalog` when `Config.db` (host/database/user)
-is populated, else `FileCatalog` rooted at `~/.voynich-catalog`. Both store the
-identical `CatalogEntry` shape — MySQL as a native `JSON` column, files as a
-pretty-printed `.json` sidecar — so neither is a second-class citizen.
+`Catalog.open(config)` opens `FileCatalog` rooted at `~/.voynich-catalog`, one
+pretty-printed `.json` sidecar per entry, thumbnail bytes inlined as base64
+in that same file via `CatalogEntry.thumbnailPng` (a plain `byte[]`; Jackson
+handles the base64 encoding). The MySQL backend (`MySqlCatalog`) that used to
+be an alternative here was retired 2026-08-06 — its 213 entries were
+exported into the file catalog and diffed for count/thumbnail/contentArea
+parity before the MySQL code, `docker-compose.yml`/`docker-compose.nas.yml`/
+`.env.example`, and `scripts/mysql-backup.sh` were deleted. `FileCatalog`
+lazily migrates any leftover `<filename>.png` sidecar from before thumbnails
+moved inline (see `CatalogEntry.thumbnailPng`) into the JSON on first read.
 
 `CatalogEntry` is keyed by **filename, not path**: the same file often exists
 at more than one path (e.g. a NAS copy plus a local NVMe copy kept for read
@@ -101,36 +106,14 @@ there was no split "some entries mean the old thing" case to preserve, just
 a label catching up to what the data already was.
 
 `Catalog.checkpoint()`/`Catalog.restoreLatestCheckpoint()` give a manual,
-whole-catalog undo: `checkpoint()` clones the entire current state under a
-new timestamp (a sibling directory for `FileCatalog`, a
-`CREATE TABLE ... AS SELECT` clone of `images` for `MySqlCatalog`);
+whole-catalog undo: `checkpoint()` clones the entire current state (a
+sibling directory, timestamped) under `~/.voynich-catalog-checkpoints`;
 `restoreLatestCheckpoint()` replaces the whole catalog with the newest such
 clone, discarding anything written since — a full replace, not a merge, and
 not a stack (always the single most recent checkpoint, never an older one).
 Old checkpoints are never pruned automatically; that's deliberate, left for
 hand cleanup rather than built speculatively. Wired to the toolbar's
 Checkpoint/Undo buttons and `CatalogCli checkpoint`/`restore`.
-
-MySQL runs via the repo's `docker-compose.yml`; copy `.env.example` to `.env`
-(gitignored) and fill in real credentials before `docker compose up -d`. The
-same credentials then go in `~/.infVoy.json`'s `db` object — nothing reads
-`.env` or the compose file at runtime, the two are just kept in sync by hand.
-Leaving `db` unset (or any of `host`/`database`/`user` blank) uses
-`FileCatalog` instead; a populated `db` that fails to connect throws rather
-than silently falling back, since that means something is actually
-misconfigured.
-
-`MYSQL_USER` is deliberately granted `ALL PRIVILEGES ON *.*`, not scoped to
-just `MYSQL_DATABASE`. This instance exists solely to serve this one app —
-there is no other tenant on it to protect from this user, so a scoped grant
-buys no real isolation, only friction (admin/test work constantly needing a
-root detour). Don't "fix" this back to a scoped grant out of habit; it would
-be reintroducing theater, not closing a hole. Credentials for `docker exec
-... mysql`/`mysqldump` on the host running the container come from a mounted
-MySQL option file (`MYSQL_CNF_HOST_PATH` in `.env`, chmod 600), not `-p` on
-the command line — that one's about keeping the value out of shell
-history/session logs, not access control between local processes, which
-don't have a boundary here either. See `scripts/mysql-backup.sh`.
 
 ### Colour analysis pipeline
 Understanding this requires reading `EnhancedColor`, `FloatColor`, `YUV`, and `ColorBase` together — no single file tells the whole story.

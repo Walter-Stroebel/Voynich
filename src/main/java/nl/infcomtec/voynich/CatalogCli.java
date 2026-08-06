@@ -18,10 +18,9 @@ import java.util.List;
 import javax.imageio.ImageIO;
 
 /**
- * Command-line access to whichever {@link Catalog} backend {@code ~/.infVoy.json}
- * selects (MySQL or {@link FileCatalog}) — the tool this project kept
- * reinventing as a throwaway one-shot {@code main} class every time an entry
- * needed reading or a tag needed adding. Not a Swing app; run via:
+ * Command-line access to the {@link FileCatalog} — the tool this project
+ * kept reinventing as a throwaway one-shot {@code main} class every time an
+ * entry needed reading or a tag needed adding. Not a Swing app; run via:
  * <pre>
  * java -cp target/Voynich-1.0-jar-with-dependencies.jar nl.infcomtec.voynich.CatalogCli &lt;command&gt; [args]
  * </pre>

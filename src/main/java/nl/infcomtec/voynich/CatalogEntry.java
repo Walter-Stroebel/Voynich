@@ -12,10 +12,9 @@ import java.util.List;
  * path (e.g. a NAS copy plus a local NVMe copy kept for read speed); those
  * are the same catalog entry with two {@link #locations}, not two entries.
  * <p>
- * Serialized as-is through {@link JSON}: as a MySQL {@code JSON} column by
- * {@link MySqlCatalog}, or as a standalone {@code <filename>.json} sidecar
- * file by {@link FileCatalog}. Both backends store and load the identical
- * shape; see {@link Catalog#open(Config)} for which one a given run uses.
+ * Serialized as-is through {@link JSON} as a standalone
+ * {@code <filename>.json} sidecar file by {@link FileCatalog}, thumbnail
+ * included (see {@link #thumbnailPng}).
  */
 public class CatalogEntry {
 
@@ -68,6 +67,13 @@ public class CatalogEntry {
      * polygon always has at least 3 vertices.
      */
     public List<Vertex> contentArea = new ArrayList<>();
+    /**
+     * The stored thumbnail's raw PNG bytes, inline in this same JSON
+     * blob/column rather than a separate file or BLOB column — Jackson
+     * serializes {@code byte[]} as base64. {@code null} if no thumbnail has
+     * been stored yet.
+     */
+    public byte[] thumbnailPng;
 
     /**
      * One sighting of {@link CatalogEntry#filename} at a specific path, with
