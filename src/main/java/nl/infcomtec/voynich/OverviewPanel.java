@@ -5,8 +5,11 @@ package nl.infcomtec.voynich;
 
 import java.awt.BorderLayout;
 import java.awt.Component;
+import java.awt.Point;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.geom.AffineTransform;
+import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -52,7 +55,17 @@ public class OverviewPanel extends JPanel {
     private final List<CatalogEntry> allEntries = new ArrayList<>();
     private final DefaultListModel<CatalogEntry> model = new DefaultListModel<>();
     private final JList<CatalogEntry> list = new JList<>(model);
-    private final Map<String, Icon> thumbnails = new HashMap<>();
+    private final Map<String, BufferedImage> thumbnails = new HashMap<>();
+    /**
+     * When {@code true}, {@link EntryRenderer} dims every thumbnail pixel
+     * outside its entry's {@link CatalogEntry#contentArea} instead of
+     * showing the plain thumbnail — see {@link #setContentAreaOnly(boolean)}.
+     * Recomputed fresh on every repaint rather than cached: at thumbnail
+     * resolution the mask-and-dim pass ({@link BitSet2D#darkenOutside}) is
+     * microseconds, and {@code JList} only ever renders the handful of cells
+     * actually visible, so there's nothing worth caching here.
+     */
+    private boolean contentAreaOnly;
     /**
      * Filenames currently passing {@link #filter()}'s search text, or
      * {@code null} when no filter is active (show everything). In-memory
@@ -164,6 +177,49 @@ public class OverviewPanel extends JPanel {
     }
 
     /**
+     * Toggles whether the grid shows plain thumbnails or dims each one down
+     * to just its traced {@link CatalogEntry#contentArea}. An entry with no
+     * (or an incomplete, &lt;3-vertex) trace is left plain either way —
+     * this doubles as a visual "not yet traced" indicator, not a claim that
+     * the whole thumbnail is content. Wired to the app toolbar's toggle
+     * button in {@link Voynich#main}; must be called from the EDT.
+     *
+     * @param on {@code true} to show content-area-only, {@code false} for
+     * plain thumbnails
+     */
+    public void setContentAreaOnly(boolean on) {
+        this.contentAreaOnly = on;
+        list.repaint();
+    }
+
+    /**
+     * Maps {@code entry}'s {@link CatalogEntry#contentArea} (traced in its
+     * full-resolution image's own pixel coordinates) into the thumbnail's
+     * {@link ColorImage#THUMB_SIZE}×{@link ColorImage#THUMB_SIZE} coordinate
+     * space: the same uniform scale-then-center-translate
+     * {@link java.awt.geom.AffineTransform} that {@code ColorImage
+     * .buildThumbnails} used to build the thumbnail image itself (aspect
+     * preserved, no rotation/shear — a single scale factor for both axes
+     * plus one offset for whichever axis got letterboxed).
+     */
+    private static List<Point> contentAreaInThumbnailSpace(CatalogEntry entry) {
+        double scale = Math.min((double) ColorImage.THUMB_SIZE / entry.width, (double) ColorImage.THUMB_SIZE / entry.height);
+        int scaledW = Math.max(1, (int) Math.round(entry.width * scale));
+        int scaledH = Math.max(1, (int) Math.round(entry.height * scale));
+        int offX = (ColorImage.THUMB_SIZE - scaledW) / 2;
+        int offY = (ColorImage.THUMB_SIZE - scaledH) / 2;
+        AffineTransform toThumbnail = new AffineTransform();
+        toThumbnail.translate(offX, offY);
+        toThumbnail.scale(scale, scale);
+        List<Point> points = new ArrayList<>(entry.contentArea.size());
+        for (CatalogEntry.Vertex v : entry.contentArea) {
+            Point2D p = toThumbnail.transform(new Point2D.Double(v.x, v.y), null);
+            points.add(new Point((int) Math.round(p.getX()), (int) Math.round(p.getY())));
+        }
+        return points;
+    }
+
+    /**
      * Rebuilds {@link #model} from {@link #allEntries}, keeping only
      * entries in {@link #selectedFilenames} ({@code null} meaning
      * "keep all"). Call after any change to either.
@@ -261,11 +317,10 @@ public class OverviewPanel extends JPanel {
      * @param thumbnail the thumbnail to display, or {@code null} for none
      */
     public void addOrUpdate(final CatalogEntry entry, BufferedImage thumbnail) {
-        final Icon icon = null != thumbnail ? new ImageIcon(thumbnail) : null;
         Runnable apply = new Runnable() {
             @Override
             public void run() {
-                thumbnails.put(entry.filename, icon);
+                thumbnails.put(entry.filename, thumbnail);
                 int idx = indexOf(entry.filename);
                 if (idx >= 0) {
                     allEntries.set(idx, entry);
@@ -305,7 +360,16 @@ public class OverviewPanel extends JPanel {
         public Component getListCellRendererComponent(JList<? extends CatalogEntry> list, CatalogEntry entry,
                 int index, boolean isSelected, boolean cellHasFocus) {
             setText(entry.filename);
-            setIcon(thumbnails.get(entry.filename));
+            BufferedImage thumb = thumbnails.get(entry.filename);
+            Icon icon = null;
+            if (null != thumb) {
+                if (contentAreaOnly && entry.contentArea.size() >= 3) {
+                    icon = new ImageIcon(BitSet2D.darkenOutside(thumb, contentAreaInThumbnailSpace(entry)));
+                } else {
+                    icon = new ImageIcon(thumb);
+                }
+            }
+            setIcon(icon);
             setBackground(isSelected ? list.getSelectionBackground() : list.getBackground());
             setForeground(isSelected ? list.getSelectionForeground() : list.getForeground());
             return this;

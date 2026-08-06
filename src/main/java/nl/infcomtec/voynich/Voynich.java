@@ -15,6 +15,7 @@ import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
+import javax.swing.JToggleButton;
 import javax.swing.JToolBar;
 import javax.swing.SwingUtilities;
 
@@ -90,6 +91,7 @@ public class Voynich {
         fr.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         JPanel outer = new JPanel(new BorderLayout());
         JToolBar toolBar = new JToolBar();
+        // Acquisition.
         toolBar.add(new JButton(new EzAction("Scan") {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -101,6 +103,8 @@ public class Voynich {
                 }
             }
         }));
+        toolBar.addSeparator();
+        // Grid view/organize.
         toolBar.add(new JButton(new EzAction("Sort") {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -113,6 +117,14 @@ public class Voynich {
                 overview.filter();
             }
         }));
+        toolBar.add(new JToggleButton(new EzAction("Content Area Only") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                overview.setContentAreaOnly(((JToggleButton) e.getSource()).isSelected());
+            }
+        }));
+        toolBar.addSeparator();
+        // Review/tagging.
         JTextField markupTemplate = new JTextField("was@$X,$Y", 20);
         markupTemplate.setMaximumSize(markupTemplate.getPreferredSize());
         markupTemplate.setToolTipText("<html>Tag template for MarkUp review. Placeholders:<br>"
@@ -142,6 +154,8 @@ public class Voynich {
             }
         }));
         toolBar.add(markupTemplate);
+        toolBar.addSeparator();
+        // Whole-catalog safety net.
         toolBar.add(new JButton(new EzAction("Checkpoint") {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -174,6 +188,8 @@ public class Voynich {
                 }
             }
         }));
+        toolBar.addSeparator();
+        // Session control.
         toolBar.add(new JButton(new EzAction("Exit") {
             @Override
             public void actionPerformed(ActionEvent e) {

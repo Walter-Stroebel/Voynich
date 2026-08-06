@@ -5,14 +5,15 @@ point-in-time listing, not a maintained architecture doc — see `CLAUDE.md`
 for the actively-kept class rundown and `README.md` for current
 state/roadmap. Re-generate rather than hand-edit when it goes stale.
 
-## Code (`src/main/java/nl/infcomtec/voynich/`, 24 classes)
+## Code (`src/main/java/nl/infcomtec/voynich/`, 26 classes — see 2026-08-06 note)
 
 - **App shell**: `Voynich` (entry point/JFrame), `Config`/`JSON` (settings,
   Jackson wrappers), `EzAction` (styled Swing actions)
 - **Catalog layer**: `Catalog` (contract + `recordSighting`/`checkpoint`/
-  `restoreLatestCheckpoint`), `CatalogEntry`, `MySqlCatalog`, `FileCatalog` —
-  filename-keyed, MySQL or JSON+PNG sidecars; manual whole-catalog
-  checkpoint/undo on both backends (2026-08-04)
+  `restoreLatestCheckpoint`), `CatalogEntry`, `FileCatalog` — filename-keyed
+  JSON sidecars, thumbnail inlined as base64 (2026-08-06); manual
+  whole-catalog checkpoint/undo, one zip per checkpoint (2026-08-04,
+  reworked to zip 2026-08-06)
 - **UI**: `OverviewPanel` (thumbnail grid), `TaskWindow`/`ScanTaskWindow`
   (background-task progress pattern), `CatalogEntryEditor` (non-modal
   per-entry edit and shuffled whole-catalog review, sharing one
@@ -80,10 +81,27 @@ each entry's stored JSON key rewritten via `CatalogCli save`, vertex
 counts diffed against a pre-rename backup to confirm nothing was lost) —
 see CLAUDE.md's Catalog persistence section for the full rationale.
 
-Dependencies: FlatLaf 3.3, mysql-connector-java 8.0.27 (legacy artifact
-coordinate — `com.mysql:mysql-connector-j` is the maintained one, noted as
-minor housekeeping in the README roadmap), Jackson 2.18.2. No test
-framework yet.
+Note (2026-08-06): `MySqlCatalog` removed — thumbnails moved inline into
+`CatalogEntry` as base64 (`CatalogEntry.thumbnailPng`), all 213 entries
+exported from MySQL to `FileCatalog` and verified (counts, thumbnails,
+traced `contentArea` polygons) before the backend, its `mysql-connector-java`
+dependency, and its Docker/backup infra (`docker-compose.yml`,
+`docker-compose.nas.yml`, `.env.example`, `scripts/mysql-backup.sh`) were
+deleted. `FileCatalog` is now the only backend; `Catalog.open` no longer
+branches on `Config.db` (removed). Checkpoints changed from a per-file
+directory copy to a single `java.util.zip` archive per checkpoint, cheaper
+now that thumbnails are inlined. `OverviewPanel` gained a "Content Area
+Only" toolbar toggle — dims each thumbnail to just its traced
+`CatalogEntry.contentArea` (`AffineTransform`-mapped from full-res into
+256×256 thumbnail space), doubling as a visual to-trace checklist since an
+untraced entry stays plain. Fixed two build warnings in the same run
+(`BitSet2D.getOutline()` missing `@Deprecated`; `OverviewPanel.sort()`'s raw
+`Comparator[]` replaced with a `List`). Toolbar buttons reordered into
+logical groups with separators. 26 classes (net: `MySqlCatalog` removed,
+no classes added). See `CLAUDE.md`'s "Catalog persistence" section and
+`README.md`'s "Why plain files, not a DB" for the full rationale.
+
+Dependencies: FlatLaf 3.3, Jackson 2.18.2. No test framework yet.
 
 ## Data
 
@@ -91,8 +109,11 @@ framework yet.
   configured `scanPath`)
 - `data/voynich-page-index.json` — Yale Beinecke IIIF manifest mapping
   torrent-numbered JPGs (001–213) to canonical folio labels
-- `~/.voynich-catalog` (FileCatalog fallback dir) — empty on this machine;
-  the live catalog is MySQL on predator (192.168.2.23:13306)
+- `~/.voynich-catalog` — the live catalog (213 entries as of 2026-08-06,
+  migrated from MySQL, see the 2026-08-06 code note above); one
+  `<filename>.json` per entry, thumbnail inlined
+- `~/.voynich-catalog-checkpoints/` — manual checkpoints, one
+  `<epoch-millis>.zip` each, never auto-pruned
 - `src/main/resources/stolfi/` (gitignored — third-party sourced + one
   session's scratch analysis, not an app deliverable):
   - `LSI_ivtff_0d.txt` (1.7M) — Landini-Stolfi Interlinear transcription
@@ -131,23 +152,26 @@ app's own catalog. Six `voynich*` directories:
   so this exists **only** on the NAS, not on predator's NVMe or in
   `voybak`. See "Research findings" below — completely unanalyzed as of
   this writing.
-- `voynich_mysql_backups/` — 5 gzipped `mysqldump` files, 49M, nightly
-  cron output from `scripts/mysql-backup.sh`, 14-day retention
+- `voynich_mysql_backups/` — 5 gzipped `mysqldump` files, 49M; frozen as of
+  2026-08-06 when `MySqlCatalog`/`scripts/mysql-backup.sh` were retired
+  (the nightly cron that fed it is gone too — see the code note above), not
+  actively cleaned up
 
 ## Infrastructure
 
-- `docker-compose.yml` + `.env.example` — single MySQL 8 container
-  (`voynich-mysql`, port 13306, non-default on purpose), option-file
-  credentials
-- `docker-compose.nas.yml` — NAS-side variant
+- `docker-compose.yml`, `docker-compose.nas.yml`, `.env.example`,
+  `scripts/mysql-backup.sh` — **deleted 2026-08-06** along with
+  `MySqlCatalog`; the `voynich-mysql` container on predator
+  (192.168.2.23:13306) that these provisioned was left running (a live
+  container on another machine, not a repo file — Walter's call to
+  stop/remove it separately) but the app no longer reads or writes it
 - `replication/` — GTID master-slave + master-master MySQL topology,
-  live-tested mach1↔mach2, not yet consumed by `Config`/`MySqlCatalog`
-  (roadmap item)
-- `scripts/mysql-backup.sh` — backup script, restore-tested
-- **Live services**: `voynich-mysql` running on predator
-  (192.168.2.23:13306), actively used by this app; predator also runs a
-  nightly NAS backup and hosts an unrelated local-LLM experiment
-  (gemma-4-e4b via LM Studio)
+  live-tested mach1↔mach2; always `Catalog`-independent, and now the only
+  MySQL-flavored infra left in the repo (2026-08-06) — see `README.md`'s
+  "Why plain files, not a DB"
+- predator also runs a nightly NAS backup (feeding the now-frozen
+  `voynich_mysql_backups/` above) and hosts an unrelated local-LLM
+  experiment (gemma-4-e4b via LM Studio)
 - **`predator:/home/walter/voybak/Voynich/`** — a full rsync mirror of
   this project directory (code + gitignored `stolfi/` research data), kept
   on predator's own NVMe. Deliberate second-machine, second-disk backup —
@@ -161,7 +185,7 @@ app's own catalog. Six `voynich*` directories:
 
 - `README.md` — project framing ("Lightroom for generic image
   collections," Voynich as convenient dataset not subject), current-state/
-  roadmap, three tested configs
+  roadmap
 - `CLAUDE.md` — build commands, architecture table, Java style rules
 - `replication/README.md` — replication setup walkthrough
 

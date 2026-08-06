@@ -663,4 +663,49 @@ public class BitSet2D extends BitSet implements Cloneable, Iterable<Point> {
         };
     }
 
+    /**
+     * Rasterizes {@code polygon} via {@link #createFromPolygon} at
+     * {@code image}'s own size and returns a copy of {@code image} with
+     * every pixel outside it dimmed to a quarter brightness — the shared
+     * "everything but the traced content" visualization behind both
+     * {@code CatalogEntryEditor}'s "Show Mask" toggle (full-resolution scans)
+     * and {@code OverviewPanel}'s content-area toggle (thumbnails). Cheap
+     * enough at either size to call fresh on every use rather than caching:
+     * a scanline fill plus one pass over the pixels, no per-pixel
+     * {@link Shape#contains} cost.
+     *
+     * @param image the image to dim outside {@code polygon}; not mutated
+     * @param polygon vertices in {@code image}'s own pixel coordinates —
+     * fewer than 3 dims the whole image (an empty/untraced polygon means
+     * "nothing confirmed as content yet", not "confirmed empty")
+     * @return a new, dimmed-outside-the-polygon copy of {@code image}
+     */
+    public static BufferedImage darkenOutside(BufferedImage image, List<Point> polygon) {
+        int w = image.getWidth();
+        int h = image.getHeight();
+        BitSet2D mask = createFromPolygon(polygon, w, h);
+        int[] pixels = image.getRGB(0, 0, w, h, null, 0, w);
+        for (int y = 0; y < h; y++) {
+            int rowOffset = y * w;
+            for (int x = 0; x < w; x++) {
+                if (!mask.get2D(x, y)) {
+                    pixels[rowOffset + x] = darken(pixels[rowOffset + x]);
+                }
+            }
+        }
+        BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        out.setRGB(0, 0, w, h, pixels, 0, w);
+        return out;
+    }
+
+    /**
+     * @return {@code rgb} at a quarter brightness, for dimming everything a
+     * traced content-area polygon excludes
+     */
+    private static int darken(int rgb) {
+        int r = ((rgb >> 16) & 0xFF) / 4;
+        int g = ((rgb >> 8) & 0xFF) / 4;
+        int b = (rgb & 0xFF) / 4;
+        return (r << 16) | (g << 8) | b;
+    }
 }

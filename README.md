@@ -35,12 +35,9 @@ gap.
 - Per-image colour inventory — every distinct colour in a decoded image with its pixel count (`ColorImage.cb`, `ColorImage.labIndex`)
 - Fixed 256×256 thumbnail generated on load (aspect-preserved, black-letterboxed to match real scanbed edges), matching the freedesktop.org thumbnail-spec "large" size so a single 4K monitor can host a proper contact sheet
 - A CIELab-thumbnail distance metric (`ColorImage.distanceTo`) — mean per-cell ΔE between two images' thumbnails, resolution-independent, the basis for "is this a copy of that" comparisons across a collection. A scaling bug in `ColorBase` made every `deltaE`/`distanceTo` result ~100× too small until fixed 2026-08-05 (nothing had consumed the numbers yet, so nothing else was silently affected)
-- A catalog persistence layer (`Catalog`/`CatalogEntry`, with `MySqlCatalog` and `FileCatalog` backends) — one record + thumbnail per filename, keyed by filename rather than path so the same file at two locations (e.g. a NAS copy and a local NVMe copy) is one entry, not two. MySQL is optional (runs via `docker-compose.yml`) and falls back automatically to plain JSON+PNG sidecar files when unconfigured
+- A catalog persistence layer (`Catalog`/`CatalogEntry`, `FileCatalog` backend) — one JSON record per filename, thumbnail inlined as base64, keyed by filename rather than path so the same file at two locations (e.g. a NAS copy and a local NVMe copy) is one entry, not two. A `MySqlCatalog` backend existed earlier in the project; retired 2026-08-06 once every entry had been exported to and verified against the file backend — see `CLAUDE.md`'s "Catalog persistence" section
 
 **Implemented (app level):**
-- `MySqlCatalog` smoke-tested against a real container — a live
-  `recordSighting`/`loadEntry`/`loadThumbnail` round-trip, not just compiled
-  code
 - `Catalog` wired into `Voynich.main`: the toolbar's Scan action walks
   `config.scanPath`, decodes each image, and records it via
   `Catalog.recordSighting`, with progress shown live in a `TaskWindow`
@@ -82,11 +79,18 @@ gap.
   stages a tag in an editable box; nothing is persisted until Done, so a
   whole pass is reviewable/correctable before any of it hits storage
 - Manual checkpoint/undo for the whole catalog (`Catalog.checkpoint()`/
-  `Catalog.restoreLatestCheckpoint()`) — a coarse, whole-catalog clone
-  (a timestamped sibling directory for `FileCatalog`, a `CREATE TABLE ... AS
-  SELECT` clone of the `images` table for `MySqlCatalog`), restorable via the
-  toolbar's Checkpoint/Undo buttons or `CatalogCli checkpoint`/`restore`. No
-  automatic pruning of old checkpoints — deliberate, left for hand cleanup
+  `Catalog.restoreLatestCheckpoint()`) — a coarse, whole-catalog clone into
+  one timestamped zip (`java.util.zip`, no extra dependency), restorable via
+  the toolbar's Checkpoint/Undo buttons or `CatalogCli checkpoint`/`restore`.
+  No automatic pruning of old checkpoints — deliberate, left for hand cleanup
+- A content-area-only view toggle in `OverviewPanel` (the toolbar's "Content
+  Area Only" button) — dims every thumbnail down to just its traced
+  `CatalogEntry.contentArea`, mapped from the polygon's full-resolution
+  coordinates into the 256×256 thumbnail's via the same scale-and-center
+  `AffineTransform` used to build the thumbnail in the first place. An
+  entry with no (or an incomplete) trace stays plain either way, so the
+  toggle doubles as a visual "still needs tracing" checklist rather than
+  implying an untraced page is confirmed empty
 - Two per-entry colour visualizations in `CatalogEntryEditor`, opened as
   independent windows via `ViewFrame`: `FrequencyBarChart` (ranked swatch
   bars, colours grouped into perceptual CIELab bins rather than ranked by
@@ -112,99 +116,33 @@ compile:
    duplicate-cluster caching, if an O(n²) `distanceTo` pass over a real
    collection turns out to actually be a bottleneck. Don't build this
    speculatively.
-3. **Deferred, nice-to-have:** primary/replica MySQL topology (fast NVMe
-   primary, NAS replica) if a long-running catalog operation actually
-   demands the durability. See "Why Docker + MySQL" below for why this is
-   even possible at all. The replication mechanics themselves are built and
-   live-tested (`replication/`, both master-slave and master-master) — what's
-   still missing is any consumer of it: `Config` carries exactly one
-   `db` endpoint, and `MySqlCatalog` has no notion of a second host to fail
-   over to. `MySqlCatalog` does retry once through a dead/hiccuped
-   connection (real hardware drops connections; that's normal, not a
-   failover event), but a primary that's actually down still requires
-   editing `db.host` by hand and restarting the app — this item is what
-   would make that automatic.
-4. **Minor housekeeping:** `mysql-connector-java:8.0.27` is the legacy
-   artifact coordinate (`groupId: mysql`); the maintained one is
-   `com.mysql:mysql-connector-j`. Still works, not urgent.
-5. Editing operations (crop, exposure, white balance, etc.) — not scoped
+3. Editing operations (crop, exposure, white balance, etc.) — not scoped
    yet at all; this project has stayed cataloging/comparison so far, not
    editing.
 
-## Why Docker + MySQL, not SQLite
+## Why plain files, not a DB
 
-The obvious default for a single-user desktop catalog is an embedded
-file-based DB — SQLite, the same thing Lightroom's own `.lrcat` uses. That
-was the first instinct here too, and it's wrong for this project: it's
-precedent applied without checking whether the precedent's assumptions
-still hold, i.e. cargo-culting.
+The catalog started on MySQL (in Docker, with a matching GTID
+master-slave/master-master replication setup in `replication/` for
+durability during long-running operations) on the reasoning that anyone
+running their own container already has the "which DB, where, why, how"
+answers a single-user desktop tool shouldn't pre-decide for them. That
+backend was retired 2026-08-06: once thumbnails moved inline into each
+entry's JSON (base64, no separate BLOB/sidecar to keep in sync) and
+whole-catalog checkpoints became a single zip instead of a directory/table
+copy, the file backend covered everything the project actually needed, and
+running a second stateful service just to browse a few hundred images
+stopped paying for itself. All 213 entries were exported to and verified
+against the file backend (counts, thumbnails, traced `contentArea`
+polygons) before the MySQL code and its Docker/backup infra were deleted —
+see `CLAUDE.md`'s "Catalog persistence" section for the mechanics that
+replaced it.
 
-The actual reasoning: anyone with the skill to run MySQL in a container
-already has the answer to "which DB, where, why, how" — that's what running
-your own container *is*. Pre-deciding those questions for them with an
-embedded default takes away knobs a user at that level already knows how to
-turn (placement, sizing, backup, networking) and replaces them with nothing
-in return, since Docker removes the actual pain SQLite was invented to
-avoid (installing and administering a long-running service by hand).
-
-It also opens a topology SQLite can't: a primary container on fast NVMe for
-working speed, and a replica on slower NAS storage purely for durability.
-Worth having specifically because some catalog operations here — hashing,
-comparing, or re-thumbnailing an entire collection — can run for hours,
-days, or weeks; surviving a primary-disk failure mid-run is a real
-"disk full at 2am, three days in" scenario, not a hypothetical. That's a
-nice-to-have, not a requirement — `docker-compose.yml` and `.env.example` in
-this repo are a minimal single-container example to adapt, not a prescribed
-topology. `Catalog` doesn't care either way: it just needs one reachable
-MySQL endpoint through `Config.db`, and falls back to plain files if none is
-configured — see `CLAUDE.md`'s "Catalog persistence" section for the
-mechanics.
-
-## Test configurations
-
-Docs and examples below use two placeholder LAN hosts instead of real
-machine names — swap in whatever you actually have:
-
-- `mach1` — `192.168.2.12`, the main work machine.
-- `mach2` — `192.168.2.23`, a borrowed test machine: treat it as "don't
-  break it" — everything on it lives in Docker, so the whole footprint is
-  one `docker compose down -v` away from gone.
-
-Config is always by IPv4 address, never hostname/mDNS or IPv6 — there's no
-LAN-level problem here IPv6 solves.
-
-Three configurations worth testing against, in order of how much is set up:
-
-1. **File-only, no Docker/MySQL** (`mach1`) — no `db` block at all, so
-   `Catalog.open` falls back to `FileCatalog` under `~/.voynich-catalog`.
-   ```json
-   { "scanPath": "/path/to/scans" }
-   ```
-2. **MySQL in Docker, non-default port** (`mach1`) — the common case for
-   actual use: `docker compose up -d` on the same machine, then point the
-   app at it by IP (see `docker-compose.yml`/`.env.example` for why never
-   port 3306).
-   ```json
-   {
-     "scanPath": "/path/to/scans",
-     "db": { "host": "192.168.2.12", "port": 13306, "database": "voynich", "user": "voynich", "password": "..." }
-   }
-   ```
-3. **Borrowed machine, as a MySQL replica** (`mach2`) — `mach2` runs its own
-   MySQL-in-Docker, GTID-replicating from `mach1` (master-slave), optionally
-   promoted to master-master. Nothing touches the host outside Docker, so
-   "don't break it" is satisfied by containment rather than by installing
-   nothing — see `replication/README.md` for the compose files, setup
-   scripts, and a live-tested walkthrough (master-slave and master-master
-   both verified working between the real `mach1`/`mach2`).
-   ```json
-   {
-     "scanPath": "/path/to/scans",
-     "db": { "host": "192.168.2.23", "port": 13307, "database": "voynich", "user": "voynich", "password": "..." }
-   }
-   ```
-   The app just points at whichever node's IP:port — replication is a
-   server-to-server concern the JVM client never sees.
+`replication/` is unrelated infrastructure exploration that predates this
+decision and remains in the repo as generic, `Catalog`-independent GTID
+MySQL replication work (master-slave and master-master, live-tested between
+two real machines) — see `replication/README.md` if that's ever useful for
+something else. Nothing in `Catalog`/`Config` consumes it.
 
 ## Build and run
 

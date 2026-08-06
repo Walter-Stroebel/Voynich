@@ -360,20 +360,7 @@ final class CatalogEntryEditor {
                 for (CatalogEntry.Vertex v : forEntry.contentArea) {
                     vertices.add(new Point(v.x, v.y));
                 }
-                BitSet2D mask = BitSet2D.createFromPolygon(vertices, source.getWidth(), source.getHeight());
-                int w = source.getWidth();
-                int h = source.getHeight();
-                int[] pixels = source.getRGB(0, 0, w, h, null, 0, w);
-                for (int y = 0; y < h; y++) {
-                    int rowOffset = y * w;
-                    for (int x = 0; x < w; x++) {
-                        if (!mask.get2D(x, y)) {
-                            pixels[rowOffset + x] = darken(pixels[rowOffset + x]);
-                        }
-                    }
-                }
-                BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
-                out.setRGB(0, 0, w, h, pixels, 0, w);
+                BufferedImage out = BitSet2D.darkenOutside(source, vertices);
                 return new ImageIcon(ImageDisplay.scaleToFit(out, imageMaxW, imageMaxH));
             }
 
@@ -395,17 +382,6 @@ final class CatalogEntryEditor {
                 }
             }
         }.execute();
-    }
-
-    /**
-     * @return {@code rgb} at a quarter brightness, for dimming everything
-     * {@link CatalogEntry#contentArea} excludes
-     */
-    private static int darken(int rgb) {
-        int r = ((rgb >> 16) & 0xFF) / 4;
-        int g = ((rgb >> 8) & 0xFF) / 4;
-        int b = (rgb & 0xFF) / 4;
-        return (r << 16) | (g << 8) | b;
     }
 
     private Color pixelAt(Point p) {
