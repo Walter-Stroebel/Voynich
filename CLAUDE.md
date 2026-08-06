@@ -20,7 +20,7 @@ regularly). Default to `locate <pattern>` for filesystem search instead of
 by mtime/size/permissions, or a path created since the last `updatedb` run.
 
 ## Configuration
-On first launch the app writes a template config to stderr and exits with code 2 if `~/.infVoy.json` is missing or `scanPath` is unset. Create the file manually:
+On first launch the app creates `~/.infVoy/` if missing (fails fast if that path exists but isn't a directory), then writes a template config to stderr and exits with code 2 if `~/.infVoy/config.json` is missing or `scanPath` is unset. Create the file manually:
 ```json
 {
   "scanPath": "/path/to/directory/of/png/scans"
@@ -34,7 +34,7 @@ Single Maven module, Java 17, Swing UI with **FlatDarculaLaf** dark theme.
 | Class | Role |
 |-------|------|
 | `Voynich` | Entry point. Loads config, validates `scanPath`, builds the main `JFrame`. |
-| `Config` | Plain POJO serialized to/from `~/.infVoy.json` via `JSON`. Add fields here for new persistent settings. `viewBounds` (a `Map<String, Config.Bounds>`) remembers named tool windows' last on-screen position/size — see `ViewFrame`. |
+| `Config` | Plain POJO serialized to/from `~/.infVoy/config.json` via `JSON`. Add fields here for new persistent settings. `viewBounds` (a `Map<String, Config.Bounds>`) remembers named tool windows' last on-screen position/size — see `ViewFrame`. |
 | `JSON` | Thin Jackson wrapper. Two `ObjectMapper` instances: `mapper` (pretty/indented) and `liner` (single-line). Always use these rather than creating a new `ObjectMapper`. |
 | `EzAction` | `AbstractAction` subclass with optional fluent color/font hints. Call `applyTo(component)` after constructing the button to apply styling. |
 | `OverviewPanel` | Main content view: a `JList` grid of catalog thumbnails, `HORIZONTAL_WRAP`. Clicking a thumbnail opens `CatalogEntryEditor.edit` for that entry — see "Catalog persistence" below. |
@@ -55,7 +55,7 @@ Single Maven module, Java 17, Swing UI with **FlatDarculaLaf** dark theme.
 | `CatalogCli` | Command-line access to the catalog (`list`, with an optional case-insensitive/invertible text filter over an entry's whole JSON; `get`/`tag`/`save`; `checkpoint`/`restore`), through the same `Catalog.open(Config)` the GUI uses. Run via `java -cp target/Voynich-1.0-jar-with-dependencies.jar nl.infcomtec.voynich.CatalogCli <command>`, bypassing the fat jar's GUI `Main-Class`. `extract` pulls real decoded pixels: `--pixel x,y`/`--region x,y,w,h` (repeatable) go through `ColorImage`/`ColorBase` for rgb/lab/hex output, same colour math the GUI views use; `--content-area` skips that (no Lab decode needed for a raw crop) and instead writes a PNG cropped to `CatalogEntry.contentArea`'s bounding box, black outside the polygon (via `BitSet2D.createFromPolygon`). |
 
 ### Catalog persistence
-`Catalog.open(config)` opens `FileCatalog` rooted at `~/.voynich-catalog`, one
+`Catalog.open(config)` opens `FileCatalog` rooted at `~/.infVoy/catalog`, one
 pretty-printed `.json` sidecar per entry, thumbnail bytes inlined as base64
 in that same file via `CatalogEntry.thumbnailPng` (a plain `byte[]`; Jackson
 handles the base64 encoding). The MySQL backend (`MySqlCatalog`) that used to
@@ -108,7 +108,7 @@ a label catching up to what the data already was.
 `Catalog.checkpoint()`/`Catalog.restoreLatestCheckpoint()` give a manual,
 whole-catalog undo: `checkpoint()` zips the entire current state into one
 timestamped `<epoch-millis>.zip` (via `java.util.zip`, no extra dependency)
-under `~/.voynich-catalog-checkpoints`, cheaper on disk than a raw directory
+under `~/.infVoy/catalog-checkpoints`, cheaper on disk than a raw directory
 copy now that each entry's thumbnail is inlined as base64;
 `restoreLatestCheckpoint()` replaces the whole catalog with the newest such
 zip, discarding anything written since — a full replace, not a merge, and
@@ -116,6 +116,15 @@ not a stack (always the single most recent checkpoint, never an older one).
 Old checkpoints are never pruned automatically; that's deliberate, left for
 hand cleanup rather than built speculatively. Wired to the toolbar's
 Checkpoint/Undo buttons and `CatalogCli checkpoint`/`restore`.
+
+Config, catalog, and checkpoints all moved under one `~/.infVoy/` base
+directory 2026-08-07 (previously three separate home-dir dotfiles:
+`~/.infVoy.json`, `~/.voynich-catalog`, `~/.voynich-catalog-checkpoints`).
+`Voynich.baseDir` creates `~/.infVoy` on class load if missing and fails
+fast if that path exists but isn't a directory; `Voynich.configFile` and
+`Catalog.open` both derive from it, and `CatalogCli` reuses
+`Voynich.configFile` rather than resolving its own copy. No migration code
+was added — existing data was moved by hand.
 
 ### Colour analysis pipeline
 Understanding this requires reading `EnhancedColor`, `FloatColor`, `YUV`, and `ColorBase` together — no single file tells the whole story.

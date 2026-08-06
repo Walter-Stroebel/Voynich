@@ -34,8 +34,7 @@ public class CatalogCli {
             usage();
             return;
         }
-        File configFile = new File(System.getProperty("user.home"), ".infVoy.json");
-        Config cfg = JSON.getMapper().readValue(configFile, Config.class);
+        Config cfg = JSON.getMapper().readValue(Voynich.configFile, Config.class);
         Catalog catalog = Catalog.open(cfg);
 
         String command = args[0];

@@ -146,13 +146,13 @@ public interface Catalog {
 
     /**
      * Opens the catalog: {@link FileCatalog} rooted at
-     * {@code ~/.voynich-catalog}.
+     * {@code <Voynich.baseDir>/catalog}.
      *
      * @param config the loaded application config
      * @return an open {@code Catalog}
      * @throws IOException if the backend can't be opened
      */
     static Catalog open(Config config) throws IOException {
-        return new FileCatalog(new File(System.getProperty("user.home"), ".voynich-catalog"));
+        return new FileCatalog(new File(Voynich.baseDir, "catalog"));
     }
 }

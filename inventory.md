@@ -109,10 +109,12 @@ Dependencies: FlatLaf 3.3, Jackson 2.18.2. No test framework yet.
   configured `scanPath`)
 - `data/voynich-page-index.json` — Yale Beinecke IIIF manifest mapping
   torrent-numbered JPGs (001–213) to canonical folio labels
-- `~/.voynich-catalog` — the live catalog (213 entries as of 2026-08-06,
+- `~/.infVoy/catalog` — the live catalog (213 entries as of 2026-08-06,
   migrated from MySQL, see the 2026-08-06 code note above); one
-  `<filename>.json` per entry, thumbnail inlined
-- `~/.voynich-catalog-checkpoints/` — manual checkpoints, one
+  `<filename>.json` per entry, thumbnail inlined. Moved here from
+  `~/.voynich-catalog` 2026-08-07 along with config and checkpoints, see
+  CLAUDE.md's Catalog persistence section
+- `~/.infVoy/catalog-checkpoints/` — manual checkpoints, one
   `<epoch-millis>.zip` each, never auto-pruned
 - `src/main/resources/stolfi/` (gitignored — third-party sourced + one
   session's scratch analysis, not an app deliverable):

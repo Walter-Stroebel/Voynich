@@ -27,10 +27,27 @@ public class Voynich {
 
     public static final String TITLE = "Voynich tools by InfcomTec";
     /**
-     * Path to the config file. Defaults to {@code ~/.infVoy.json}, overridable
-     * via the first CLI argument.
+     * Base directory for all app state: config, catalog, checkpoints.
+     * Created on class load if missing; a pre-existing non-directory at this
+     * path is a fatal misconfiguration, not something to work around.
      */
-    public static File configFile = new File(System.getProperty("user.home"), ".infVoy.json");
+    public static final File baseDir = initBaseDir();
+    /**
+     * Path to the config file. Defaults to {@code <baseDir>/config.json},
+     * overridable via the first CLI argument.
+     */
+    public static File configFile = new File(baseDir, "config.json");
+
+    private static File initBaseDir() {
+        File dir = new File(System.getProperty("user.home"), ".infVoy");
+        if (!dir.exists() && !dir.mkdir()) {
+            throw new IllegalStateException("Could not create " + dir);
+        }
+        if (!dir.isDirectory()) {
+            throw new IllegalStateException(dir + " exists but is not a directory");
+        }
+        return dir;
+    }
     /**
      * The config loaded from {@link #configFile} at startup.
      */

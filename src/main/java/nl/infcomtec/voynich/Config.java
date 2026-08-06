@@ -7,7 +7,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Persistent settings, serialized to/from {@code ~/.infVoy.json} via {@link JSON}.
+ * Persistent settings, serialized to/from {@code ~/.infVoy/config.json} via {@link JSON}.
  */
 public class Config {
 
