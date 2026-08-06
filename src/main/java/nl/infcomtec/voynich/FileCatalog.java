@@ -4,15 +4,21 @@
 package nl.infcomtec.voynich;
 
 import java.awt.image.BufferedImage;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.FilenameFilter;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 import javax.imageio.ImageIO;
 
 /**
@@ -34,9 +40,9 @@ public class FileCatalog implements Catalog {
     private final File dir;
     /**
      * Sibling of {@link #dir}, not nested inside it — so {@link #checkpoint()}
-     * copying {@link #dir}'s contents never recurses into its own checkpoints.
-     * Each checkpoint is one subdirectory named by the epoch-millis timestamp
-     * it was taken at.
+     * zipping {@link #dir}'s contents never recurses into its own checkpoints.
+     * Each checkpoint is one {@code <epoch-millis>.zip} file, named by the
+     * timestamp it was taken at.
      */
     private final File checkpointsDir;
 
@@ -109,21 +115,25 @@ public class FileCatalog implements Catalog {
 
     @Override
     public void checkpoint() throws IOException {
-        File target = new File(checkpointsDir, Long.toString(System.currentTimeMillis()));
-        if (!target.mkdirs()) {
-            throw new IOException("Could not create checkpoint directory " + target);
+        if (!checkpointsDir.exists() && !checkpointsDir.mkdirs()) {
+            throw new IOException("Could not create checkpoints directory " + checkpointsDir);
         }
+        File target = new File(checkpointsDir, System.currentTimeMillis() + ".zip");
         File[] files = dir.listFiles();
-        if (null != files) {
-            for (File f : files) {
-                Files.copy(f.toPath(), new File(target, f.getName()).toPath(), StandardCopyOption.COPY_ATTRIBUTES);
+        try (ZipOutputStream zip = new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(target)))) {
+            if (null != files) {
+                for (File f : files) {
+                    zip.putNextEntry(new ZipEntry(f.getName()));
+                    Files.copy(f.toPath(), zip);
+                    zip.closeEntry();
+                }
             }
         }
     }
 
     @Override
     public void restoreLatestCheckpoint() throws IOException {
-        File[] checkpoints = checkpointsDir.listFiles(File::isDirectory);
+        File[] checkpoints = checkpointsDir.listFiles((d, name) -> name.endsWith(".zip"));
         if (null == checkpoints || 0 == checkpoints.length) {
             throw new IllegalStateException("No checkpoint to restore");
         }
@@ -131,7 +141,7 @@ public class FileCatalog implements Catalog {
         long latestMillis = -1;
         for (File candidate : checkpoints) {
             try {
-                long millis = Long.parseLong(candidate.getName());
+                long millis = Long.parseLong(candidate.getName().substring(0, candidate.getName().length() - 4));
                 if (millis > latestMillis) {
                     latestMillis = millis;
                     latest = candidate;
@@ -149,10 +159,11 @@ public class FileCatalog implements Catalog {
                 Files.delete(f.toPath());
             }
         }
-        File[] saved = latest.listFiles();
-        if (null != saved) {
-            for (File f : saved) {
-                Files.copy(f.toPath(), new File(dir, f.getName()).toPath(), StandardCopyOption.COPY_ATTRIBUTES);
+        try (ZipInputStream zip = new ZipInputStream(new BufferedInputStream(new FileInputStream(latest)))) {
+            ZipEntry entry;
+            while (null != (entry = zip.getNextEntry())) {
+                Files.copy(zip, new File(dir, entry.getName()).toPath());
+                zip.closeEntry();
             }
         }
     }

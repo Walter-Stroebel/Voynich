@@ -106,10 +106,12 @@ there was no split "some entries mean the old thing" case to preserve, just
 a label catching up to what the data already was.
 
 `Catalog.checkpoint()`/`Catalog.restoreLatestCheckpoint()` give a manual,
-whole-catalog undo: `checkpoint()` clones the entire current state (a
-sibling directory, timestamped) under `~/.voynich-catalog-checkpoints`;
+whole-catalog undo: `checkpoint()` zips the entire current state into one
+timestamped `<epoch-millis>.zip` (via `java.util.zip`, no extra dependency)
+under `~/.voynich-catalog-checkpoints`, cheaper on disk than a raw directory
+copy now that each entry's thumbnail is inlined as base64;
 `restoreLatestCheckpoint()` replaces the whole catalog with the newest such
-clone, discarding anything written since — a full replace, not a merge, and
+zip, discarding anything written since — a full replace, not a merge, and
 not a stack (always the single most recent checkpoint, never an older one).
 Old checkpoints are never pruned automatically; that's deliberate, left for
 hand cleanup rather than built speculatively. Wired to the toolbar's
