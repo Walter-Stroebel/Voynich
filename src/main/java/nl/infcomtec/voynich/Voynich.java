@@ -173,36 +173,17 @@ public class Voynich {
         toolBar.add(markupTemplate);
         toolBar.addSeparator();
         // Whole-catalog safety net.
-        toolBar.add(new JButton(new EzAction("Checkpoint") {
+        toolBar.add(new JButton(new EzAction("Storage") {
             @Override
             public void actionPerformed(ActionEvent e) {
-                try {
-                    catalog.checkpoint();
-                } catch (IOException ex) {
-                    JOptionPane.showMessageDialog(fr, "Could not checkpoint: " + ex.getMessage(),
-                            "Checkpoint failed", JOptionPane.ERROR_MESSAGE);
-                }
-            }
-        }));
-        toolBar.add(new JButton(new EzAction("Undo") {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                int choice = JOptionPane.showConfirmDialog(fr,
-                        "Discard everything since the last checkpoint?",
-                        "Restore checkpoint", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
-                if (choice != JOptionPane.YES_OPTION) {
-                    return;
-                }
-                try {
-                    catalog.restoreLatestCheckpoint();
-                    overview.loadFromCatalog();
-                } catch (IllegalStateException ex) {
-                    JOptionPane.showMessageDialog(fr, ex.getMessage(),
-                            "Nothing to restore", JOptionPane.INFORMATION_MESSAGE);
-                } catch (IOException ex) {
-                    JOptionPane.showMessageDialog(fr, "Could not restore checkpoint: " + ex.getMessage(),
-                            "Restore failed", JOptionPane.ERROR_MESSAGE);
-                }
+                StorageDialog.open(fr, catalog, () -> {
+                    try {
+                        overview.loadFromCatalog();
+                    } catch (IOException ex) {
+                        JOptionPane.showMessageDialog(fr, "Could not reload catalog: " + ex.getMessage(),
+                                "Reload failed", JOptionPane.ERROR_MESSAGE);
+                    }
+                });
             }
         }));
         toolBar.addSeparator();

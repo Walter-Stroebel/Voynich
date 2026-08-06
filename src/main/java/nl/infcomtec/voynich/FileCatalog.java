@@ -132,26 +132,28 @@ public class FileCatalog implements Catalog {
     }
 
     @Override
-    public void restoreLatestCheckpoint() throws IOException {
-        File[] checkpoints = checkpointsDir.listFiles((d, name) -> name.endsWith(".zip"));
-        if (null == checkpoints || 0 == checkpoints.length) {
-            throw new IllegalStateException("No checkpoint to restore");
-        }
-        File latest = null;
-        long latestMillis = -1;
-        for (File candidate : checkpoints) {
-            try {
-                long millis = Long.parseLong(candidate.getName().substring(0, candidate.getName().length() - 4));
-                if (millis > latestMillis) {
-                    latestMillis = millis;
-                    latest = candidate;
+    public List<Catalog.CheckpointInfo> listCheckpoints() throws IOException {
+        List<Catalog.CheckpointInfo> result = new ArrayList<>();
+        File[] files = checkpointsDir.listFiles((d, name) -> name.endsWith(".zip"));
+        if (null != files) {
+            for (File f : files) {
+                String base = f.getName().substring(0, f.getName().length() - 4);
+                try {
+                    result.add(new Catalog.CheckpointInfo(Long.parseLong(base), f.length()));
+                } catch (NumberFormatException ignored) {
+                    // not one of ours; skip it
                 }
-            } catch (NumberFormatException ignored) {
-                // not one of ours; skip it
             }
         }
-        if (null == latest) {
-            throw new IllegalStateException("No checkpoint to restore");
+        result.sort((a, b) -> Long.compare(b.timestampMillis, a.timestampMillis));
+        return result;
+    }
+
+    @Override
+    public void restoreCheckpoint(long timestampMillis) throws IOException {
+        File source = new File(checkpointsDir, timestampMillis + ".zip");
+        if (!source.exists()) {
+            throw new IllegalStateException("No checkpoint at " + timestampMillis);
         }
         File[] current = dir.listFiles();
         if (null != current) {
@@ -159,12 +161,37 @@ public class FileCatalog implements Catalog {
                 Files.delete(f.toPath());
             }
         }
-        try (ZipInputStream zip = new ZipInputStream(new BufferedInputStream(new FileInputStream(latest)))) {
+        try (ZipInputStream zip = new ZipInputStream(new BufferedInputStream(new FileInputStream(source)))) {
             ZipEntry entry;
             while (null != (entry = zip.getNextEntry())) {
                 Files.copy(zip, new File(dir, entry.getName()).toPath());
                 zip.closeEntry();
             }
         }
+    }
+
+    @Override
+    public void deleteCheckpoint(long timestampMillis) throws IOException {
+        File target = new File(checkpointsDir, timestampMillis + ".zip");
+        if (!target.exists()) {
+            throw new IOException("No checkpoint at " + timestampMillis);
+        }
+        Files.delete(target.toPath());
+    }
+
+    @Override
+    public Catalog.StorageInfo liveStorageInfo() throws IOException {
+        File[] files = dir.listFiles();
+        int entryCount = 0;
+        long totalBytes = 0;
+        if (null != files) {
+            for (File f : files) {
+                if (f.getName().endsWith(".json")) {
+                    entryCount++;
+                }
+                totalBytes += f.length();
+            }
+        }
+        return new Catalog.StorageInfo(dir.getAbsolutePath(), entryCount, totalBytes);
     }
 }

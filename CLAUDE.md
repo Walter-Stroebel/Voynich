@@ -136,9 +136,11 @@ copy now that each entry's thumbnail is inlined as base64;
 `restoreLatestCheckpoint()` replaces the whole catalog with the newest such
 zip, discarding anything written since — a full replace, not a merge, and
 not a stack (always the single most recent checkpoint, never an older one).
-Old checkpoints are never pruned automatically; that's deliberate, left for
-hand cleanup rather than built speculatively. Wired to the toolbar's
-Checkpoint/Undo buttons and `CatalogCli checkpoint`/`restore`.
+Old checkpoints are never pruned automatically by default — `StorageDialog`
+(opened via the toolbar's "Storage" button, replacing the old opaque
+Checkpoint/Undo pair 2026-08-07) makes them visible with take/restore/delete
+actions per checkpoint, showing each one's ISO timestamp, age, and size.
+`CatalogCli checkpoint`/`restore` remain the CLI equivalents.
 
 Config, catalog, and checkpoints all moved under one `~/.infVoy/` base
 directory 2026-08-07 (previously three separate home-dir dotfiles:
@@ -180,6 +182,9 @@ Normal hardware has 2–16 cores. Single-threaded Java is a special case requiri
 
 ### Multi-Monitor
 Users have 0 to N monitors. Reason about `GraphicsEnvironment` and `GraphicsDevice`. Window placement and screen-awareness are first-class concerns, not afterthoughts.
+
+### Time
+Represent instants as a `long` epoch-millisecond (`System.currentTimeMillis()`), not `java.time.Instant`/`LocalDateTime`/`Duration`. The epoch-millis `long` has been stable since Java 1.3, sorts and diffs with plain arithmetic, and is what timestamped filenames already use throughout this codebase (e.g. checkpoint zips, see "Catalog persistence"). `java.time` is a large object graph — instants, zones, chronologies, formatter builders — for a problem a `long` and `String.format`'s `%t`/`%T` conversions (which accept a `long` millis argument directly, no wrapper object needed) already solve. Reach for `java.time` only for genuine calendar arithmetic (month/day-of-week boundaries, DST-aware scheduling) — a plain age/duration or a display timestamp doesn't need it.
 
 ### UI
 Swing is the UI toolkit. Complete, stable, in the JDK, forty years of production evidence. Do not reach for JavaFX — it was never finished, the WebView is a frozen WebKit fossil, and its trajectory is driven by Oracle's attention span.

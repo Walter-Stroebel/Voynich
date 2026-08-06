@@ -53,23 +53,98 @@ public interface Catalog {
      * cheap — a directory copy or a {@code CREATE TABLE ... AS SELECT},
      * depending on backend. Checkpoints accumulate; nothing prunes them
      * automatically, by design — pruning is a separate, low-stakes concern
-     * left for hand cleanup.
+     * left for hand cleanup (see {@link #deleteCheckpoint}, driven by
+     * {@code StorageDialog}).
      *
      * @throws IOException if the clone fails
      */
     void checkpoint() throws IOException;
 
     /**
+     * Every checkpoint currently on disk, newest first — the data behind
+     * {@code StorageDialog}'s "what's there, how big, how old" view.
+     *
+     * @throws IOException if the listing fails
+     */
+    List<CheckpointInfo> listCheckpoints() throws IOException;
+
+    /**
+     * Replaces the entire catalog's current state with the checkpoint taken
+     * at {@code timestampMillis}. A full replace, not a merge: any entry
+     * written since that checkpoint is discarded, including one written
+     * after the checkpoint but never checkpointed itself.
+     *
+     * @param timestampMillis identifies the checkpoint, as returned by
+     * {@link CheckpointInfo#timestampMillis}
+     * @throws IOException if the restore fails
+     * @throws IllegalStateException if no such checkpoint exists
+     */
+    void restoreCheckpoint(long timestampMillis) throws IOException;
+
+    /**
+     * Permanently removes one checkpoint. Does not touch the live catalog or
+     * any other checkpoint.
+     *
+     * @param timestampMillis identifies the checkpoint, as returned by
+     * {@link CheckpointInfo#timestampMillis}
+     * @throws IOException if the delete fails or no such checkpoint exists
+     */
+    void deleteCheckpoint(long timestampMillis) throws IOException;
+
+    /**
      * Replaces the entire catalog's current state with its most recent
-     * {@link #checkpoint()}. A full replace, not a merge: any entry written
-     * since that checkpoint is discarded, including one written after the
-     * checkpoint but never checkpointed itself. Not a stack — this always
-     * targets the single most recent checkpoint, never an older one.
+     * {@link #checkpoint()}. Not a stack — this always targets the single
+     * most recent checkpoint, never an older one. Convenience wrapper over
+     * {@link #listCheckpoints()} and {@link #restoreCheckpoint}, built once
+     * here so backends only need to implement the two lower-level operations.
      *
      * @throws IOException if the restore fails
      * @throws IllegalStateException if no checkpoint exists yet
      */
-    void restoreLatestCheckpoint() throws IOException;
+    default void restoreLatestCheckpoint() throws IOException {
+        List<CheckpointInfo> checkpoints = listCheckpoints();
+        if (checkpoints.isEmpty()) {
+            throw new IllegalStateException("No checkpoint to restore");
+        }
+        restoreCheckpoint(checkpoints.get(0).timestampMillis);
+    }
+
+    /**
+     * Size of one checkpoint on disk, as listed by {@link #listCheckpoints()}.
+     */
+    final class CheckpointInfo {
+
+        public final long timestampMillis;
+        public final long sizeBytes;
+
+        public CheckpointInfo(long timestampMillis, long sizeBytes) {
+            this.timestampMillis = timestampMillis;
+            this.sizeBytes = sizeBytes;
+        }
+    }
+
+    /**
+     * Size of the live catalog itself (not a checkpoint), as shown at the
+     * top of {@code StorageDialog}.
+     */
+    final class StorageInfo {
+
+        public final String location;
+        public final int entryCount;
+        public final long totalBytes;
+
+        public StorageInfo(String location, int entryCount, long totalBytes) {
+            this.location = location;
+            this.entryCount = entryCount;
+            this.totalBytes = totalBytes;
+        }
+    }
+
+    /**
+     * @return size and location of the live catalog (not any checkpoint)
+     * @throws IOException if the read fails
+     */
+    StorageInfo liveStorageInfo() throws IOException;
 
     /**
      * Records that {@code filename} was seen at {@code file}'s path, merging
@@ -77,8 +152,8 @@ public interface Catalog {
      * makes a NAS copy and a local copy of the same file collapse into one
      * {@link CatalogEntry} with two {@link CatalogEntry.Location} rather than
      * two competing entries. Backend-agnostic: implemented once here on top
-     * of {@link #loadEntry} and {@link #save} so {@link MySqlCatalog} and
-     * {@link FileCatalog} don't each need their own merge logic.
+     * of {@link #loadEntry} and {@link #save} rather than in {@link FileCatalog}
+     * itself.
      *
      * @param filename the catalog key
      * @param file the file this sighting came from; its path, size and
