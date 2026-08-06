@@ -105,6 +105,21 @@ the old contract was never actually followed to the letter in practice, so
 there was no split "some entries mean the old thing" case to preserve, just
 a label catching up to what the data already was.
 
+What counts as "content" within that polygon is a signal-vs-noise call the
+tracing user makes per page, not a fixed rule — e.g. Walter generally
+excludes later-added modern arabic-numeral page numbers (added well after
+the manuscript itself, not part of it), but that judgment is his, over his
+copy of the scans, and isn't written down anywhere the software enforces.
+When a call like that is worth remembering, it goes in `CatalogEntry.tags`
+as free text (see above), not as a new structured field — same reasoning
+as `tags` itself staying free-form rather than a fixed taxonomy. Because
+this is a personal, per-collection judgment baked into `contentArea`/`tags`
+rather than something re-derivable from the scans, sharing a catalog
+between users will eventually need an explicit import/export path (e.g.
+diffing/merging two `FileCatalog` directories) rather than just handing
+over the raw catalog directory — not built yet, no consumer of it exists
+yet either.
+
 `Catalog.checkpoint()`/`Catalog.restoreLatestCheckpoint()` give a manual,
 whole-catalog undo: `checkpoint()` zips the entire current state into one
 timestamped `<epoch-millis>.zip` (via `java.util.zip`, no extra dependency)
