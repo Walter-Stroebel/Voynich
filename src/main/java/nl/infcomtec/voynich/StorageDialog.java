@@ -4,20 +4,23 @@
 package nl.infcomtec.voynich;
 
 import java.awt.BorderLayout;
+import java.awt.Font;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
 import java.awt.Window;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import javax.swing.BorderFactory;
+import javax.swing.ButtonGroup;
 import javax.swing.JButton;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JRadioButton;
 import javax.swing.JScrollPane;
-import javax.swing.JTable;
-import javax.swing.ListSelectionModel;
 import javax.swing.SwingConstants;
-import javax.swing.table.DefaultTableModel;
 
 /**
  * Replaces the old opaque Checkpoint/Undo toolbar buttons with a visible
@@ -25,7 +28,10 @@ import javax.swing.table.DefaultTableModel;
  * checkpoint's age and size, with take/restore/delete actions. Modeless,
  * matching {@link CatalogEntryEditor}'s and {@link ViewFrame}'s
  * independent-window convention — see {@code Voynich}'s "Windows don't own
- * windows" reasoning.
+ * windows" reasoning. A three-column, few-row list with no sorting/editing
+ * doesn't need {@code JTable}; one {@code JRadioButton} per row (grouped for
+ * single-selection) plus a plain {@code GridBagLayout} grid is simpler and
+ * just as clear.
  */
 final class StorageDialog {
 
@@ -33,16 +39,11 @@ final class StorageDialog {
     private final Catalog catalog;
     private final Runnable onRestored;
     private final JLabel liveLabel = new JLabel(" ", SwingConstants.CENTER);
-    private final DefaultTableModel model = new DefaultTableModel(
-            new Object[]{"Taken (ISO local time)", "Age (~what you'd lose)", "Size"}, 0) {
-        @Override
-        public boolean isCellEditable(int row, int column) {
-            return false;
-        }
-    };
-    private final JTable table = new JTable(model);
+    private final JPanel checkpointsPanel = new JPanel(new GridBagLayout());
+    private ButtonGroup selectionGroup = new ButtonGroup();
     private final JButton restoreButton = new JButton("Restore Selected");
     private final JButton deleteButton = new JButton("Delete Selected");
+    private final List<JRadioButton> rowSelectors = new ArrayList<>();
     private List<Catalog.CheckpointInfo> checkpoints = List.of();
 
     private StorageDialog(Window owner, Catalog catalog, Runnable onRestored) {
@@ -56,12 +57,8 @@ final class StorageDialog {
         liveLabel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         dialog.add(liveLabel, BorderLayout.NORTH);
 
-        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        table.getColumnModel().getColumn(0).setPreferredWidth(220);
-        table.getColumnModel().getColumn(1).setPreferredWidth(160);
-        table.getColumnModel().getColumn(2).setPreferredWidth(80);
-        table.getSelectionModel().addListSelectionListener(e -> updateButtonState());
-        dialog.add(new JScrollPane(table), BorderLayout.CENTER);
+        checkpointsPanel.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+        dialog.add(new JScrollPane(checkpointsPanel), BorderLayout.CENTER);
 
         JButton takeButton = new JButton("Take Checkpoint Now");
         JButton closeButton = new JButton("Close");
@@ -69,7 +66,6 @@ final class StorageDialog {
         restoreButton.addActionListener(e -> restoreSelected());
         deleteButton.addActionListener(e -> deleteSelected());
         closeButton.addActionListener(e -> dialog.dispose());
-        updateButtonState();
         JPanel buttons = new JPanel();
         buttons.add(takeButton);
         buttons.add(restoreButton);
@@ -79,7 +75,7 @@ final class StorageDialog {
 
         refresh();
 
-        dialog.setSize(640, 420);
+        dialog.setSize(480, 420);
         dialog.setLocationRelativeTo(owner);
         dialog.setVisible(true);
     }
@@ -107,23 +103,80 @@ final class StorageDialog {
                     "Storage read failed", JOptionPane.ERROR_MESSAGE);
             checkpoints = List.of();
         }
-        model.setRowCount(0);
-        long now = System.currentTimeMillis();
-        for (Catalog.CheckpointInfo cp : checkpoints) {
-            model.addRow(new Object[]{
-                formatTimestamp(cp.timestampMillis),
-                formatAge(now - cp.timestampMillis),
-                formatBytes(cp.sizeBytes)
-            });
-        }
-        table.clearSelection();
+        rebuildCheckpointsPanel();
         updateButtonState();
     }
 
+    private void rebuildCheckpointsPanel() {
+        checkpointsPanel.removeAll();
+        // A fresh group each rebuild, rather than clearSelection() on the
+        // old one, since ButtonGroup never forgets a registered button —
+        // reusing it would accumulate every past checkpoint's radio button.
+        selectionGroup = new ButtonGroup();
+        rowSelectors.clear();
+
+        GridBagConstraints c = new GridBagConstraints();
+        c.insets = new java.awt.Insets(2, 4, 2, 8);
+        c.anchor = GridBagConstraints.WEST;
+
+        c.gridy = 0;
+        addHeaderCell("", 0, c);
+        addHeaderCell("Taken", 1, c);
+        addHeaderCell("Age (~data at risk)", 2, c);
+        addHeaderCell("Size", 3, c);
+
+        long now = System.currentTimeMillis();
+        int row = 1;
+        for (Catalog.CheckpointInfo cp : checkpoints) {
+            JRadioButton selector = new JRadioButton();
+            selector.addItemListener(e -> updateButtonState());
+            selectionGroup.add(selector);
+            rowSelectors.add(selector);
+
+            c.gridy = row;
+            c.gridx = 0;
+            checkpointsPanel.add(selector, c);
+            c.gridx = 1;
+            checkpointsPanel.add(new JLabel(formatTimestamp(cp.timestampMillis)), c);
+            c.gridx = 2;
+            checkpointsPanel.add(new JLabel(formatAge(now - cp.timestampMillis)), c);
+            c.gridx = 3;
+            checkpointsPanel.add(new JLabel(formatBytes(cp.sizeBytes)), c);
+            row++;
+        }
+
+        // Absorbs leftover vertical space so rows stay top-aligned instead
+        // of spreading out across the scroll pane.
+        GridBagConstraints filler = new GridBagConstraints();
+        filler.gridy = row;
+        filler.weighty = 1;
+        checkpointsPanel.add(new JLabel(), filler);
+
+        checkpointsPanel.revalidate();
+        checkpointsPanel.repaint();
+    }
+
+    private void addHeaderCell(String text, int column, GridBagConstraints template) {
+        JLabel header = new JLabel(text);
+        header.setFont(header.getFont().deriveFont(Font.BOLD));
+        GridBagConstraints c = (GridBagConstraints) template.clone();
+        c.gridx = column;
+        checkpointsPanel.add(header, c);
+    }
+
     private void updateButtonState() {
-        boolean hasSelection = table.getSelectedRow() >= 0;
+        boolean hasSelection = selectedIndex() >= 0;
         restoreButton.setEnabled(hasSelection);
         deleteButton.setEnabled(hasSelection);
+    }
+
+    private int selectedIndex() {
+        for (int i = 0; i < rowSelectors.size(); i++) {
+            if (rowSelectors.get(i).isSelected()) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private void takeCheckpoint() {
@@ -180,17 +233,17 @@ final class StorageDialog {
     }
 
     private Catalog.CheckpointInfo selectedCheckpoint() {
-        int row = table.getSelectedRow();
-        if (row < 0 || row >= checkpoints.size()) {
+        int index = selectedIndex();
+        if (index < 0 || index >= checkpoints.size()) {
             JOptionPane.showMessageDialog(dialog, "Select a checkpoint first.",
                     "Nothing selected", JOptionPane.INFORMATION_MESSAGE);
             return null;
         }
-        return checkpoints.get(row);
+        return checkpoints.get(index);
     }
 
     private static String formatTimestamp(long epochMillis) {
-        return String.format("%tFT%<tT", epochMillis);
+        return String.format("%tF %<tT", epochMillis);
     }
 
     private static String formatBytes(long bytes) {
