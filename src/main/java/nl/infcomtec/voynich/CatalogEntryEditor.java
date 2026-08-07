@@ -81,7 +81,7 @@ import javax.swing.SwingWorker;
  * rather than shown in both places, so there's never two open editors
  * disagreeing about the same field.
  * <p>
- * {@link CatalogEntry#contentArea} gets the same treatment for a different
+ * {@link CatalogEntry#regions} gets the same treatment for a different
  * reason: it's edited by {@code ContentAreaEditor}, a separate window over
  * the same {@link #entry}, which can save it to the catalog while this
  * dialog is still open — but the JSON text box was rendered once at load
@@ -327,7 +327,7 @@ final class CatalogEntryEditor {
     /**
      * Called by {@code ContentAreaEditor} right after it commits a trace for
      * {@link #entry} to the catalog. The mask overlay was built from
-     * whatever {@link CatalogEntry#contentArea} was when it was last built —
+     * whatever {@link CatalogEntry#mainRegion()} was when it was last built —
      * possibly nothing, possibly a now-outdated trace — so it's discarded
      * rather than trusted, same reasoning as the JSON blob staleness fix
      * above: a background window mutated {@link #entry} and this dialog has
@@ -335,7 +335,7 @@ final class CatalogEntryEditor {
      */
     private void onContentAreaCommitted() {
         maskedIcon = null;
-        maskButton.setEnabled(null != fullImage && entry.contentArea.size() >= 3);
+        maskButton.setEnabled(null != fullImage && null != entry.mainRegion());
         if (maskButton.isSelected()) {
             maskButton.setSelected(false);
             imageLabel.setIcon(plainIcon);
@@ -343,11 +343,11 @@ final class CatalogEntryEditor {
     }
 
     /**
-     * Rasterizes {@link CatalogEntry#contentArea} into a {@link BitSet2D}
-     * (see its {@code createFromPolygon}) and darkens every pixel outside
-     * it, off-EDT since this is a full-resolution pass over what can be an
-     * 8000px-wide scan. Caches the result in {@link #maskedIcon} so toggling
-     * back on doesn't recompute.
+     * Rasterizes {@link CatalogEntry#mainRegion()}'s polygon into a
+     * {@link BitSet2D} (see its {@code createFromPolygon}) and darkens every
+     * pixel outside it, off-EDT since this is a full-resolution pass over
+     * what can be an 8000px-wide scan. Caches the result in
+     * {@link #maskedIcon} so toggling back on doesn't recompute.
      */
     private void buildMaskedIcon() {
         CatalogEntry forEntry = entry;
@@ -357,7 +357,7 @@ final class CatalogEntryEditor {
             @Override
             protected ImageIcon doInBackground() {
                 List<Point> vertices = new ArrayList<>();
-                for (CatalogEntry.Vertex v : forEntry.contentArea) {
+                for (CatalogEntry.Vertex v : forEntry.mainRegion().polygon) {
                     vertices.add(new Point(v.x, v.y));
                 }
                 BufferedImage out = BitSet2D.darkenOutside(source, vertices);
@@ -428,11 +428,11 @@ final class CatalogEntryEditor {
             }
         }
         parsed.tags = newTags;
-        // entry.contentArea can be mutated and saved directly by
+        // entry.regions can be mutated and saved directly by
         // ContentAreaEditor while this dialog is open, but jsonText was
         // rendered once at load time and never refreshed — so it can't be
         // trusted as the source of truth for this field, same as tags.
-        parsed.contentArea = entry.contentArea;
+        parsed.regions = entry.regions;
         try {
             catalog.save(parsed, catalog.loadThumbnail(entry.filename));
         } catch (IOException ex) {
@@ -466,7 +466,7 @@ final class CatalogEntryEditor {
 
         ObjectNode blob = JSON.getMapper().valueToTree(entry);
         blob.remove("tags");
-        blob.remove("contentArea");
+        blob.remove("regions");
         String blobText;
         try {
             blobText = JSON.getMapper().writerWithDefaultPrettyPrinter().writeValueAsString(blob);
@@ -494,7 +494,7 @@ final class CatalogEntryEditor {
         heatButton.setEnabled(null != fullImage);
         areaButton.setEnabled(null != fullImage);
         maskButton.setSelected(false);
-        maskButton.setEnabled(null != fullImage && entry.contentArea.size() >= 3);
+        maskButton.setEnabled(null != fullImage && null != entry.mainRegion());
 
         statusLabel.setText(null != action
                 ? String.format("%d / %d — %s — click the image to add a \"%s\" tag",

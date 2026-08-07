@@ -61,7 +61,7 @@ public class OverviewPanel extends JPanel {
     private final Map<String, BufferedImage> thumbnails = new HashMap<>();
     /**
      * When {@code true}, {@link EntryRenderer} dims every thumbnail pixel
-     * outside its entry's {@link CatalogEntry#contentArea} instead of
+     * outside its entry's {@link CatalogEntry#mainRegion()} instead of
      * showing the plain thumbnail — see {@link #setContentAreaOnly(boolean)}.
      * Recomputed fresh on every repaint rather than cached: at thumbnail
      * resolution the mask-and-dim pass ({@link BitSet2D#darkenOutside}) is
@@ -176,10 +176,10 @@ public class OverviewPanel extends JPanel {
 
     /**
      * Toggles whether the grid shows plain thumbnails or dims each one down
-     * to just its traced {@link CatalogEntry#contentArea}. An entry with no
-     * (or an incomplete, &lt;3-vertex) trace is left plain either way —
-     * this doubles as a visual "not yet traced" indicator, not a claim that
-     * the whole thumbnail is content. Wired to the app toolbar's toggle
+     * to just its traced {@link CatalogEntry#mainRegion()}. An entry with no
+     * main region traced yet is left plain either way — this doubles as a
+     * visual "not yet traced" indicator, not a claim that the whole
+     * thumbnail is content. Wired to the app toolbar's toggle
      * button in {@link Voynich#main}; must be called from the EDT.
      *
      * @param on {@code true} to show content-area-only, {@code false} for
@@ -191,8 +191,8 @@ public class OverviewPanel extends JPanel {
     }
 
     /**
-     * Maps {@code entry}'s {@link CatalogEntry#contentArea} (traced in its
-     * full-resolution image's own pixel coordinates) into the thumbnail's
+     * Maps {@code entry}'s {@link CatalogEntry#mainRegion()} polygon (traced
+     * in its full-resolution image's own pixel coordinates) into the thumbnail's
      * {@link ColorImage#THUMB_SIZE}×{@link ColorImage#THUMB_SIZE} coordinate
      * space: the same uniform scale-then-center-translate
      * {@link java.awt.geom.AffineTransform} that {@code ColorImage
@@ -209,8 +209,9 @@ public class OverviewPanel extends JPanel {
         AffineTransform toThumbnail = new AffineTransform();
         toThumbnail.translate(offX, offY);
         toThumbnail.scale(scale, scale);
-        List<Point> points = new ArrayList<>(entry.contentArea.size());
-        for (CatalogEntry.Vertex v : entry.contentArea) {
+        List<CatalogEntry.Vertex> polygon = entry.mainRegion().polygon;
+        List<Point> points = new ArrayList<>(polygon.size());
+        for (CatalogEntry.Vertex v : polygon) {
             Point2D p = toThumbnail.transform(new Point2D.Double(v.x, v.y), null);
             points.add(new Point((int) Math.round(p.getX()), (int) Math.round(p.getY())));
         }
@@ -266,6 +267,12 @@ public class OverviewPanel extends JPanel {
                 int cmp = Integer.compare(pageNumberOf(a.filename), pageNumberOf(b.filename));
                 return cmp != 0 ? cmp : a.filename.compareToIgnoreCase(b.filename);
             }
+        },
+        CONTENT_AREA_SIZE("Content area size") {
+            @Override
+            public int compare(CatalogEntry a, CatalogEntry b) {
+                return Double.compare(mainRegionArea(a), mainRegionArea(b));
+            }
         };
 
         /**
@@ -283,6 +290,26 @@ public class OverviewPanel extends JPanel {
         }
 
         private static final Pattern PAGE_NUMBER_PATTERN = Pattern.compile("^(\\d+)[rv]");
+
+        /**
+         * Shoelace-formula area of {@code entry}'s {@link CatalogEntry#mainRegion()}
+         * polygon, or {@code -1} if no main region has been traced yet — sorts
+         * untraced entries before every real (non-negative) area.
+         */
+        private static double mainRegionArea(CatalogEntry entry) {
+            CatalogEntry.Region region = entry.mainRegion();
+            if (null == region) {
+                return -1;
+            }
+            List<CatalogEntry.Vertex> polygon = region.polygon;
+            double sum = 0;
+            for (int i = 0; i < polygon.size(); i++) {
+                CatalogEntry.Vertex p1 = polygon.get(i);
+                CatalogEntry.Vertex p2 = polygon.get((i + 1) % polygon.size());
+                sum += (double) p1.x * p2.y - (double) p2.x * p1.y;
+            }
+            return Math.abs(sum) / 2.0;
+        }
 
         private final String label;
 
@@ -384,7 +411,7 @@ public class OverviewPanel extends JPanel {
             BufferedImage thumb = thumbnails.get(entry.filename);
             Icon icon = null;
             if (null != thumb) {
-                if (contentAreaOnly && entry.contentArea.size() >= 3) {
+                if (contentAreaOnly && null != entry.mainRegion()) {
                     icon = new ImageIcon(BitSet2D.darkenOutside(thumb, contentAreaInThumbnailSpace(entry)));
                 } else {
                     icon = new ImageIcon(thumb);

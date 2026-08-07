@@ -25,7 +25,7 @@ import javax.swing.SwingUtilities;
 
 /**
  * Interactive tracing surface for one {@link CatalogEntry}'s
- * {@link CatalogEntry#contentArea} polygon, over its full-resolution image.
+ * {@link CatalogEntry.Region#polygon}, over its full-resolution image.
  * A human clicks a sequence of vertices around the actual content — text,
  * illustration, wash — deliberately tight, not the physical page, closing
  * the path by clicking near its start. See {@link ContentAreaEditor} for why
@@ -93,7 +93,7 @@ final class ContentAreaCanvas extends JComponent {
 
     /**
      * @param image the entry's full-resolution image to trace over
-     * @param initial the entry's existing {@link CatalogEntry#contentArea},
+     * @param initial the region's existing {@link CatalogEntry.Region#polygon},
      * pre-loaded (already closed) for review/adjustment rather than starting
      * from scratch; empty for a fresh trace
      */

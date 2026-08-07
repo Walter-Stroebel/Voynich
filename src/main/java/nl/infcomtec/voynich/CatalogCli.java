@@ -296,20 +296,21 @@ public class CatalogCli {
 
     /**
      * {@code --content-area}: crops {@code imgFile} to {@code entry}'s
-     * traced {@link CatalogEntry#contentArea} bounding box and writes it as
+     * traced {@link CatalogEntry#mainRegion()} bounding box and writes it as
      * a PNG — either to {@code out} or, if {@code null}, straight to
      * stdout. Doesn't go through {@link ColorImage} (no CIELab decode
      * needed for a raw crop), so it's cheaper than the {@code --pixel}/
      * {@code --region} modes above.
      */
     private static void extractContentArea(CatalogEntry entry, File imgFile, String out) throws IOException {
-        if (entry.contentArea.size() < 3) {
+        CatalogEntry.Region main = entry.mainRegion();
+        if (null == main) {
             System.err.println("No content area traced yet for " + entry.filename);
             System.exit(1);
             return;
         }
         BufferedImage full = ImageIO.read(imgFile);
-        BufferedImage cropped = cropToContentArea(full, entry.contentArea);
+        BufferedImage cropped = cropToContentArea(full, main.polygon);
 
         if (null == out) {
             ByteArrayOutputStream buf = new ByteArrayOutputStream();
@@ -321,7 +322,7 @@ public class CatalogCli {
         }
         System.err.println(String.format(
                 "{\"filename\":\"%s\",\"width\":%d,\"height\":%d,\"vertices\":%d%s}",
-                entry.filename, cropped.getWidth(), cropped.getHeight(), entry.contentArea.size(),
+                entry.filename, cropped.getWidth(), cropped.getHeight(), main.polygon.size(),
                 null == out ? "" : ",\"path\":\"" + out + "\""));
     }
 
@@ -478,7 +479,7 @@ public class CatalogCli {
         System.err.println("                              (stdout or --out) plus a JSON manifest on stderr; repeat");
         System.err.println("                              --region to pull several regions from one decode (needs --out,");
         System.err.println("                              used as a prefix: <out>.0, <out>.1, ...); --content-area writes");
-        System.err.println("                              a PNG cropped to the traced CatalogEntry.contentArea's bounding");
+        System.err.println("                              a PNG cropped to the traced main region's bounding");
         System.err.println("                              box, black outside the polygon (stdout or --out)");
         System.err.println("  checkpoint                  clone the whole catalog's current state");
         System.err.println("  restore                     discard everything since the last checkpoint");

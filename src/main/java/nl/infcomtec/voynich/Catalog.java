@@ -179,6 +179,7 @@ public interface Catalog {
         entry.height = height;
         entry.uniqueColors = uniqueColors;
         entry.thumbnailUniqueColors = thumbnailUniqueColors;
+        entry.ensureWholePageRegion();
         String path = file.getAbsolutePath();
         CatalogEntry.Location match = null;
         for (CatalogEntry.Location loc : entry.locations) {
