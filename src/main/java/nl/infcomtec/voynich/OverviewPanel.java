@@ -20,11 +20,14 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
 import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JOptionPane;
@@ -111,31 +114,26 @@ public class OverviewPanel extends JPanel {
     }
 
     /**
-     * Prompts (via a {@link JOptionPane} button row, one ascending/descending
-     * button pair per field) for a sort field and direction, then re-sorts
-     * the grid in place. One click picks both and closes the dialog. Wired
-     * to the app toolbar's Sort button in {@link Voynich#main}; must be
-     * called from the EDT.
+     * Prompts (via a field combo box plus one "Descending" checkbox) for a
+     * sort field and direction, then re-sorts the grid in place. Wired to
+     * the app toolbar's Sort button in {@link Voynich#main}; must be called
+     * from the EDT.
      */
     public void sort() {
-        SortKey[] keys = SortKey.values();
-        String[] labels = new String[keys.length * 2];
-        List<Comparator<CatalogEntry>> comparators = new ArrayList<>(keys.length * 2);
-        for (SortKey key : keys) {
-            comparators.add(key);
-            comparators.add(key.reversed());
-        }
-        for (int i = 0; i < keys.length; i++) {
-            labels[i * 2] = keys[i] + " ↑";
-            labels[i * 2 + 1] = keys[i] + " ↓";
-        }
-        int choice = JOptionPane.showOptionDialog(this, "Sort by:", "Sort",
-                JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
-                null, labels, labels[0]);
-        if (choice == JOptionPane.CLOSED_OPTION) {
+        JComboBox<SortKey> fieldBox = new JComboBox<>(SortKey.values());
+        JCheckBox descending = new JCheckBox("Descending");
+        JPanel panel = new JPanel(new BorderLayout(0, 6));
+        panel.add(new JLabel("Sort by:"), BorderLayout.NORTH);
+        panel.add(fieldBox, BorderLayout.CENTER);
+        panel.add(descending, BorderLayout.SOUTH);
+        int choice = JOptionPane.showConfirmDialog(this, panel, "Sort",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
+        if (choice != JOptionPane.OK_OPTION) {
             return;
         }
-        Collections.sort(allEntries, comparators.get(choice));
+        SortKey key = (SortKey) fieldBox.getSelectedItem();
+        Comparator<CatalogEntry> comparator = descending.isSelected() ? key.reversed() : key;
+        Collections.sort(allEntries, comparator);
         applyFilter();
     }
 
@@ -261,7 +259,30 @@ public class OverviewPanel extends JPanel {
             public int compare(CatalogEntry a, CatalogEntry b) {
                 return Integer.compare(a.thumbnailUniqueColors, b.thumbnailUniqueColors);
             }
+        },
+        PAGE_NUMBER("Page number") {
+            @Override
+            public int compare(CatalogEntry a, CatalogEntry b) {
+                int cmp = Integer.compare(pageNumberOf(a.filename), pageNumberOf(b.filename));
+                return cmp != 0 ? cmp : a.filename.compareToIgnoreCase(b.filename);
+            }
         };
+
+        /**
+         * Leading numeric folio number of {@code filename} (e.g. 3 for
+         * "3r.png", 100 for "100v_and_101r.png"), or {@link Integer#MAX_VALUE}
+         * if it doesn't start with {@code digit+[rv]} — numeric, not lexical,
+         * so "3r" sorts before "20r" rather than after it.
+         */
+        private static int pageNumberOf(String filename) {
+            Matcher m = PAGE_NUMBER_PATTERN.matcher(filename);
+            if (!m.find()) {
+                return Integer.MAX_VALUE;
+            }
+            return Integer.parseInt(m.group(1));
+        }
+
+        private static final Pattern PAGE_NUMBER_PATTERN = Pattern.compile("^(\\d+)[rv]");
 
         private final String label;
 
