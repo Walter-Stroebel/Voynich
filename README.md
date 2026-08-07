@@ -78,11 +78,13 @@ gap.
   placeholders, filled in from the clicked pixel. Clicking the shown image
   stages a tag in an editable box; nothing is persisted until Done, so a
   whole pass is reviewable/correctable before any of it hits storage
-- Manual checkpoint/undo for the whole catalog (`Catalog.checkpoint()`/
-  `Catalog.restoreLatestCheckpoint()`) — a coarse, whole-catalog clone into
-  one timestamped zip (`java.util.zip`, no extra dependency), restorable via
-  the toolbar's Checkpoint/Undo buttons or `CatalogCli checkpoint`/`restore`.
-  No automatic pruning of old checkpoints — deliberate, left for hand cleanup
+- Manual checkpoint/restore for the whole catalog (`Catalog.checkpoint()`/
+  `Catalog.restoreCheckpoint()`) — a coarse, whole-catalog clone into one
+  timestamped zip (`java.util.zip`, no extra dependency), managed via the
+  toolbar's "Storage" button (`StorageDialog`: live catalog size, each
+  checkpoint's timestamp/age/size, take/restore/delete) or
+  `CatalogCli checkpoint`/`restore`. No automatic pruning of old
+  checkpoints — deliberate, left for hand cleanup (or the dialog's Delete)
 - A content-area-only view toggle in `OverviewPanel` (the toolbar's "Content
   Area Only" button) — dims every thumbnail down to just its traced
   `CatalogEntry.contentArea`, mapped from the polygon's full-resolution
