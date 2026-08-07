@@ -26,6 +26,19 @@ public class Config {
     public Map<String, Bounds> viewBounds = new HashMap<>();
 
     /**
+     * {@link OverviewPanel}'s last-chosen sort field, by
+     * {@code SortKey.name()} — {@code null} until {@link OverviewPanel#sort()}
+     * is used for the first time, in which case the grid keeps its default
+     * (catalog/insertion) order on the next run too.
+     */
+    public String sortKey;
+    /**
+     * {@link OverviewPanel}'s last-chosen sort direction, paired with
+     * {@link #sortKey}.
+     */
+    public boolean sortDescending;
+
+    /**
      * A plain {@code x/y/width/height} rectangle, kept separate from
      * {@link java.awt.Rectangle} so it serializes as four ints and nothing
      * else.

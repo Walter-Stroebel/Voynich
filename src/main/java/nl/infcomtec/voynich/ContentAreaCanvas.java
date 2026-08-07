@@ -15,6 +15,8 @@ import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
+import java.awt.event.MouseWheelEvent;
+import java.awt.event.MouseWheelListener;
 import java.awt.image.BufferedImage;
 import java.awt.image.RescaleOp;
 import java.util.ArrayList;
@@ -56,6 +58,18 @@ import javax.swing.SwingUtilities;
  * each clipped so Java2D still only rasterizes that small box rather than
  * the underlying multi-thousand-pixel image.
  * </p>
+ * <p>
+ * An optional {@code viewport} (see the constructor) restricts display and
+ * tracing to a sub-rectangle of the image — a parent region's bounding box,
+ * typically — so a small figure nested inside a larger traced diagram (e.g.
+ * one wedge of a many-figure circle diagram) can be traced at usable scale
+ * instead of whole-page scale. Placed vertices are still recorded in the
+ * full image's coordinates regardless of viewport. Once a polygon is
+ * closed, the mouse wheel rotates a live preview of the traced crop itself
+ * (top-center of the canvas) — seeing the actual figure spin upright is
+ * what sets {@link CatalogEntry.Region#angle}, not an abstract indicator,
+ * since a wonky wedge has no edge that reliably means "up" to look at.
+ * </p>
  */
 final class ContentAreaCanvas extends JComponent {
 
@@ -76,14 +90,23 @@ final class ContentAreaCanvas extends JComponent {
     private static final float LOUPE_CONTRAST = 2.3f;
     private static final Color LOUPE_BORDER = Color.WHITE;
     private static final Font LOUPE_LABEL_FONT = new Font(Font.SANS_SERIF, Font.PLAIN, 11);
+    private static final double ANGLE_STEP_RADIANS = Math.toRadians(1);
+    private static final int ROTATION_PREVIEW_SIZE = 220;
+    private static final Color ROTATION_PREVIEW_BG = Color.DARK_GRAY;
 
     private final BufferedImage image;
+    private final BufferedImage displayImage;
+    private final int originX;
+    private final int originY;
     private final List<Point> vertices = new ArrayList<>();
     private boolean closed;
     private int dragIndex = -1;
     private Point rubberBandFrom;
     private Point rubberBandTo;
     private TraceStateListener stateListener;
+    private double angle;
+    private BufferedImage rotationPreviewSource;
+    private boolean rotationPreviewDirty = true;
 
     private Point lastPanelPoint;
     private boolean loupeAnchorLeft;
@@ -95,15 +118,44 @@ final class ContentAreaCanvas extends JComponent {
      * @param initial the region's existing {@link CatalogEntry.Region#polygon},
      * pre-loaded (already closed) for review/adjustment rather than starting
      * from scratch; empty for a fresh trace
+     * @param viewport when non-null, restricts both display and tracing to
+     * this sub-rectangle of {@code image} (typically a parent region's
+     * bounding box) so a small child figure can be traced at usable scale
+     * instead of whole-page scale; {@code null} traces the full image, as
+     * before this parameter existed. Placed vertices are still recorded in
+     * {@code image}'s full coordinates regardless.
+     * @param initialAngle the region's existing {@link CatalogEntry.Region#angle},
+     * pre-loaded for review; {@code 0} for a fresh trace
      */
-    ContentAreaCanvas(BufferedImage image, List<CatalogEntry.Vertex> initial) {
+    ContentAreaCanvas(BufferedImage image, List<CatalogEntry.Vertex> initial, Rectangle viewport,
+            double initialAngle) {
         this.image = image;
+        if (null == viewport) {
+            this.displayImage = image;
+            this.originX = 0;
+            this.originY = 0;
+        } else {
+            this.displayImage = image.getSubimage(viewport.x, viewport.y, viewport.width, viewport.height);
+            this.originX = viewport.x;
+            this.originY = viewport.y;
+        }
         for (CatalogEntry.Vertex v : initial) {
             vertices.add(new Point(v.x, v.y));
         }
         closed = vertices.size() >= 3;
-        setPreferredSize(new Dimension(image.getWidth(), image.getHeight()));
+        angle = initialAngle;
+        setPreferredSize(new Dimension(displayImage.getWidth(), displayImage.getHeight()));
 
+        addMouseWheelListener(new MouseWheelListener() {
+            @Override
+            public void mouseWheelMoved(MouseWheelEvent e) {
+                if (!closed) {
+                    return;
+                }
+                angle += e.getWheelRotation() * ANGLE_STEP_RADIANS;
+                repaint();
+            }
+        });
         addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
@@ -142,6 +194,7 @@ final class ContentAreaCanvas extends JComponent {
             public void mouseDragged(MouseEvent e) {
                 if (closed && dragIndex >= 0) {
                     vertices.set(dragIndex, panelToImage(e.getPoint()));
+                    rotationPreviewDirty = true;
                     lastPanelPoint = e.getPoint();
                     computeLoupeAnchor(e.getPoint());
                     repaint();
@@ -206,6 +259,7 @@ final class ContentAreaCanvas extends JComponent {
         eraseRubberBand();
         if (vertices.size() >= 3 && imageToPanel(vertices.get(0)).distance(panelPt) <= CLOSE_RADIUS_PX) {
             closed = true;
+            rotationPreviewDirty = true;
             repaint();
             fireStateChanged();
             return;
@@ -258,16 +312,24 @@ final class ContentAreaCanvas extends JComponent {
         }
     }
 
+    /**
+     * @return the closed polygon's rotation, in radians, as adjusted by the
+     * mouse wheel — see {@link CatalogEntry.Region#angle}
+     */
+    double angleResult() {
+        return angle;
+    }
+
     private double scale() {
-        return Math.min((double) getWidth() / image.getWidth(), (double) getHeight() / image.getHeight());
+        return Math.min((double) getWidth() / displayImage.getWidth(), (double) getHeight() / displayImage.getHeight());
     }
 
     private int dispW() {
-        return Math.max(1, (int) Math.round(image.getWidth() * scale()));
+        return Math.max(1, (int) Math.round(displayImage.getWidth() * scale()));
     }
 
     private int dispH() {
-        return Math.max(1, (int) Math.round(image.getHeight() * scale()));
+        return Math.max(1, (int) Math.round(displayImage.getHeight() * scale()));
     }
 
     private int offX() {
@@ -280,15 +342,15 @@ final class ContentAreaCanvas extends JComponent {
 
     private Point imageToPanel(Point p) {
         double s = scale();
-        return new Point(offX() + (int) Math.round(p.x * s), offY() + (int) Math.round(p.y * s));
+        return new Point(offX() + (int) Math.round((p.x - originX) * s), offY() + (int) Math.round((p.y - originY) * s));
     }
 
     private Point panelToImage(Point p) {
         double s = scale();
-        int ix = (int) Math.round((p.x - offX()) / s);
-        int iy = (int) Math.round((p.y - offY()) / s);
-        ix = Math.max(0, Math.min(image.getWidth() - 1, ix));
-        iy = Math.max(0, Math.min(image.getHeight() - 1, iy));
+        int ix = (int) Math.round((p.x - offX()) / s) + originX;
+        int iy = (int) Math.round((p.y - offY()) / s) + originY;
+        ix = Math.max(originX, Math.min(originX + displayImage.getWidth() - 1, ix));
+        iy = Math.max(originY, Math.min(originY + displayImage.getHeight() - 1, iy));
         return new Point(ix, iy);
     }
 
@@ -462,7 +524,7 @@ final class ContentAreaCanvas extends JComponent {
         Graphics2D g2 = (Graphics2D) g;
         g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
         g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-        g2.drawImage(image, offX(), offY(), dispW(), dispH(), null);
+        g2.drawImage(displayImage, offX(), offY(), dispW(), dispH(), null);
         paintLoupes(g2);
 
         if (vertices.isEmpty()) {
@@ -487,6 +549,50 @@ final class ContentAreaCanvas extends JComponent {
                 g2.drawOval(p.x - HANDLE_RADIUS_PX, p.y - HANDLE_RADIUS_PX, HANDLE_RADIUS_PX * 2, HANDLE_RADIUS_PX * 2);
                 g2.setColor(HANDLE_COLOR);
             }
+            paintRotationPreview(g2);
         }
+    }
+
+    /**
+     * Shows the traced polygon's own pixels — cropped to its bounding box
+     * and masked outside the polygon via {@link BitSet2D#cropToPolygon} —
+     * rotating live as the mouse wheel adjusts {@link #angle}, in a fixed
+     * box in the canvas's top-center. This is what actually sets
+     * {@link CatalogEntry.Region#angle}: seeing the figure itself turn
+     * upright, not an abstract arrow next to it, which told the eye nothing
+     * about whether a wonky wedge (no edge reliably means "up") was
+     * correctly oriented.
+     */
+    private void paintRotationPreview(Graphics2D g2) {
+        if (rotationPreviewDirty || null == rotationPreviewSource) {
+            rotationPreviewSource = BitSet2D.cropToPolygon(image, vertices);
+            rotationPreviewDirty = false;
+        }
+        int boxX = (getWidth() - ROTATION_PREVIEW_SIZE) / 2;
+        int boxY = LOUPE_MARGIN;
+        g2.setColor(ROTATION_PREVIEW_BG);
+        g2.fillRect(boxX, boxY, ROTATION_PREVIEW_SIZE, ROTATION_PREVIEW_SIZE);
+        g2.setColor(LOUPE_BORDER);
+        g2.setStroke(BOUNDARY_STROKE);
+        g2.drawRect(boxX, boxY, ROTATION_PREVIEW_SIZE, ROTATION_PREVIEW_SIZE);
+
+        double fitScale = 0.85 * Math.min(
+                (double) ROTATION_PREVIEW_SIZE / rotationPreviewSource.getWidth(),
+                (double) ROTATION_PREVIEW_SIZE / rotationPreviewSource.getHeight());
+        Graphics2D pg = (Graphics2D) g2.create(boxX, boxY, ROTATION_PREVIEW_SIZE, ROTATION_PREVIEW_SIZE);
+        pg.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        pg.translate(ROTATION_PREVIEW_SIZE / 2.0, ROTATION_PREVIEW_SIZE / 2.0);
+        pg.rotate(angle);
+        pg.scale(fitScale, fitScale);
+        pg.translate(-rotationPreviewSource.getWidth() / 2.0, -rotationPreviewSource.getHeight() / 2.0);
+        pg.drawImage(rotationPreviewSource, 0, 0, null);
+        pg.dispose();
+
+        g2.setFont(LOUPE_LABEL_FONT);
+        g2.setColor(Color.BLACK);
+        String label = "wheel rotates";
+        g2.fillRect(boxX + 1, boxY + 1, g2.getFontMetrics().stringWidth(label) + 6, 14);
+        g2.setColor(Color.WHITE);
+        g2.drawString(label, boxX + 4, boxY + 11);
     }
 }

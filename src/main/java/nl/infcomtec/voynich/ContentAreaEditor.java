@@ -4,6 +4,7 @@
 package nl.infcomtec.voynich;
 
 import java.awt.BorderLayout;
+import java.awt.Rectangle;
 import java.awt.Window;
 import java.awt.event.ActionEvent;
 import java.awt.image.BufferedImage;
@@ -62,6 +63,13 @@ final class ContentAreaEditor {
      * (existing's own value used instead) once {@code existing != null}
      * @param newAuthor same as {@code newKind} but for
      * {@link CatalogEntry.Region#author}
+     * @param newParentIndex {@code existing}'s {@link CatalogEntry.Region#parentIndex}
+     * to report if {@code existing} is non-null, otherwise the parent a
+     * freshly-traced region will be created with; {@code -1} for top-level —
+     * ignored (existing's own value used instead) once {@code existing != null}
+     * @param viewport when non-null, restricts tracing to this sub-rectangle
+     * of {@code image} (typically the parent region's bounding box) instead
+     * of the whole page — see {@link ContentAreaCanvas}
      * @param onCommitted called right after a successful Commit writes
      * {@code entry.regions} to the catalog — lets the caller (which handed
      * us its own live reference to {@code entry}, not a copy) refresh
@@ -69,14 +77,17 @@ final class ContentAreaEditor {
      * {@link RegionManagerDialog}'s row list.
      */
     static void open(Window nearWindow, Catalog catalog, CatalogEntry entry, BufferedImage image,
-            CatalogEntry.Region existing, String newKind, String newAuthor, Runnable onCommitted) {
+            CatalogEntry.Region existing, String newKind, String newAuthor, int newParentIndex,
+            Rectangle viewport, Runnable onCommitted) {
         List<CatalogEntry.Vertex> initial = null != existing ? existing.polygon : List.of();
         String kindLabel = null != existing ? existing.kind : newKind;
-        ContentAreaCanvas canvas = new ContentAreaCanvas(image, initial);
+        double initialAngle = null != existing ? existing.angle : 0.0;
+        ContentAreaCanvas canvas = new ContentAreaCanvas(image, initial, viewport, initialAngle);
 
         JLabel status = new JLabel(
                 "Click to trace \"" + kindLabel + "\" (right-click undoes the last point);"
-                + " click near the first point to close it.");
+                + " click near the first point to close it. Once closed, the mouse wheel"
+                + " spins the preview at top-center — turn it to upright.");
         JButton clear = new JButton(new EzAction("Clear") {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -91,10 +102,12 @@ final class ContentAreaEditor {
                     region = new CatalogEntry.Region();
                     region.kind = newKind;
                     region.author = newAuthor;
+                    region.parentIndex = newParentIndex;
                     entry.ensureWholePageRegion();
                     entry.regions.add(region);
                 }
                 region.polygon = canvas.resultVertices();
+                region.angle = canvas.angleResult();
                 try {
                     catalog.save(entry, catalog.loadThumbnail(entry.filename));
                 } catch (IOException ex) {

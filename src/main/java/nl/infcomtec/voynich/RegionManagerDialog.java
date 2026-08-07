@@ -5,31 +5,22 @@ package nl.infcomtec.voynich;
 
 import java.awt.BorderLayout;
 import java.awt.Font;
-import java.awt.GraphicsDevice;
-import java.awt.GraphicsEnvironment;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
-import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Window;
 import java.awt.event.ActionEvent;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.List;
 import java.util.TreeSet;
 import javax.swing.BorderFactory;
-import javax.swing.ImageIcon;
 import javax.swing.JButton;
-import javax.swing.JComboBox;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
-import javax.swing.JTextField;
-import javax.swing.SwingWorker;
 
 /**
  * Lists every one of {@code entry}'s {@link CatalogEntry#regions} (excluding
@@ -90,9 +81,9 @@ final class RegionManagerDialog {
         JButton addButton = new JButton(new EzAction("Add Region") {
             @Override
             public void actionPerformed(ActionEvent e) {
-                addRegion();
+                addRegion(-1);
             }
-        }.withTooltip("Trace a brand new region — kind and author are asked for first"));
+        }.withTooltip("Trace a brand new top-level region — kind and author are asked for first"));
         JButton closeButton = new JButton(new EzAction("Close") {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -106,7 +97,14 @@ final class RegionManagerDialog {
 
         refresh();
 
-        dialog.setSize(560, 420);
+        // pack() rather than a guessed constant: the row width depends on
+        // the longest kind label plus however many action buttons a row
+        // has, both of which grow over time (more kinds get typed, "(child
+        // of #N)" adds length) — a fixed size clips them again sooner or
+        // later.
+        dialog.pack();
+        java.awt.Dimension packed = dialog.getSize();
+        dialog.setSize(Math.max(600, packed.width), Math.max(420, packed.height));
         dialog.setLocationRelativeTo(owner);
         dialog.setVisible(true);
     }
@@ -149,7 +147,11 @@ final class RegionManagerDialog {
             c.gridx = 0;
             rowsPanel.add(new JLabel(String.valueOf(i)), c);
             c.gridx = 1;
-            rowsPanel.add(new JLabel(region.kind.isEmpty() ? "(no kind)" : region.kind), c);
+            String kindLabel = region.kind.isEmpty() ? "(no kind)" : region.kind;
+            if (region.parentIndex >= 0) {
+                kindLabel += " (child of #" + region.parentIndex + ")";
+            }
+            rowsPanel.add(new JLabel(kindLabel), c);
             c.gridx = 2;
             rowsPanel.add(new JLabel(region.author.isEmpty() ? "(unspecified)" : region.author), c);
 
@@ -157,15 +159,29 @@ final class RegionManagerDialog {
             JButton view = new JButton(new EzAction("View") {
                 @Override
                 public void actionPerformed(ActionEvent e) {
-                    viewRegion(region);
+                    RegionViewer.open(dialog, catalog, entry, image, index, region, new Runnable() {
+                        @Override
+                        public void run() {
+                            changed();
+                        }
+                    });
                 }
-            }.withTooltip("Show just this region, cropped and scaled to fit the screen"));
+            }.withTooltip("Open this region as its own rotatable main view — mouse wheel"
+                    + " rotates it, with its own Add Child button"));
             JButton trace = new JButton(new EzAction("Trace") {
                 @Override
                 public void actionPerformed(ActionEvent e) {
                     traceRegion(region);
                 }
             }.withTooltip("Re-trace this region's polygon"));
+            JButton addChild = new JButton(new EzAction("Add Child") {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    addRegion(index);
+                }
+            }.withTooltip("Trace a new region nested inside this one, zoomed to its bounding box —"
+                    + " for a small figure inside a larger traced diagram"));
+            addChild.setEnabled(region.polygon.size() >= 3);
             JButton rename = new JButton(new EzAction("Rename") {
                 @Override
                 public void actionPerformed(ActionEvent e) {
@@ -195,6 +211,7 @@ final class RegionManagerDialog {
             down.setEnabled(index < entry.regions.size() - 1);
             actions.add(view);
             actions.add(trace);
+            actions.add(addChild);
             actions.add(rename);
             actions.add(up);
             actions.add(down);
@@ -237,25 +254,24 @@ final class RegionManagerDialog {
      * then opens {@link ContentAreaEditor} for a brand new region — nothing
      * is appended to {@link CatalogEntry#regions} unless that window's
      * Commit actually runs.
+     *
+     * @param parentIndex the new region's {@link CatalogEntry.Region#parentIndex};
+     * {@code -1} for top-level (the toolbar's "Add Region"), or a row's own
+     * index when called from that row's "Add Child" — in the latter case
+     * tracing is zoomed to the parent's bounding box (see
+     * {@link #boundingBox}) instead of the whole page, since a child is
+     * typically a small figure nested inside a larger already-traced
+     * diagram.
      */
-    private void addRegion() {
-        JComboBox<String> kindBox = new JComboBox<>(distinctKinds());
-        kindBox.setEditable(true);
-        JTextField authorField = new JTextField();
-        JPanel panel = new JPanel(new java.awt.GridLayout(0, 1, 0, 4));
-        panel.add(new JLabel("Kind:"));
-        panel.add(kindBox);
-        panel.add(new JLabel("Author (blank = unspecified):"));
-        panel.add(authorField);
-        int choice = JOptionPane.showConfirmDialog(dialog, panel, "New region",
-                JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
-        if (choice != JOptionPane.OK_OPTION) {
+    private void addRegion(int parentIndex) {
+        KindAuthorPrompt.Result result = KindAuthorPrompt.prompt(dialog,
+                parentIndex < 0 ? "New region" : "New child region", distinctKinds(catalog), "", "");
+        if (null == result) {
             return;
         }
-        Object kindItem = kindBox.getSelectedItem();
-        String kind = null == kindItem ? "" : kindItem.toString().trim();
-        String author = authorField.getText().trim();
-        ContentAreaEditor.open(dialog, catalog, entry, image, null, kind, author, new Runnable() {
+        Rectangle viewport = parentIndex < 0 ? null : boundingBox(entry.regions.get(parentIndex));
+        ContentAreaEditor.open(dialog, catalog, entry, image, null, result.kind, result.author, parentIndex,
+                viewport, new Runnable() {
             @Override
             public void run() {
                 changed();
@@ -264,46 +280,35 @@ final class RegionManagerDialog {
     }
 
     /**
-     * Crops {@link #image} to {@code region}'s bounding box (blacking out
-     * everything inside that box but outside the polygon, via
-     * {@link BitSet2D#cropToPolygon}), auto-scales the result to fit the
-     * current screen — up for a small trace like a faint imprint mark, down
-     * for one close to full-page — and shows it in a plain, non-interactive
-     * {@link ViewFrame} window. Without this, a small region traced via the
-     * "Show Mask" toggle's full-page view is easy to miss entirely: this is
-     * the actual "look at what I traced" affordance.
+     * @return {@code region}'s polygon bounding box in image pixel
+     * coordinates, clamped to {@link #image}'s bounds — used as the zoom
+     * viewport for tracing a child region (see {@link #addRegion}/
+     * {@link #traceRegion}), and only ever called with a region that
+     * already has a polygon (a top-level Add has no parent, so no bounding
+     * box is needed there)
      */
-    private void viewRegion(CatalogEntry.Region region) {
-        List<Point> vertices = new ArrayList<>(region.polygon.size());
+    private Rectangle boundingBox(CatalogEntry.Region region) {
+        int minX = Integer.MAX_VALUE;
+        int minY = Integer.MAX_VALUE;
+        int maxX = Integer.MIN_VALUE;
+        int maxY = Integer.MIN_VALUE;
         for (CatalogEntry.Vertex v : region.polygon) {
-            vertices.add(new Point(v.x, v.y));
+            minX = Math.min(minX, v.x);
+            minY = Math.min(minY, v.y);
+            maxX = Math.max(maxX, v.x);
+            maxY = Math.max(maxY, v.y);
         }
-        new SwingWorker<BufferedImage, Void>() {
-            @Override
-            protected BufferedImage doInBackground() {
-                BufferedImage cropped = BitSet2D.cropToPolygon(image, vertices);
-                GraphicsDevice device = null != dialog.getGraphicsConfiguration()
-                        ? dialog.getGraphicsConfiguration().getDevice()
-                        : GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice();
-                Rectangle screen = device.getDefaultConfiguration().getBounds();
-                return ImageDisplay.scaleToFit(cropped, screen.width * 2 / 3, screen.height * 2 / 3);
-            }
-
-            @Override
-            protected void done() {
-                try {
-                    JLabel label = new JLabel(new ImageIcon(get()));
-                    ViewFrame.open("Region View", dialog, new JScrollPane(label), true, false);
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(dialog, "Could not build region view:\n" + ex.getMessage(),
-                            "View failed", JOptionPane.ERROR_MESSAGE);
-                }
-            }
-        }.execute();
+        minX = Math.max(0, minX);
+        minY = Math.max(0, minY);
+        maxX = Math.min(image.getWidth(), maxX);
+        maxY = Math.min(image.getHeight(), maxY);
+        return new Rectangle(minX, minY, Math.max(1, maxX - minX), Math.max(1, maxY - minY));
     }
 
     private void traceRegion(CatalogEntry.Region region) {
-        ContentAreaEditor.open(dialog, catalog, entry, image, region, null, null, new Runnable() {
+        Rectangle viewport = region.parentIndex < 0 ? null : boundingBox(entry.regions.get(region.parentIndex));
+        ContentAreaEditor.open(dialog, catalog, entry, image, region, null, null, region.parentIndex, viewport,
+                new Runnable() {
             @Override
             public void run() {
                 changed();
@@ -312,23 +317,13 @@ final class RegionManagerDialog {
     }
 
     private void renameRegion(CatalogEntry.Region region) {
-        JComboBox<String> kindBox = new JComboBox<>(distinctKinds());
-        kindBox.setEditable(true);
-        kindBox.setSelectedItem(region.kind);
-        JTextField authorField = new JTextField(region.author);
-        JPanel panel = new JPanel(new java.awt.GridLayout(0, 1, 0, 4));
-        panel.add(new JLabel("Kind:"));
-        panel.add(kindBox);
-        panel.add(new JLabel("Author (blank = unspecified):"));
-        panel.add(authorField);
-        int choice = JOptionPane.showConfirmDialog(dialog, panel, "Rename region",
-                JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
-        if (choice != JOptionPane.OK_OPTION) {
+        KindAuthorPrompt.Result result = KindAuthorPrompt.prompt(dialog, "Rename region", distinctKinds(catalog),
+                region.kind, region.author);
+        if (null == result) {
             return;
         }
-        Object kindItem = kindBox.getSelectedItem();
-        region.kind = null == kindItem ? "" : kindItem.toString().trim();
-        region.author = authorField.getText().trim();
+        region.kind = result.kind;
+        region.author = result.author;
         save();
         changed();
     }
@@ -378,11 +373,14 @@ final class RegionManagerDialog {
     /**
      * @return every distinct {@link CatalogEntry.Region#kind} used anywhere
      * in the catalog (excluding the synthetic {@code "page"} kind, which is
-     * never user-picked), sorted, for the Add/Rename kind combos. On a
-     * catalog read failure, falls back to just {@code "content"} rather
-     * than blocking the dialog — the combo stays editable either way.
+     * never user-picked), sorted, for {@link KindAuthorPrompt}'s combo —
+     * shared with {@link RegionViewer}'s own "Add Child" prompt, since a
+     * kind typed once from either place should show up for the other, not
+     * two independently-drifting lists. On a catalog read failure, falls
+     * back to just {@code "content"} rather than blocking the dialog — the
+     * combo stays editable either way.
      */
-    private String[] distinctKinds() {
+    static String[] distinctKinds(Catalog catalog) {
         TreeSet<String> kinds = new TreeSet<>();
         try {
             for (CatalogEntry candidate : catalog.listAll()) {

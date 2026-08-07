@@ -170,5 +170,28 @@ public class CatalogEntry {
          */
         public String author = "";
         public List<Vertex> polygon = new ArrayList<>();
+        /**
+         * Rotation to apply, in radians, so that this region's traced
+         * content (e.g. a ring figure whose outline is a wonky wedge, not a
+         * box) ends up upright. Independent of the polygon's vertex order
+         * or shape — can't be inferred from either, so it's carried
+         * explicitly. Zero for a region that is already upright (the
+         * default for every region traced before this field existed).
+         */
+        public double angle = 0.0;
+        /**
+         * Index into the owning entry's {@link CatalogEntry#regions} of this
+         * region's parent, or {@code -1} for a top-level region. Lets a
+         * diagram with many small sub-figures (e.g. a ring of wedge-shaped
+         * figures around a circle diagram) be traced as children of the
+         * diagram's own region — the diagram region's bounding box then
+         * doubles as the zoom viewport {@link ContentAreaEditor} opens for
+         * tracing each child, instead of tracing at whole-page scale. Never
+         * points at index 0 (the synthetic whole page) or forms a cycle;
+         * only one level deep is ever needed here, but nothing enforces
+         * that — it's just how far this manuscript's diagrams actually
+         * nest.
+         */
+        public int parentIndex = -1;
     }
 }

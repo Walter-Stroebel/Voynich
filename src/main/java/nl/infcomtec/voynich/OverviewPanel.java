@@ -126,7 +126,10 @@ public class OverviewPanel extends JPanel {
      */
     public void sort() {
         JComboBox<SortKey> fieldBox = new JComboBox<>(SortKey.values());
-        JCheckBox descending = new JCheckBox("Descending");
+        if (null != Voynich.config.sortKey) {
+            fieldBox.setSelectedItem(SortKey.valueOf(Voynich.config.sortKey));
+        }
+        JCheckBox descending = new JCheckBox("Descending", Voynich.config.sortDescending);
         JPanel panel = new JPanel(new BorderLayout(0, 6));
         panel.add(new JLabel("Sort by:"), BorderLayout.NORTH);
         panel.add(fieldBox, BorderLayout.CENTER);
@@ -137,7 +140,22 @@ public class OverviewPanel extends JPanel {
             return;
         }
         SortKey key = (SortKey) fieldBox.getSelectedItem();
-        Comparator<CatalogEntry> comparator = descending.isSelected() ? key.reversed() : key;
+        Voynich.config.sortKey = key.name();
+        Voynich.config.sortDescending = descending.isSelected();
+        Voynich.saveConfig();
+        applySort(key, descending.isSelected());
+    }
+
+    /**
+     * Re-sorts {@link #allEntries} in place by {@code key} (reversed if
+     * {@code descending}) and rebuilds {@link #model}. Shared by
+     * {@link #sort()} (which also persists the choice to
+     * {@link Config#sortKey}/{@link Config#sortDescending}) and
+     * {@link #loadFromCatalog()} (which restores whatever was persisted last
+     * run, without re-prompting).
+     */
+    private void applySort(SortKey key, boolean descending) {
+        Comparator<CatalogEntry> comparator = descending ? key.reversed() : key;
         Collections.sort(allEntries, comparator);
         applyFilter();
     }
@@ -339,6 +357,9 @@ public class OverviewPanel extends JPanel {
     public void loadFromCatalog() throws IOException {
         for (CatalogEntry entry : catalog.listAll()) {
             addOrUpdate(entry);
+        }
+        if (null != Voynich.config.sortKey) {
+            applySort(SortKey.valueOf(Voynich.config.sortKey), Voynich.config.sortDescending);
         }
     }
 
