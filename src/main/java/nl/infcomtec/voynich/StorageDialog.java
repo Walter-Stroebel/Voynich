@@ -8,6 +8,9 @@ import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Window;
+import java.awt.event.ActionEvent;
+import java.awt.event.ItemEvent;
+import java.awt.event.ItemListener;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -41,8 +44,18 @@ final class StorageDialog {
     private final JLabel liveLabel = new JLabel(" ", SwingConstants.CENTER);
     private final JPanel checkpointsPanel = new JPanel(new GridBagLayout());
     private ButtonGroup selectionGroup = new ButtonGroup();
-    private final JButton restoreButton = new JButton("Restore Selected");
-    private final JButton deleteButton = new JButton("Delete Selected");
+    private final JButton restoreButton = new JButton(new EzAction("Restore Selected") {
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            restoreSelected();
+        }
+    }.withTooltip("Discard everything since the selected checkpoint, replacing the live catalog with it"));
+    private final JButton deleteButton = new JButton(new EzAction("Delete Selected") {
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            deleteSelected();
+        }
+    }.withTooltip("Permanently delete the selected checkpoint (the live catalog is untouched)"));
     private final List<JRadioButton> rowSelectors = new ArrayList<>();
     private List<Catalog.CheckpointInfo> checkpoints = List.of();
 
@@ -60,12 +73,18 @@ final class StorageDialog {
         checkpointsPanel.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
         dialog.add(new JScrollPane(checkpointsPanel), BorderLayout.CENTER);
 
-        JButton takeButton = new JButton("Take Checkpoint Now");
-        JButton closeButton = new JButton("Close");
-        takeButton.addActionListener(e -> takeCheckpoint());
-        restoreButton.addActionListener(e -> restoreSelected());
-        deleteButton.addActionListener(e -> deleteSelected());
-        closeButton.addActionListener(e -> dialog.dispose());
+        JButton takeButton = new JButton(new EzAction("Take Checkpoint Now") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                takeCheckpoint();
+            }
+        }.withTooltip("Zip the entire current catalog into a new timestamped checkpoint"));
+        JButton closeButton = new JButton(new EzAction("Close") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                dialog.dispose();
+            }
+        }.withTooltip("Close this window"));
         JPanel buttons = new JPanel();
         buttons.add(takeButton);
         buttons.add(restoreButton);
@@ -129,7 +148,12 @@ final class StorageDialog {
         int row = 1;
         for (Catalog.CheckpointInfo cp : checkpoints) {
             JRadioButton selector = new JRadioButton();
-            selector.addItemListener(e -> updateButtonState());
+            selector.addItemListener(new ItemListener() {
+                @Override
+                public void itemStateChanged(ItemEvent e) {
+                    updateButtonState();
+                }
+            });
             selectionGroup.add(selector);
             rowSelectors.add(selector);
 

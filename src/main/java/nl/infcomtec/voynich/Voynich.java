@@ -133,7 +133,7 @@ public class Voynich {
                     existing.start();
                 }
             }
-        }));
+        }.withTooltip("Walk the configured scan folder and catalog anything new or changed")));
         toolBar.addSeparator();
         // Grid view/organize.
         toolBar.add(new JButton(new EzAction("Sort") {
@@ -141,19 +141,19 @@ public class Voynich {
             public void actionPerformed(ActionEvent e) {
                 overview.sort();
             }
-        }));
+        }.withTooltip("Re-order the thumbnail grid by filename, page number, size, colour, or content-area size")));
         toolBar.add(new JButton(new EzAction("Filter") {
             @Override
             public void actionPerformed(ActionEvent e) {
                 overview.filter();
             }
-        }));
+        }.withTooltip("Show only entries whose full JSON record matches (or, inverted, doesn't match) some text")));
         toolBar.add(new JToggleButton(new EzAction("Content Area Only") {
             @Override
             public void actionPerformed(ActionEvent e) {
                 overview.setContentAreaOnly(((JToggleButton) e.getSource()).isSelected());
             }
-        }));
+        }.withTooltip("Dim every thumbnail down to just its traced main content area")));
         toolBar.addSeparator();
         // Review/tagging.
         JTextField markupTemplate = new JTextField("was@$X,$Y", 20);
@@ -177,29 +177,32 @@ public class Voynich {
                         public String tagTemplate() {
                             return template;
                         }
-                    }, overview::addOrUpdate);
+                    }, new EntrySavedListener() {
+                        @Override
+                        public void onEntrySaved(CatalogEntry saved) {
+                            overview.addOrUpdate(saved);
+                        }
+                    });
                 } catch (IOException ex) {
                     JOptionPane.showMessageDialog(fr, "Could not start review: " + ex.getMessage(),
                             "Review failed", JOptionPane.ERROR_MESSAGE);
                 }
             }
-        }));
+        }.withTooltip("Shuffle through every cataloged entry, clicking the image to stage a tag from the template")));
         toolBar.add(markupTemplate);
         toolBar.addSeparator();
         // Whole-catalog safety net.
         toolBar.add(new JButton(new EzAction("Storage") {
             @Override
             public void actionPerformed(ActionEvent e) {
-                StorageDialog.open(fr, catalog, () -> {
-                    try {
-                        overview.loadFromCatalog();
-                    } catch (IOException ex) {
-                        JOptionPane.showMessageDialog(fr, "Could not reload catalog: " + ex.getMessage(),
-                                "Reload failed", JOptionPane.ERROR_MESSAGE);
+                StorageDialog.open(fr, catalog, new Runnable() {
+                    @Override
+                    public void run() {
+                        reloadOverview(fr, overview);
                     }
                 });
             }
-        }));
+        }.withTooltip("View/take/restore/delete whole-catalog checkpoints")));
         toolBar.addSeparator();
         // Session control.
         toolBar.add(new JButton(new EzAction("Exit") {
@@ -207,7 +210,7 @@ public class Voynich {
             public void actionPerformed(ActionEvent e) {
                 System.exit(0);
             }
-        }));
+        }.withTooltip("Quit the application")));
         outer.add(toolBar, BorderLayout.NORTH);
         outer.add(overview, BorderLayout.CENTER);
         fr.setContentPane(outer);
@@ -217,16 +220,49 @@ public class Voynich {
             public void run() {
                 fr.setVisible(true);
                 if (doSmokeTest) {
-                    // setVisible(true) has already queued the frame's first
-                    // paint on the EDT; two nested invokeLater hops run this
-                    // after that paint (and any repaint it triggers) has
-                    // actually executed, not just been requested.
-                    SwingUtilities.invokeLater(() -> SwingUtilities.invokeLater(() -> {
-                        System.out.println("Smoke test OK: " + TITLE + " constructed and painted.");
-                        System.exit(0);
-                    }));
+                    scheduleSmokeTestExit();
                 }
             }
         });
+    }
+
+    /**
+     * Reloads {@link OverviewPanel} from the catalog, e.g. after a
+     * {@link StorageDialog} restore replaces the live catalog wholesale
+     * out from under it.
+     */
+    private static void reloadOverview(JFrame fr, OverviewPanel overview) {
+        try {
+            overview.loadFromCatalog();
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(fr, "Could not reload catalog: " + ex.getMessage(),
+                    "Reload failed", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    /**
+     * Two nested {@link SwingUtilities#invokeLater} hops after
+     * {@code setVisible(true)} — which already queued the frame's first
+     * paint on the EDT — run {@link #printSmokeTestOkAndExit()} after that
+     * paint (and any repaint it triggers) has actually executed, not just
+     * been requested.
+     */
+    private static void scheduleSmokeTestExit() {
+        SwingUtilities.invokeLater(new Runnable() {
+            @Override
+            public void run() {
+                SwingUtilities.invokeLater(new Runnable() {
+                    @Override
+                    public void run() {
+                        printSmokeTestOkAndExit();
+                    }
+                });
+            }
+        });
+    }
+
+    private static void printSmokeTestOkAndExit() {
+        System.out.println("Smoke test OK: " + TITLE + " constructed and painted.");
+        System.exit(0);
     }
 }

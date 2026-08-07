@@ -12,6 +12,7 @@ import java.awt.GridBagLayout;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Window;
+import java.awt.event.ActionEvent;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -86,10 +87,18 @@ final class RegionManagerDialog {
         rowsPanel.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
         dialog.add(new JScrollPane(rowsPanel), BorderLayout.CENTER);
 
-        JButton addButton = new JButton("Add Region");
-        JButton closeButton = new JButton("Close");
-        addButton.addActionListener(e -> addRegion());
-        closeButton.addActionListener(e -> dialog.dispose());
+        JButton addButton = new JButton(new EzAction("Add Region") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                addRegion();
+            }
+        }.withTooltip("Trace a brand new region — kind and author are asked for first"));
+        JButton closeButton = new JButton(new EzAction("Close") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                dialog.dispose();
+            }
+        }.withTooltip("Close this window (regions are already saved, nothing pending)"));
         JPanel buttons = new JPanel();
         buttons.add(addButton);
         buttons.add(closeButton);
@@ -145,21 +154,45 @@ final class RegionManagerDialog {
             rowsPanel.add(new JLabel(region.author.isEmpty() ? "(unspecified)" : region.author), c);
 
             JPanel actions = new JPanel();
-            JButton view = new JButton("View");
-            JButton trace = new JButton("Trace");
-            JButton rename = new JButton("Rename");
-            JButton up = new JButton("Up");
-            JButton down = new JButton("Down");
-            JButton delete = new JButton("Delete");
+            JButton view = new JButton(new EzAction("View") {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    viewRegion(region);
+                }
+            }.withTooltip("Show just this region, cropped and scaled to fit the screen"));
+            JButton trace = new JButton(new EzAction("Trace") {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    traceRegion(region);
+                }
+            }.withTooltip("Re-trace this region's polygon"));
+            JButton rename = new JButton(new EzAction("Rename") {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    renameRegion(region);
+                }
+            }.withTooltip("Change this region's kind/author without re-tracing its polygon"));
+            JButton up = new JButton(new EzAction("Up") {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    moveRegion(index, -1);
+                }
+            }.withTooltip("Swap with the region above — row #1 is always the main content area"));
+            JButton down = new JButton(new EzAction("Down") {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    moveRegion(index, 1);
+                }
+            }.withTooltip("Swap with the region below — row #1 is always the main content area"));
+            JButton delete = new JButton(new EzAction("Delete") {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    deleteRegion(index);
+                }
+            }.withTooltip("Permanently remove this region"));
             view.setEnabled(region.polygon.size() >= 3);
             up.setEnabled(index > 1);
             down.setEnabled(index < entry.regions.size() - 1);
-            view.addActionListener(e -> viewRegion(region));
-            trace.addActionListener(e -> traceRegion(region));
-            rename.addActionListener(e -> renameRegion(region));
-            up.addActionListener(e -> moveRegion(index, -1));
-            down.addActionListener(e -> moveRegion(index, 1));
-            delete.addActionListener(e -> deleteRegion(index));
             actions.add(view);
             actions.add(trace);
             actions.add(rename);
@@ -222,7 +255,12 @@ final class RegionManagerDialog {
         Object kindItem = kindBox.getSelectedItem();
         String kind = null == kindItem ? "" : kindItem.toString().trim();
         String author = authorField.getText().trim();
-        ContentAreaEditor.open(dialog, catalog, entry, image, null, kind, author, this::changed);
+        ContentAreaEditor.open(dialog, catalog, entry, image, null, kind, author, new Runnable() {
+            @Override
+            public void run() {
+                changed();
+            }
+        });
     }
 
     /**
@@ -265,7 +303,12 @@ final class RegionManagerDialog {
     }
 
     private void traceRegion(CatalogEntry.Region region) {
-        ContentAreaEditor.open(dialog, catalog, entry, image, region, null, null, this::changed);
+        ContentAreaEditor.open(dialog, catalog, entry, image, region, null, null, new Runnable() {
+            @Override
+            public void run() {
+                changed();
+            }
+        });
     }
 
     private void renameRegion(CatalogEntry.Region region) {

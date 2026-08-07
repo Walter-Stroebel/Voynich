@@ -5,6 +5,7 @@ package nl.infcomtec.voynich;
 
 import java.awt.BorderLayout;
 import java.awt.Window;
+import java.awt.event.ActionEvent;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.List;
@@ -76,35 +77,50 @@ final class ContentAreaEditor {
         JLabel status = new JLabel(
                 "Click to trace \"" + kindLabel + "\" (right-click undoes the last point);"
                 + " click near the first point to close it.");
-        JButton clear = new JButton("Clear");
-        JButton commit = new JButton("Commit");
-        JButton cancel = new JButton("Cancel");
+        JButton clear = new JButton(new EzAction("Clear") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                canvas.clear();
+            }
+        }.withTooltip("Discard the current trace and start over"));
+        JButton commit = new JButton(new EzAction("Commit") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                CatalogEntry.Region region = existing;
+                if (null == region) {
+                    region = new CatalogEntry.Region();
+                    region.kind = newKind;
+                    region.author = newAuthor;
+                    entry.ensureWholePageRegion();
+                    entry.regions.add(region);
+                }
+                region.polygon = canvas.resultVertices();
+                try {
+                    catalog.save(entry, catalog.loadThumbnail(entry.filename));
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(canvas, "Save failed:\n" + ex.getMessage(),
+                            "Save failed", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+                if (null != onCommitted) {
+                    onCommitted.run();
+                }
+                SwingUtilities.getWindowAncestor(canvas).dispose();
+            }
+        }.withTooltip("Save this polygon and close"));
+        JButton cancel = new JButton(new EzAction("Cancel") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                SwingUtilities.getWindowAncestor(canvas).dispose();
+            }
+        }.withTooltip("Close without saving"));
         commit.setEnabled(!initial.isEmpty());
 
-        canvas.setStateListener(commit::setEnabled);
-        clear.addActionListener(e -> canvas.clear());
-        cancel.addActionListener(e -> SwingUtilities.getWindowAncestor(canvas).dispose());
-        commit.addActionListener(e -> {
-            CatalogEntry.Region region = existing;
-            if (null == region) {
-                region = new CatalogEntry.Region();
-                region.kind = newKind;
-                region.author = newAuthor;
-                entry.ensureWholePageRegion();
-                entry.regions.add(region);
+        canvas.setStateListener(new TraceStateListener() {
+            @Override
+            public void onTraceStateChanged(boolean closed) {
+                commit.setEnabled(closed);
             }
-            region.polygon = canvas.resultVertices();
-            try {
-                catalog.save(entry, catalog.loadThumbnail(entry.filename));
-            } catch (IOException ex) {
-                JOptionPane.showMessageDialog(canvas, "Save failed:\n" + ex.getMessage(),
-                        "Save failed", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            if (null != onCommitted) {
-                onCommitted.run();
-            }
-            SwingUtilities.getWindowAncestor(canvas).dispose();
         });
 
         JPanel buttons = new JPanel();

@@ -108,7 +108,12 @@ public class OverviewPanel extends JPanel {
                     return;
                 }
                 CatalogEntryEditor.edit(SwingUtilities.getWindowAncestor(OverviewPanel.this), catalog,
-                        model.getElementAt(idx), OverviewPanel.this::addOrUpdate);
+                        model.getElementAt(idx), new EntrySavedListener() {
+                            @Override
+                            public void onEntrySaved(CatalogEntry saved) {
+                                addOrUpdate(saved);
+                            }
+                        });
             }
         });
     }

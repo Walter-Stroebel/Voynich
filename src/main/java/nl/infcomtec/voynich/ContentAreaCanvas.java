@@ -19,7 +19,6 @@ import java.awt.image.BufferedImage;
 import java.awt.image.RescaleOp;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Consumer;
 import javax.swing.JComponent;
 import javax.swing.SwingUtilities;
 
@@ -84,7 +83,7 @@ final class ContentAreaCanvas extends JComponent {
     private int dragIndex = -1;
     private Point rubberBandFrom;
     private Point rubberBandTo;
-    private Consumer<Boolean> stateListener;
+    private TraceStateListener stateListener;
 
     private Point lastPanelPoint;
     private boolean loupeAnchorLeft;
@@ -169,7 +168,7 @@ final class ContentAreaCanvas extends JComponent {
      * (and again with {@code false} on {@link #clear}) — drives the host
      * window's Commit button enablement
      */
-    void setStateListener(Consumer<Boolean> listener) {
+    void setStateListener(TraceStateListener listener) {
         this.stateListener = listener;
     }
 
@@ -255,7 +254,7 @@ final class ContentAreaCanvas extends JComponent {
 
     private void fireStateChanged() {
         if (null != stateListener) {
-            stateListener.accept(closed);
+            stateListener.onTraceStateChanged(closed);
         }
     }
 

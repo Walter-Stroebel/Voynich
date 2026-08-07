@@ -45,6 +45,21 @@ public abstract class EzAction extends AbstractAction {
     }
 
     /* ---- fluent style hints ---- */
+    /**
+     * Sets the tooltip shown on hover. Unlike {@link #withBackColor}/
+     * {@link #withForeColor}/{@link #withFont}, this needs no
+     * {@link #applyTo(JComponent)} call to take effect: {@code SHORT_DESCRIPTION}
+     * is a standard {@link javax.swing.Action} key that
+     * {@code JButton}/{@code JMenuItem}'s {@code Action}-taking constructors
+     * already wire up to the component's tooltip automatically.
+     *
+     * @param tooltip the tooltip text, or {@code null} to clear it
+     */
+    public EzAction withTooltip(String tooltip) {
+        putValue(SHORT_DESCRIPTION, tooltip);
+        return this;
+    }
+
     public EzAction withBackColor(Color color) {
         this.background = color;
         return this;

@@ -15,6 +15,7 @@ import java.io.FilenameFilter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -134,7 +135,12 @@ public class FileCatalog implements Catalog {
     @Override
     public List<Catalog.CheckpointInfo> listCheckpoints() throws IOException {
         List<Catalog.CheckpointInfo> result = new ArrayList<>();
-        File[] files = checkpointsDir.listFiles((d, name) -> name.endsWith(".zip"));
+        File[] files = checkpointsDir.listFiles(new FilenameFilter() {
+            @Override
+            public boolean accept(File d, String name) {
+                return name.endsWith(".zip");
+            }
+        });
         if (null != files) {
             for (File f : files) {
                 String base = f.getName().substring(0, f.getName().length() - 4);
@@ -145,7 +151,12 @@ public class FileCatalog implements Catalog {
                 }
             }
         }
-        result.sort((a, b) -> Long.compare(b.timestampMillis, a.timestampMillis));
+        result.sort(new Comparator<Catalog.CheckpointInfo>() {
+            @Override
+            public int compare(Catalog.CheckpointInfo a, Catalog.CheckpointInfo b) {
+                return Long.compare(b.timestampMillis, a.timestampMillis);
+            }
+        });
         return result;
     }
 

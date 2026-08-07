@@ -15,6 +15,7 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Window;
 import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -25,8 +26,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.function.Consumer;
-import java.util.function.Function;
 import javax.imageio.ImageIO;
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
@@ -99,7 +98,7 @@ final class CatalogEntryEditor {
     private final Catalog catalog;
     private final List<CatalogEntry> queue;
     private final RapidReviewAction action;
-    private final Consumer<CatalogEntry> onSaved;
+    private final EntrySavedListener onSaved;
 
     private final JDialog dialog;
     private final JLabel statusLabel = new JLabel(" ", SwingConstants.CENTER);
@@ -107,9 +106,39 @@ final class CatalogEntryEditor {
     private final JTextArea jsonText = new JTextArea();
     private final JTextArea tagsText = new JTextArea();
     private final JComboBox<String> regionSelector = new JComboBox<>();
-    private final JButton freqButton = new JButton("Color Frequency");
-    private final JButton heatButton = new JButton("ΔE Heatmap");
-    private final JButton areaButton = new JButton("Regions…");
+    private final JButton freqButton = new JButton(new EzAction("Color Frequency") {
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            openColorVisualization(freqButton, "Color Frequency", new ColorVisualizationFactory() {
+                @Override
+                public JComponent createPanel(ColorImage ci) {
+                    return new JScrollPane(new FrequencyBarChart(ci));
+                }
+            });
+        }
+    }.withTooltip("Ranked colour-frequency chart for the selected region (or the whole page)"));
+    private final JButton heatButton = new JButton(new EzAction("ΔE Heatmap") {
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            openColorVisualization(heatButton, "ΔE Heatmap", new ColorVisualizationFactory() {
+                @Override
+                public JComponent createPanel(ColorImage ci) {
+                    return new DeltaEHeatmap(ci);
+                }
+            });
+        }
+    }.withTooltip("Spatial colour-distance-from-average map for the selected region (or the whole page)"));
+    private final JButton areaButton = new JButton(new EzAction("Regions…") {
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            RegionManagerDialog.open(dialog.getOwner(), catalog, entry, fullImage, new Runnable() {
+                @Override
+                public void run() {
+                    onRegionsChanged();
+                }
+            });
+        }
+    }.withTooltip("Add, trace, rename, reorder, or delete this entry's traced regions"));
     private final int imageMaxW;
     private final int imageMaxH;
 
@@ -130,7 +159,7 @@ final class CatalogEntryEditor {
      * @param onSaved called with each saved entry; may be {@code null}
      */
     private CatalogEntryEditor(Window owner, Catalog catalog, List<CatalogEntry> queue,
-            RapidReviewAction action, Consumer<CatalogEntry> onSaved) {
+            RapidReviewAction action, EntrySavedListener onSaved) {
         this.catalog = catalog;
         this.queue = queue;
         this.action = action;
@@ -162,20 +191,30 @@ final class CatalogEntryEditor {
         tagsScroll.setBorder(BorderFactory.createTitledBorder("Tags (one per line)"));
         tagsScroll.setPreferredSize(new Dimension(EAST_WIDTH, 100));
 
-        JButton primary = new JButton(null != action ? "Done (Enter)" : "Save (Enter)");
-        JButton cancel = new JButton("Cancel (Esc)");
-        primary.addActionListener(e -> save());
-        cancel.addActionListener(e -> dialog.dispose());
+        JButton primary = new JButton(new EzAction(null != action ? "Done (Enter)" : "Save (Enter)") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                save();
+            }
+        }.withTooltip(null != action ? "Save this entry and load the next one in the review queue"
+                : "Save this entry and close"));
+        JButton cancel = new JButton(new EzAction("Cancel (Esc)") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                dialog.dispose();
+            }
+        }.withTooltip("Close without saving"));
         JPanel buttons = new JPanel();
         buttons.add(primary);
         buttons.add(cancel);
 
-        freqButton.addActionListener(e -> openColorVisualization(freqButton, "Color Frequency",
-                ci -> new JScrollPane(new FrequencyBarChart(ci))));
-        heatButton.addActionListener(e -> openColorVisualization(heatButton, "ΔE Heatmap", DeltaEHeatmap::new));
-        areaButton.addActionListener(e -> RegionManagerDialog.open(dialog.getOwner(), catalog, entry, fullImage,
-                this::onRegionsChanged));
-        regionSelector.addActionListener(e -> updateDisplayedRegion());
+        regionSelector.setToolTipText("Which region the displayed image and analysis buttons apply to");
+        regionSelector.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                updateDisplayedRegion();
+            }
+        });
         JPanel vizButtons = new JPanel();
         vizButtons.add(new JLabel("Region:"));
         vizButtons.add(regionSelector);
@@ -213,8 +252,18 @@ final class CatalogEntryEditor {
         // nothing), which takes priority over these WHEN_IN_FOCUSED_WINDOW
         // bindings while either text box has focus — so Enter still inserts
         // a newline while editing, and only triggers Save/Done otherwise.
-        bindKey(KeyEvent.VK_ENTER, "save", this::save);
-        bindKey(KeyEvent.VK_ESCAPE, "cancel", dialog::dispose);
+        bindKey(KeyEvent.VK_ENTER, "save", new Runnable() {
+            @Override
+            public void run() {
+                save();
+            }
+        });
+        bindKey(KeyEvent.VK_ESCAPE, "cancel", new Runnable() {
+            @Override
+            public void run() {
+                dialog.dispose();
+            }
+        });
 
         dialog.setSize(dialogW, dialogH);
         dialog.setLocationRelativeTo(owner);
@@ -295,7 +344,7 @@ final class CatalogEntryEditor {
      * {@code panelFactory} and opens it via {@link ViewFrame#open}. A no-op
      * if the entry has no readable file.
      */
-    private void openColorVisualization(JButton source, String viewName, Function<ColorImage, JComponent> panelFactory) {
+    private void openColorVisualization(JButton source, String viewName, ColorVisualizationFactory panelFactory) {
         File file = ImageDisplay.pickExistingFile(entry);
         if (null == file) {
             return;
@@ -323,7 +372,7 @@ final class CatalogEntryEditor {
                 source.setEnabled(null != fullImage);
                 try {
                     String frameTitle = null == region ? viewName : viewName + " — " + region.kind;
-                    ViewFrame.open(frameTitle, dialog.getOwner(), panelFactory.apply(get()), true, false);
+                    ViewFrame.open(frameTitle, dialog.getOwner(), panelFactory.createPanel(get()), true, false);
                 } catch (Exception ex) {
                     JOptionPane.showMessageDialog(dialog, "Could not analyse image:\n" + ex.getMessage(),
                             "Analysis failed", JOptionPane.ERROR_MESSAGE);
@@ -478,7 +527,7 @@ final class CatalogEntryEditor {
             return;
         }
         if (null != onSaved) {
-            onSaved.accept(parsed);
+            onSaved.onEntrySaved(parsed);
         }
         advance();
     }
@@ -548,7 +597,7 @@ final class CatalogEntryEditor {
      * @param onSaved called with the saved entry after a successful Save;
      * never called on Cancel
      */
-    static void edit(Window owner, Catalog catalog, CatalogEntry entry, Consumer<CatalogEntry> onSaved) {
+    static void edit(Window owner, Catalog catalog, CatalogEntry entry, EntrySavedListener onSaved) {
         new CatalogEntryEditor(owner, catalog, List.of(entry), null, onSaved);
     }
 
@@ -567,7 +616,7 @@ final class CatalogEntryEditor {
      * @param onSaved called with each saved entry; may be {@code null}
      * @throws IOException if listing the catalog fails
      */
-    static void review(Window owner, Catalog catalog, RapidReviewAction action, Consumer<CatalogEntry> onSaved)
+    static void review(Window owner, Catalog catalog, RapidReviewAction action, EntrySavedListener onSaved)
             throws IOException {
         List<CatalogEntry> queue = new ArrayList<>();
         for (CatalogEntry candidate : catalog.listAll()) {

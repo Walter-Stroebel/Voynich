@@ -42,8 +42,13 @@ public class CatalogCli {
             case "list": {
                 List<String> rest = List.of(args).subList(1, args.length);
                 boolean invert = rest.contains("-v") || rest.contains("--invert");
-                String filter = rest.stream().filter(a -> !a.equals("-v") && !a.equals("--invert"))
-                        .findFirst().orElse(null);
+                String filter = null;
+                for (String a : rest) {
+                    if (!a.equals("-v") && !a.equals("--invert")) {
+                        filter = a;
+                        break;
+                    }
+                }
                 list(catalog, filter, invert);
                 break;
             }
