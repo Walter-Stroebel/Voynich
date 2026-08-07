@@ -18,8 +18,12 @@ mvn package
 java -jar target/Voynich-1.0-jar-with-dependencies.jar [optional-config-file]
 # Run via Maven
 mvn exec:java
+# Smoke test: builds/shows the main JFrame, exits 0 once it's actually
+# painted (not just constructed), instead of sitting open. Useful after a
+# change to confirm the app still starts at all without a full manual run.
+java -jar target/Voynich-1.0-jar-with-dependencies.jar --smokeTest
 ```
-There are no tests yet.
+There are no tests yet, beyond the `--smokeTest` startup check above.
 
 ## Shell Tooling
 This machine always has an up-to-date `locate` database (`updatedb` runs

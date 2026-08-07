@@ -8,6 +8,8 @@ import java.awt.BorderLayout;
 import java.awt.event.ActionEvent;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.swing.JButton;
@@ -70,13 +72,25 @@ public class Voynich {
     /**
      * Main.
      *
-     * @param args Only one argument possible, if given the path to the
-     * configuration file.
+     * @param args {@code --smokeTest} (anywhere in the args) makes the app
+     * exit right after the main {@link JFrame} is constructed, shown, and
+     * has completed its first paint, instead of running normally — a CI/
+     * scripting-friendly "did it even start" check. Any other, single
+     * argument is the path to the configuration file.
      */
     public static void main(String[] args) {
         FlatDarculaLaf.setup();
-        if (args.length > 0) {
-            configFile = new File(args[0]);
+        boolean smokeTest = false;
+        List<String> positional = new ArrayList<>();
+        for (String arg : args) {
+            if ("--smokeTest".equals(arg)) {
+                smokeTest = true;
+            } else {
+                positional.add(arg);
+            }
+        }
+        if (!positional.isEmpty()) {
+            configFile = new File(positional.get(0));
         }
         config = JSON.readValue(null, configFile, Config.class);
         if (null == config || null == config.scanPath) {
@@ -197,10 +211,21 @@ public class Voynich {
         outer.add(toolBar, BorderLayout.NORTH);
         outer.add(overview, BorderLayout.CENTER);
         fr.setContentPane(outer);
+        final boolean doSmokeTest = smokeTest;
         SwingUtilities.invokeLater(new Runnable() {
             @Override
             public void run() {
                 fr.setVisible(true);
+                if (doSmokeTest) {
+                    // setVisible(true) has already queued the frame's first
+                    // paint on the EDT; two nested invokeLater hops run this
+                    // after that paint (and any repaint it triggers) has
+                    // actually executed, not just been requested.
+                    SwingUtilities.invokeLater(() -> SwingUtilities.invokeLater(() -> {
+                        System.out.println("Smoke test OK: " + TITLE + " constructed and painted.");
+                        System.exit(0);
+                    }));
+                }
             }
         });
     }
