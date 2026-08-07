@@ -27,11 +27,13 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import javax.imageio.ImageIO;
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
@@ -39,7 +41,6 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
-import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
 import javax.swing.SwingConstants;
 import javax.swing.SwingWorker;
@@ -82,14 +83,14 @@ import javax.swing.SwingWorker;
  * disagreeing about the same field.
  * <p>
  * {@link CatalogEntry#regions} gets the same treatment for a different
- * reason: it's edited by {@code ContentAreaEditor}, a separate window over
+ * reason: it's edited by {@code RegionManagerDialog}, a separate window over
  * the same {@link #entry}, which can save it to the catalog while this
  * dialog is still open — but the JSON text box was rendered once at load
  * time and has no way to know that happened. So it's stripped from the blob
  * (nothing useful to hand-edit in a list of vertex coordinates anyway), and
  * {@link #save} always writes {@link #entry}'s live value rather than
  * whatever the stale blob text says, so a later Save here can never clobber
- * a trace that {@code ContentAreaEditor} already committed.
+ * a trace that {@code RegionManagerDialog} already committed.
  */
 final class CatalogEntryEditor {
 
@@ -105,10 +106,10 @@ final class CatalogEntryEditor {
     private final JLabel imageLabel = new JLabel("", SwingConstants.CENTER);
     private final JTextArea jsonText = new JTextArea();
     private final JTextArea tagsText = new JTextArea();
+    private final JComboBox<String> regionSelector = new JComboBox<>();
     private final JButton freqButton = new JButton("Color Frequency");
     private final JButton heatButton = new JButton("ΔE Heatmap");
-    private final JButton areaButton = new JButton("Content Area");
-    private final JToggleButton maskButton = new JToggleButton("Show Mask");
+    private final JButton areaButton = new JButton("Regions…");
     private final int imageMaxW;
     private final int imageMaxH;
 
@@ -117,7 +118,6 @@ final class CatalogEntryEditor {
     private Point lastLabelPoint;
     private BufferedImage fullImage;
     private Icon plainIcon;
-    private Icon maskedIcon;
 
     /**
      * @param owner window the dialog is sized/centered against; may be
@@ -173,24 +173,15 @@ final class CatalogEntryEditor {
         freqButton.addActionListener(e -> openColorVisualization(freqButton, "Color Frequency",
                 ci -> new JScrollPane(new FrequencyBarChart(ci))));
         heatButton.addActionListener(e -> openColorVisualization(heatButton, "ΔE Heatmap", DeltaEHeatmap::new));
-        areaButton.addActionListener(e -> ContentAreaEditor.open(dialog.getOwner(), catalog, entry, fullImage,
-                this::onContentAreaCommitted));
-        maskButton.addActionListener(e -> {
-            if (maskButton.isSelected()) {
-                if (null != maskedIcon) {
-                    imageLabel.setIcon(maskedIcon);
-                } else {
-                    buildMaskedIcon();
-                }
-            } else {
-                imageLabel.setIcon(plainIcon);
-            }
-        });
+        areaButton.addActionListener(e -> RegionManagerDialog.open(dialog.getOwner(), catalog, entry, fullImage,
+                this::onRegionsChanged));
+        regionSelector.addActionListener(e -> updateDisplayedRegion());
         JPanel vizButtons = new JPanel();
+        vizButtons.add(new JLabel("Region:"));
+        vizButtons.add(regionSelector);
         vizButtons.add(freqButton);
         vizButtons.add(heatButton);
         vizButtons.add(areaButton);
-        vizButtons.add(maskButton);
 
         JPanel south = new JPanel(new BorderLayout());
         south.add(vizButtons, BorderLayout.NORTH);
@@ -295,27 +286,44 @@ final class CatalogEntryEditor {
     /**
      * Re-reads {@link #entry}'s file off the EDT into a fresh
      * {@link ColorImage} (a full per-pixel CIELab pass — can take a while on
-     * the largest foldout scans), then hands it to {@code panelFactory} and
-     * opens the result via {@link ViewFrame#open}. A no-op if the entry has
-     * no readable file.
+     * the largest foldout scans) — or, if {@link #regionSelector} has a
+     * region other than "Whole page" selected, crops to just that region's
+     * bounding box first (via {@link BitSet2D#cropAndMaskPolygon}) and
+     * analyses only the polygon's real pixels, excluding the crop's
+     * blacked-out corners from the colour inventory entirely rather than
+     * just hiding them visually — then hands the result to
+     * {@code panelFactory} and opens it via {@link ViewFrame#open}. A no-op
+     * if the entry has no readable file.
      */
     private void openColorVisualization(JButton source, String viewName, Function<ColorImage, JComponent> panelFactory) {
         File file = ImageDisplay.pickExistingFile(entry);
         if (null == file) {
             return;
         }
+        int regionIndex = regionSelector.getSelectedIndex();
+        CatalogEntry.Region region = regionIndex > 0 ? entry.regions.get(regionIndex) : null;
         source.setEnabled(false);
         new SwingWorker<ColorImage, Void>() {
             @Override
             protected ColorImage doInBackground() throws IOException {
-                return new ColorImage(file);
+                if (null == region) {
+                    return new ColorImage(file);
+                }
+                BufferedImage full = ImageIO.read(file);
+                List<Point> vertices = new ArrayList<>(region.polygon.size());
+                for (CatalogEntry.Vertex v : region.polygon) {
+                    vertices.add(new Point(v.x, v.y));
+                }
+                BitSet2D.Crop crop = BitSet2D.cropAndMaskPolygon(full, vertices);
+                return new ColorImage(crop.image, entry.filename + " [" + region.kind + "]", crop.mask);
             }
 
             @Override
             protected void done() {
                 source.setEnabled(null != fullImage);
                 try {
-                    ViewFrame.open(viewName, dialog.getOwner(), panelFactory.apply(get()), true, false);
+                    String frameTitle = null == region ? viewName : viewName + " — " + region.kind;
+                    ViewFrame.open(frameTitle, dialog.getOwner(), panelFactory.apply(get()), true, false);
                 } catch (Exception ex) {
                     JOptionPane.showMessageDialog(dialog, "Could not analyse image:\n" + ex.getMessage(),
                             "Analysis failed", JOptionPane.ERROR_MESSAGE);
@@ -325,39 +333,73 @@ final class CatalogEntryEditor {
     }
 
     /**
-     * Called by {@code ContentAreaEditor} right after it commits a trace for
-     * {@link #entry} to the catalog. The mask overlay was built from
-     * whatever {@link CatalogEntry#mainRegion()} was when it was last built —
-     * possibly nothing, possibly a now-outdated trace — so it's discarded
-     * rather than trusted, same reasoning as the JSON blob staleness fix
-     * above: a background window mutated {@link #entry} and this dialog has
-     * no other way to find out.
+     * Rebuilds {@link #regionSelector}'s items from {@link #entry}'s
+     * current {@link CatalogEntry#regions}: {@code "Whole page"} at index 0
+     * (matching {@link #openColorVisualization}'s "no region selected"
+     * reading of index 0), then one entry per region from index 1 on
+     * (index 0, the synthetic whole-page region, is never listed here
+     * either — selecting "Whole page" already means the same thing).
+     *
+     * @param preserveSelection {@code true} to keep the current selection by
+     * label where possible (so {@link #onRegionsChanged}'s rebuild of the
+     * <em>same</em> entry's list doesn't silently snap back to "Whole page"
+     * just because a rename changed a label); {@code false} to always reset
+     * to "Whole page" — {@link #advance}'s case, where the previous
+     * selection belonged to a different entry entirely and carrying it over
+     * would be a coincidence, not a preserved choice.
      */
-    private void onContentAreaCommitted() {
-        maskedIcon = null;
-        maskButton.setEnabled(null != fullImage && null != entry.mainRegion());
-        if (maskButton.isSelected()) {
-            maskButton.setSelected(false);
-            imageLabel.setIcon(plainIcon);
+    private void refreshRegionSelector(boolean preserveSelection) {
+        Object previouslySelected = preserveSelection ? regionSelector.getSelectedItem() : null;
+        regionSelector.removeAllItems();
+        regionSelector.addItem("Whole page");
+        for (int i = 1; i < entry.regions.size(); i++) {
+            regionSelector.addItem("#" + i + ": " + entry.regions.get(i).kind);
         }
+        regionSelector.setSelectedItem(null != previouslySelected ? previouslySelected : "Whole page");
     }
 
     /**
-     * Rasterizes {@link CatalogEntry#mainRegion()}'s polygon into a
-     * {@link BitSet2D} (see its {@code createFromPolygon}) and darkens every
-     * pixel outside it, off-EDT since this is a full-resolution pass over
-     * what can be an 8000px-wide scan. Caches the result in
-     * {@link #maskedIcon} so toggling back on doesn't recompute.
+     * Called by {@code RegionManagerDialog} right after any action (Add,
+     * Trace, Rename, Up, Down, Delete) writes {@link #entry}'s regions to
+     * the catalog. Rebuilds {@link #regionSelector} (whatever it's showing
+     * may now be stale — a background window mutated {@link #entry} and
+     * this dialog has no other way to find out) and, since that rebuild can
+     * itself change the selection, re-derives the displayed image from
+     * whatever ends up selected.
      */
-    private void buildMaskedIcon() {
+    private void onRegionsChanged() {
+        refreshRegionSelector(true);
+        updateDisplayedRegion();
+    }
+
+    /**
+     * Sets {@link #imageLabel}'s icon from {@link #regionSelector}'s current
+     * selection: {@link #plainIcon} for "Whole page" (index 0), or — for any
+     * other region — a fresh darken-outside-the-polygon overlay (via
+     * {@link BitSet2D#darkenOutside}), built off-EDT since this is a
+     * full-resolution pass over what can be an 8000px-wide scan. Replaces
+     * the old separate "Show Mask" toggle: which region is being looked at
+     * and which region analysis runs over are the same question, so one
+     * selector answers both instead of two independent controls that could
+     * disagree.
+     */
+    private void updateDisplayedRegion() {
+        if (null == fullImage) {
+            return;
+        }
+        int regionIndex = regionSelector.getSelectedIndex();
+        if (regionIndex <= 0) {
+            imageLabel.setIcon(plainIcon);
+            return;
+        }
         CatalogEntry forEntry = entry;
+        CatalogEntry.Region region = entry.regions.get(regionIndex);
         BufferedImage source = fullImage;
-        maskButton.setEnabled(false);
         new SwingWorker<ImageIcon, Void>() {
             @Override
             protected ImageIcon doInBackground() {
                 List<Point> vertices = new ArrayList<>();
-                for (CatalogEntry.Vertex v : forEntry.mainRegion().polygon) {
+                for (CatalogEntry.Vertex v : region.polygon) {
                     vertices.add(new Point(v.x, v.y));
                 }
                 BufferedImage out = BitSet2D.darkenOutside(source, vertices);
@@ -366,19 +408,14 @@ final class CatalogEntryEditor {
 
             @Override
             protected void done() {
-                if (forEntry != entry) {
-                    return; // moved on to a different entry while this was computing
+                if (forEntry != entry || regionSelector.getSelectedIndex() != regionIndex) {
+                    return; // moved on to a different entry/selection while this was computing
                 }
-                maskButton.setEnabled(null != fullImage);
                 try {
-                    maskedIcon = get();
-                    if (maskButton.isSelected()) {
-                        imageLabel.setIcon(maskedIcon);
-                    }
+                    imageLabel.setIcon(get());
                 } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(dialog, "Could not build mask overlay:\n" + ex.getMessage(),
-                            "Mask failed", JOptionPane.ERROR_MESSAGE);
-                    maskButton.setSelected(false);
+                    JOptionPane.showMessageDialog(dialog, "Could not build region overlay:\n" + ex.getMessage(),
+                            "Overlay failed", JOptionPane.ERROR_MESSAGE);
                 }
             }
         }.execute();
@@ -480,7 +517,6 @@ final class CatalogEntryEditor {
         tagsText.setCaretPosition(0);
 
         fullImage = ImageDisplay.loadFull(entry);
-        maskedIcon = null;
         if (null == fullImage) {
             plainIcon = null;
             imageLabel.setIcon(null);
@@ -490,11 +526,10 @@ final class CatalogEntryEditor {
             plainIcon = new ImageIcon(ImageDisplay.scaleToFit(fullImage, imageMaxW, imageMaxH));
             imageLabel.setIcon(plainIcon);
         }
+        refreshRegionSelector(false);
         freqButton.setEnabled(null != fullImage);
         heatButton.setEnabled(null != fullImage);
         areaButton.setEnabled(null != fullImage);
-        maskButton.setSelected(false);
-        maskButton.setEnabled(null != fullImage && null != entry.mainRegion());
 
         statusLabel.setText(null != action
                 ? String.format("%d / %d — %s — click the image to add a \"%s\" tag",

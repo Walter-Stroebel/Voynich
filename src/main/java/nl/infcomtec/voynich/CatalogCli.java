@@ -310,7 +310,11 @@ public class CatalogCli {
             return;
         }
         BufferedImage full = ImageIO.read(imgFile);
-        BufferedImage cropped = cropToContentArea(full, main.polygon);
+        List<Point> vertices = new ArrayList<>(main.polygon.size());
+        for (CatalogEntry.Vertex v : main.polygon) {
+            vertices.add(new Point(v.x, v.y));
+        }
+        BufferedImage cropped = BitSet2D.cropToPolygon(full, vertices);
 
         if (null == out) {
             ByteArrayOutputStream buf = new ByteArrayOutputStream();
@@ -324,52 +328,6 @@ public class CatalogCli {
                 "{\"filename\":\"%s\",\"width\":%d,\"height\":%d,\"vertices\":%d%s}",
                 entry.filename, cropped.getWidth(), cropped.getHeight(), main.polygon.size(),
                 null == out ? "" : ",\"path\":\"" + out + "\""));
-    }
-
-    /**
-     * Crops {@code full} to {@code contentArea}'s bounding box, then blacks
-     * out every pixel inside that box but outside the polygon itself —
-     * blank vellum, backdrop, frayed edge, other pages in the stack,
-     * whatever the trace excluded. Uses {@link BitSet2D#createFromPolygon}
-     * for the mask, the same fast scanline fill {@code CatalogEntryEditor}'s
-     * "Show Mask" toggle builds — never {@code Shape.contains()}.
-     *
-     * @param full the entry's full-resolution image
-     * @param contentArea the entry's traced boundary, in {@code full}'s own
-     * pixel coordinates; must have at least 3 vertices
-     * @return a new, smaller {@code BufferedImage} — just the content
-     * area's bounding box, masked
-     */
-    private static BufferedImage cropToContentArea(BufferedImage full, List<CatalogEntry.Vertex> contentArea) {
-        int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE;
-        List<Point> vertices = new ArrayList<>(contentArea.size());
-        for (CatalogEntry.Vertex v : contentArea) {
-            vertices.add(new Point(v.x, v.y));
-            minX = Math.min(minX, v.x);
-            minY = Math.min(minY, v.y);
-            maxX = Math.max(maxX, v.x);
-            maxY = Math.max(maxY, v.y);
-        }
-        minX = Math.max(0, minX);
-        minY = Math.max(0, minY);
-        maxX = Math.min(full.getWidth() - 1, maxX);
-        maxY = Math.min(full.getHeight() - 1, maxY);
-        int w = maxX - minX + 1;
-        int h = maxY - minY + 1;
-
-        BitSet2D mask = BitSet2D.createFromPolygon(vertices, full.getWidth(), full.getHeight());
-        int[] pixels = full.getRGB(minX, minY, w, h, null, 0, w);
-        for (int y = 0; y < h; y++) {
-            int rowOffset = y * w;
-            for (int x = 0; x < w; x++) {
-                if (!mask.get2D(minX + x, minY + y)) {
-                    pixels[rowOffset + x] = 0xFF000000;
-                }
-            }
-        }
-        BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
-        out.setRGB(0, 0, w, h, pixels, 0, w);
-        return out;
     }
 
     private static File resolveExistingLocation(CatalogEntry entry) {

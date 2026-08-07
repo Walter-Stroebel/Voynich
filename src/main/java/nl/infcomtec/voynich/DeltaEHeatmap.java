@@ -29,26 +29,48 @@ import javax.swing.JPanel;
  * exists; this says <em>where</em> — spatially exposing ink, staining, or a
  * pigment anomaly that a ranked list alone can't show.
  * </p>
+ * <p>
+ * When {@link ColorImage#thumbnailMask} is non-null (a region-scoped crop,
+ * not "Whole page"), cells it has clear — the crop's masked-out corners and
+ * any letterbox padding, neither of which is real content — are rendered as
+ * plain black and excluded from both the reference mean (already true via
+ * {@link ColorImage#cb}, which the masked {@code ColorImage} constructor
+ * never added them to) and this heatmap's own max-ΔE scale. Without that
+ * exclusion, those cells' ΔE from a reference now correctly anchored to real
+ * content is enormous — they'd dominate the max and crush every real
+ * in-region variation down near the "matches the mean" end of the scale.
+ * </p>
  */
 final class DeltaEHeatmap extends JPanel {
 
     private final BufferedImage heat;
     private final double maxDeltaE;
+    private final boolean hasOutsideRegion;
 
     DeltaEHeatmap(ColorImage image) {
+        hasOutsideRegion = null != image.thumbnailMask;
         ColorBase.TriLabColor reference = weightedMeanLab(image);
         int size = ColorImage.THUMB_SIZE;
+        BitSet2D validMask = image.thumbnailMask;
         double[] deltas = new double[size * size];
         double max = 0;
         for (int i = 0; i < deltas.length; i++) {
-            deltas[i] = ColorBase.deltaE(image.labThumbnail[i], reference);
-            max = Math.max(max, deltas[i]);
+            if (null == validMask || validMask.get2D(i % size, i / size)) {
+                deltas[i] = ColorBase.deltaE(image.labThumbnail[i], reference);
+                max = Math.max(max, deltas[i]);
+            }
         }
         maxDeltaE = max;
         heat = new BufferedImage(size, size, BufferedImage.TYPE_INT_RGB);
         for (int i = 0; i < deltas.length; i++) {
-            double t = max <= 0 ? 0 : deltas[i] / max;
-            heat.setRGB(i % size, i / size, heatColor(t).getRGB());
+            int rgb;
+            if (null != validMask && !validMask.get2D(i % size, i / size)) {
+                rgb = Color.BLACK.getRGB();
+            } else {
+                double t = max <= 0 ? 0 : deltas[i] / max;
+                rgb = heatColor(t).getRGB();
+            }
+            heat.setRGB(i % size, i / size, rgb);
         }
         setPreferredSize(new Dimension(size * 2, size * 2 + 20));
         setBackground(Color.BLACK);
@@ -96,7 +118,8 @@ final class DeltaEHeatmap extends JPanel {
         int offX = (getWidth() - side) / 2;
         g2.drawImage(heat, offX, 0, side, side, null);
         g2.setColor(Color.LIGHT_GRAY);
-        g2.drawString(String.format("blue = near the page's average colour, red = max ΔE (%.1f) from it", maxDeltaE),
-                offX, side + 16);
+        String caption = String.format("blue = near the region's average colour, red = max ΔE (%.1f) from it", maxDeltaE)
+                + (hasOutsideRegion ? "; black = outside the traced region" : "");
+        g2.drawString(caption, offX, side + 16);
     }
 }

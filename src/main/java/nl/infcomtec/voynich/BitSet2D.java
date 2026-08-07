@@ -708,4 +708,94 @@ public class BitSet2D extends BitSet implements Cloneable, Iterable<Point> {
         int b = (rgb & 0xFF) / 4;
         return (r << 16) | (g << 8) | b;
     }
+
+    /**
+     * Crops {@code full} to {@code polygon}'s bounding box, then blacks out
+     * every pixel inside that box but outside the polygon itself — blank
+     * vellum, backdrop, frayed edge, other pages in the stack, whatever the
+     * trace excluded. Shared by {@code CatalogCli --content-area} and
+     * {@code RegionManagerDialog}'s "View" action, both of which only need
+     * the picture, not which pixels are real content — for that (e.g.
+     * {@code CatalogEntryEditor}'s region-scoped "Color Frequency"/"ΔE
+     * Heatmap", which must exclude the blacked-out corners from analysis
+     * rather than just visually hide them) use {@link #cropAndMaskPolygon}
+     * instead. Uses {@link #createFromPolygon} for the mask, never
+     * {@code Shape.contains()} — see the class doc.
+     *
+     * @param full the source image
+     * @param polygon vertices in {@code full}'s own pixel coordinates; must
+     * have at least 3 vertices
+     * @return a new, smaller {@code BufferedImage} — just the polygon's
+     * bounding box, masked
+     */
+    public static BufferedImage cropToPolygon(BufferedImage full, List<Point> polygon) {
+        return cropAndMaskPolygon(full, polygon).image;
+    }
+
+    /**
+     * Same crop-to-bounding-box-and-black-out-outside-the-polygon as
+     * {@link #cropToPolygon}, but also returns the polygon mask in the
+     * crop's own local coordinates (not {@code full}'s) — so a caller can
+     * tell "real content" from "blacked-out corner" pixel-for-pixel without
+     * re-deriving the bounding box or re-running {@link #createFromPolygon}
+     * itself. First consumer: {@code ColorImage}'s masked constructor, used
+     * by {@code CatalogEntryEditor}'s region-scoped colour analysis so a
+     * masked-out corner never pollutes a frequency count or a ΔE reference
+     * mean the way it would if it were just painted black and analysed like
+     * any other pixel.
+     *
+     * @param full the source image
+     * @param polygon vertices in {@code full}'s own pixel coordinates; must
+     * have at least 3 vertices
+     * @return the cropped, masked image plus a same-size {@link BitSet2D}
+     * that's set wherever that image's pixel is real (inside the polygon)
+     */
+    public static Crop cropAndMaskPolygon(BufferedImage full, List<Point> polygon) {
+        int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE;
+        for (Point v : polygon) {
+            minX = Math.min(minX, v.x);
+            minY = Math.min(minY, v.y);
+            maxX = Math.max(maxX, v.x);
+            maxY = Math.max(maxY, v.y);
+        }
+        minX = Math.max(0, minX);
+        minY = Math.max(0, minY);
+        maxX = Math.min(full.getWidth() - 1, maxX);
+        maxY = Math.min(full.getHeight() - 1, maxY);
+        int w = maxX - minX + 1;
+        int h = maxY - minY + 1;
+
+        BitSet2D fullMask = createFromPolygon(polygon, full.getWidth(), full.getHeight());
+        BitSet2D localMask = new BitSet2D(w, h);
+        int[] pixels = full.getRGB(minX, minY, w, h, null, 0, w);
+        for (int y = 0; y < h; y++) {
+            int rowOffset = y * w;
+            for (int x = 0; x < w; x++) {
+                if (fullMask.get2D(minX + x, minY + y)) {
+                    localMask.set2D(x, y);
+                } else {
+                    pixels[rowOffset + x] = 0xFF000000;
+                }
+            }
+        }
+        BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        out.setRGB(0, 0, w, h, pixels, 0, w);
+        return new Crop(out, localMask);
+    }
+
+    /**
+     * The result of {@link #cropAndMaskPolygon}: a cropped image plus a
+     * same-size mask distinguishing real content pixels from the
+     * blacked-out corners the bounding-box crop necessarily includes.
+     */
+    public static final class Crop {
+
+        public final BufferedImage image;
+        public final BitSet2D mask;
+
+        private Crop(BufferedImage image, BitSet2D mask) {
+            this.image = image;
+            this.mask = mask;
+        }
+    }
 }

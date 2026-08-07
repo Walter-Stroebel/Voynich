@@ -132,6 +132,23 @@ public class ColorImage {
     public int thumbnailUniqueColors;
 
     /**
+     * {@code null} when built without a mask (every {@link #labThumbnail}
+     * cell is real content); otherwise a {@link #THUMB_SIZE}×{@link
+     * #THUMB_SIZE} grid set wherever a cell maps back to a pixel the
+     * {@link #ColorImage(BufferedImage, String, BitSet2D)} mask had set —
+     * clear both for a masked-out source pixel and for the letterbox
+     * padding {@link #buildThumbnails} itself adds when the crop isn't
+     * already square. {@link #thumbnail}/{@link #labThumbnail} still show
+     * those cells (the honest shape of the region), but {@link
+     * DeltaEHeatmap} uses this to exclude them from its colour-distance
+     * scale — otherwise a small region's letterbox/mask border, now most
+     * definitely not near the (correctly, mask-excluded) reference mean,
+     * would set the ΔE scale's max and crush every real in-region
+     * variation down near zero.
+     */
+    public BitSet2D thumbnailMask;
+
+    /**
      * Reads an image file, builds the colour inventory, and records the
      * elapsed construction time in {@link #loadNanos}.
      *
@@ -140,13 +157,58 @@ public class ColorImage {
      * @throws IOException if the file cannot be read or decoded
      */
     public ColorImage(File f) throws IOException {
+        this(ImageIO.read(f), f.toString());
+    }
+
+    /**
+     * Builds the colour inventory from an already-decoded image, e.g. a
+     * {@link CatalogEntry.Region}'s crop (via {@link BitSet2D#cropToPolygon})
+     * rather than a whole source file — the region-scoped path
+     * {@code CatalogEntryEditor}'s "Color Frequency"/"ΔE Heatmap" buttons use
+     * when a region other than "Whole page" is selected. Equivalent to
+     * {@link #ColorImage(BufferedImage, String, BitSet2D)} with a
+     * {@code null} mask (every pixel counted).
+     *
+     * @param img the already-decoded image to analyse; not mutated
+     * @param label used only in the {@link IOException} message if thumbnail
+     * scaling is interrupted, e.g. a filename or {@code "<filename> [<region
+     * kind>]"}
+     * @throws IOException if thumbnail scaling is interrupted
+     */
+    public ColorImage(BufferedImage img, String label) throws IOException {
+        this(img, label, null);
+    }
+
+    /**
+     * Same as {@link #ColorImage(BufferedImage, String)}, but a pixel with
+     * {@code mask} clear is left out of the colour inventory ({@link #cb}/
+     * {@link #labIndex}) entirely rather than counted — the fix for a
+     * bounding-box crop's blacked-out corners (see
+     * {@link BitSet2D#cropAndMaskPolygon}) otherwise skewing a frequency
+     * count or a ΔE reference mean toward black, when black isn't real
+     * content, just the rectangular crop's unavoidable margin around a
+     * non-rectangular traced region. {@link #thumbnail}/{@link #labThumbnail}
+     * are unaffected — they still show the full crop, black corners
+     * included, since that's the honest picture of the region's shape, not
+     * a colour-statistics input.
+     *
+     * @param img the already-decoded image to analyse; not mutated
+     * @param label used only in the {@link IOException} message if thumbnail
+     * scaling is interrupted
+     * @param mask {@code null} to count every pixel, or a same-size
+     * {@link BitSet2D} where only set pixels are counted; also becomes the
+     * basis for {@link #thumbnailMask}
+     * @throws IOException if thumbnail scaling is interrupted
+     */
+    public ColorImage(BufferedImage img, String label, BitSet2D mask) throws IOException {
         long t0 = System.nanoTime();
-        BufferedImage img = ImageIO.read(f);
         w = img.getWidth();
         h = img.getHeight();
         pixels = img.getRGB(0, 0, w, h, null, 0, w);
         for (int i = 0; i < pixels.length; i++) {
-            pixels[i] = cb.add(pixels[i]);
+            if (null == mask || mask.get2D(i % w, i / w)) {
+                pixels[i] = cb.add(pixels[i]);
+            }
         }
         labIndex = new TreeMap<>();
         for (ColorBase.TriLabColor tc : cb.cache.values()) {
@@ -169,7 +231,7 @@ public class ColorImage {
                 labIndex.put(key, tc);
             }
         }
-        buildThumbnails(img, f);
+        buildThumbnails(img, label, mask);
         loadNanos = System.nanoTime() - t0;
     }
 
@@ -185,11 +247,13 @@ public class ColorImage {
      * </p>
      *
      * @param img the freshly decoded source image
-     * @param f the source file, used only for the exception message on
-     * interruption
+     * @param label used only for the exception message on interruption
+     * @param mask {@code null}, or the same mask passed to
+     * {@link #ColorImage(BufferedImage, String, BitSet2D)} — the basis for
+     * {@link #thumbnailMask}
      * @throws IOException if thumbnail scaling is interrupted
      */
-    private void buildThumbnails(BufferedImage img, File f) throws IOException {
+    private void buildThumbnails(BufferedImage img, String label, BitSet2D mask) throws IOException {
         double scale = Math.min((double) THUMB_SIZE / w, (double) THUMB_SIZE / h);
         int scaledW = Math.max(1, (int) Math.round(w * scale));
         int scaledH = Math.max(1, (int) Math.round(h * scale));
@@ -200,7 +264,7 @@ public class ColorImage {
             tracker.waitForID(0);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
-            throw new IOException("Interrupted while scaling thumbnail for " + f, ie);
+            throw new IOException("Interrupted while scaling thumbnail for " + label, ie);
         }
         BufferedImage thumb = new BufferedImage(THUMB_SIZE, THUMB_SIZE, BufferedImage.TYPE_INT_RGB);
         Graphics2D g2 = thumb.createGraphics();
@@ -219,6 +283,22 @@ public class ColorImage {
             distinct.add(labThumbnail[i]);
         }
         thumbnailUniqueColors = distinct.size();
+
+        if (null != mask) {
+            thumbnailMask = new BitSet2D(THUMB_SIZE, THUMB_SIZE);
+            for (int ty = 0; ty < THUMB_SIZE; ty++) {
+                int sy = (int) Math.floor((ty - offY) / scale);
+                if (sy < 0 || sy >= h) {
+                    continue;
+                }
+                for (int tx = 0; tx < THUMB_SIZE; tx++) {
+                    int sx = (int) Math.floor((tx - offX) / scale);
+                    if (sx >= 0 && sx < w && mask.get2D(sx, sy)) {
+                        thumbnailMask.set2D(tx, ty);
+                    }
+                }
+            }
+        }
     }
 
     /**
