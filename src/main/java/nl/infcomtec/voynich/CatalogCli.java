@@ -4,7 +4,9 @@
 package nl.infcomtec.voynich;
 
 import java.awt.Color;
+import java.awt.Graphics2D;
 import java.awt.Point;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -66,7 +68,7 @@ public class CatalogCli {
                 break;
             case "extract":
                 requireArgs(args, 3, "extract <filename> --pixel x,y | --region x,y,w,h [--format rgb|lab|hex] "
-                        + "| --content-area [--out path]");
+                        + "| --content-area [--out path] | --region-name <kind> [--out path]");
                 extract(catalog, args);
                 break;
             case "checkpoint":
@@ -214,6 +216,7 @@ public class CatalogCli {
         String format = null;
         String out = null;
         boolean contentArea = false;
+        String regionName = null;
         for (int i = 2; i < args.length; i++) {
             switch (args[i]) {
                 case "--pixel":
@@ -224,6 +227,9 @@ public class CatalogCli {
                     break;
                 case "--content-area":
                     contentArea = true;
+                    break;
+                case "--region-name":
+                    regionName = args[++i];
                     break;
                 case "--format":
                     format = args[++i];
@@ -237,14 +243,15 @@ public class CatalogCli {
                     return;
             }
         }
-        int modes = (null != pixel ? 1 : 0) + (!regions.isEmpty() ? 1 : 0) + (contentArea ? 1 : 0);
+        int modes = (null != pixel ? 1 : 0) + (!regions.isEmpty() ? 1 : 0) + (contentArea ? 1 : 0)
+                + (null != regionName ? 1 : 0);
         if (0 == modes) {
-            System.err.println("Need --pixel x,y, --region x,y,w,h, or --content-area");
+            System.err.println("Need --pixel x,y, --region x,y,w,h, --content-area, or --region-name <kind>");
             System.exit(1);
             return;
         }
         if (modes > 1) {
-            System.err.println("--pixel, --region, and --content-area are mutually exclusive");
+            System.err.println("--pixel, --region, --content-area, and --region-name are mutually exclusive");
             System.exit(1);
             return;
         }
@@ -255,7 +262,11 @@ public class CatalogCli {
         }
 
         if (contentArea) {
-            extractContentArea(entry, imgFile, out);
+            extractContentArea(entry, entry.mainRegion(), imgFile, out);
+            return;
+        }
+        if (null != regionName) {
+            extractRegionByName(entry, imgFile, regionName, out);
             return;
         }
 
@@ -301,14 +312,17 @@ public class CatalogCli {
 
     /**
      * {@code --content-area}: crops {@code imgFile} to {@code entry}'s
-     * traced {@link CatalogEntry#mainRegion()} bounding box and writes it as
-     * a PNG — either to {@code out} or, if {@code null}, straight to
-     * stdout. Doesn't go through {@link ColorImage} (no CIELab decode
-     * needed for a raw crop), so it's cheaper than the {@code --pixel}/
-     * {@code --region} modes above.
+     * traced {@link CatalogEntry#mainRegion()} bounding box, rotates it
+     * upright by {@link CatalogEntry.Region#angle} (the same angle
+     * {@code RegionViewer}'s mouse wheel sets and applies live, but only
+     * ever bakes into the GUI's rendering — never into a saved file until
+     * now), and writes the result as a PNG — either to {@code out} or, if
+     * {@code null}, straight to stdout. Doesn't go through {@link ColorImage}
+     * (no CIELab decode needed for a raw crop), so it's cheaper than the
+     * {@code --pixel}/{@code --region} modes above.
      */
-    private static void extractContentArea(CatalogEntry entry, File imgFile, String out) throws IOException {
-        CatalogEntry.Region main = entry.mainRegion();
+    private static void extractContentArea(CatalogEntry entry, CatalogEntry.Region main, File imgFile, String out)
+            throws IOException {
         if (null == main) {
             System.err.println("No content area traced yet for " + entry.filename);
             System.exit(1);
@@ -320,6 +334,9 @@ public class CatalogCli {
             vertices.add(new Point(v.x, v.y));
         }
         BufferedImage cropped = BitSet2D.cropToPolygon(full, vertices);
+        if (0.0 != main.angle) {
+            cropped = rotateUpright(cropped, main.angle);
+        }
 
         if (null == out) {
             ByteArrayOutputStream buf = new ByteArrayOutputStream();
@@ -333,6 +350,72 @@ public class CatalogCli {
                 "{\"filename\":\"%s\",\"width\":%d,\"height\":%d,\"vertices\":%d%s}",
                 entry.filename, cropped.getWidth(), cropped.getHeight(), main.polygon.size(),
                 null == out ? "" : ",\"path\":\"" + out + "\""));
+    }
+
+    /**
+     * {@code --region-name <kind>}: same crop-to-polygon path as
+     * {@code --content-area}, but for every {@link CatalogEntry.Region}
+     * matching {@link CatalogEntry.Region#kind} (case-insensitive exact
+     * match) instead of the fixed {@code regions.get(1)} main area — e.g.
+     * pulling every figure traced with the same label (a page can hold
+     * several regions sharing one {@code kind}, as opposed to
+     * {@link CatalogEntry#mainRegion()} which is always exactly
+     * {@code regions.get(1)}). Index 0, the synthetic whole-page region, is
+     * never matched — its {@code kind} is always {@code "page"}, which isn't
+     * a name anyone traced. One match writes straight to {@code out} (or
+     * stdout); more than one match requires {@code out} as a prefix, same
+     * convention as multiple {@code --region}: {@code <out>.0},
+     * {@code <out>.1}, ...
+     */
+    private static void extractRegionByName(CatalogEntry entry, File imgFile, String kind, String out)
+            throws IOException {
+        List<CatalogEntry.Region> matches = new ArrayList<>();
+        for (int i = 1; i < entry.regions.size(); i++) {
+            CatalogEntry.Region r = entry.regions.get(i);
+            if (r.kind.equalsIgnoreCase(kind)) {
+                matches.add(r);
+            }
+        }
+        if (matches.isEmpty()) {
+            System.err.println("No region with kind \"" + kind + "\" for " + entry.filename);
+            System.exit(1);
+            return;
+        }
+        if (matches.size() > 1 && null == out) {
+            System.err.println("Multiple regions match kind \"" + kind + "\" (" + matches.size()
+                    + ") — need --out as a prefix: <out>.0, <out>.1, ...");
+            System.exit(1);
+            return;
+        }
+        for (int n = 0; n < matches.size(); n++) {
+            String matchOut = matches.size() > 1 ? out + "." + n : out;
+            extractContentArea(entry, matches.get(n), imgFile, matchOut);
+        }
+    }
+
+    /**
+     * Rotates {@code src} about its own center by {@code angle} radians into
+     * a new, larger canvas sized to fit the whole rotated image, black
+     * outside — same "black outside the traced content" convention as
+     * {@link BitSet2D#cropToPolygon} itself, just extended to the corners a
+     * rotation newly exposes.
+     */
+    private static BufferedImage rotateUpright(BufferedImage src, double angle) {
+        double sin = Math.abs(Math.sin(angle)), cos = Math.abs(Math.cos(angle));
+        int w = src.getWidth(), h = src.getHeight();
+        int newW = (int) Math.ceil(w * cos + h * sin);
+        int newH = (int) Math.ceil(w * sin + h * cos);
+        BufferedImage rotated = new BufferedImage(newW, newH, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g2 = rotated.createGraphics();
+        g2.setColor(Color.BLACK);
+        g2.fillRect(0, 0, newW, newH);
+        g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g2.translate(newW / 2.0, newH / 2.0);
+        g2.rotate(angle);
+        g2.translate(-w / 2.0, -h / 2.0);
+        g2.drawImage(src, 0, 0, null);
+        g2.dispose();
+        return rotated;
     }
 
     private static File resolveExistingLocation(CatalogEntry entry) {
@@ -436,14 +519,16 @@ public class CatalogCli {
         System.err.println("  tag <filename> <text...>    add a tag/note (no-op if already present)");
         System.err.println("  save <filename> [jsonFile]  replace the entry (reads stdin if jsonFile omitted)");
         System.err.println("  extract <filename> --pixel x,y | --region x,y,w,h [--region ...] [--format rgb|lab|hex]");
-        System.err.println("                      | --content-area [--out path]");
+        System.err.println("                      | --content-area [--out path] | --region-name <kind> [--out path]");
         System.err.println("                              real decoded pixel colour via ColorImage/ColorBase;");
         System.err.println("                              --pixel prints to stdout, --region writes a binary blob");
         System.err.println("                              (stdout or --out) plus a JSON manifest on stderr; repeat");
         System.err.println("                              --region to pull several regions from one decode (needs --out,");
         System.err.println("                              used as a prefix: <out>.0, <out>.1, ...); --content-area writes");
         System.err.println("                              a PNG cropped to the traced main region's bounding");
-        System.err.println("                              box, black outside the polygon (stdout or --out)");
+        System.err.println("                              box, black outside the polygon (stdout or --out);");
+        System.err.println("                              --region-name <kind> does the same for any traced region");
+        System.err.println("                              matched by its kind label (case-insensitive), not just the main area");
         System.err.println("  checkpoint                  clone the whole catalog's current state");
         System.err.println("  restore                     discard everything since the last checkpoint");
     }
