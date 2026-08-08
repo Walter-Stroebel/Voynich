@@ -9,6 +9,12 @@ doesn't surface itself. This matters especially for the "how do we already
 do X" class of question (e.g. mirror/sync commands, established scripts):
 check memory before falling back to grepping the repo.
 
+`scripts/sync-predator.sh` (gitignored — agent convenience, not a repo
+deliverable) already mirrors this same memory directory to predator
+alongside the repo, catalog, and checkpoints — one script call, four
+rsyncs. Don't treat memory landing on predator as a surprise or a special
+case needing separate handling; it's already covered.
+
 ## Build and Run
 All commands run from the repo root (`/home/walter/github/Voynich/`).
 ```bash
