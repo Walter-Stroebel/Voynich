@@ -42,12 +42,16 @@ import javax.swing.SwingUtilities;
  * since handle drags are infrequent compared to live cursor tracking.
  * </p>
  * <p>
- * Two loupes (a plain 4x and a contrast-boosted 4x) track the cursor,
- * showing native image pixels regardless of how far the whole page is
- * scaled down to fit the screen — the fix for boundaries that run right to
- * the image edge, where the on-screen scale alone makes exact placement
- * guesswork, and for content dim enough to almost miss (a margin so faint
- * it nearly got traced as blank vellum). The pair always anchors to
+ * Three loupes (a plain 4x, a contrast-boosted 4x, and a Sobel
+ * edge-magnitude 4x) track the cursor, showing native image pixels
+ * regardless of how far the whole page is scaled down to fit the screen
+ * — the fix for boundaries that run right to the image edge, where the
+ * on-screen scale alone makes exact placement guesswork, and for content
+ * dim enough to almost miss (a margin so faint it nearly got traced as
+ * blank vellum). The Sobel view turns a faint or gradual ink/vellum
+ * transition into a bright line at the actual edge — the standard
+ * gradient-magnitude kernel pair (Gx/Gy, combined as
+ * {@code sqrt(Gx^2 + Gy^2)}), run on luminance. The trio always anchors to
  * whichever screen corner is diagonally opposite the cursor's current
  * quadrant, so they never sit under the point you're about to click. Like
  * the rubber-band line, per-pixel cursor tracking avoids a full-component
@@ -70,6 +74,16 @@ import javax.swing.SwingUtilities;
  * what sets {@link CatalogEntry.Region#angle}, not an abstract indicator,
  * since a wonky wedge has no edge that reliably means "up" to look at.
  * </p>
+ * <p>
+ * While tracing (or re-tracing) one region, every other already-traced
+ * region on the page is otherwise invisible here — useful when a crowded
+ * area (e.g. a ring of many small figures) makes it easy to lose track of
+ * which neighbor is which. Cheap hover feedback bridges that: the cursor is
+ * tested against each {@link #siblingPolygons} entry on every move, and
+ * whichever one it's currently inside gets XOR-outlined, the same
+ * draw-twice-to-erase trick as the rubber-band guide — see
+ * {@link #updateHoverHighlight}.
+ * </p>
  */
 final class ContentAreaCanvas extends JComponent {
 
@@ -78,8 +92,10 @@ final class ContentAreaCanvas extends JComponent {
     private static final int HANDLE_GRAB_PX = 10;
     private static final Color BOUNDARY_COLOR = Color.RED;
     private static final Color HANDLE_COLOR = Color.YELLOW;
+    private static final Color HOVER_COLOR = Color.CYAN;
     private static final BasicStroke BOUNDARY_STROKE = new BasicStroke(2f);
     private static final BasicStroke RUBBER_BAND_STROKE = new BasicStroke(2f);
+    private static final BasicStroke HOVER_STROKE = new BasicStroke(2f);
 
     private static final int LOUPE_SIZE = 220;
     private static final double LOUPE_ZOOM = 4.0;
@@ -113,6 +129,9 @@ final class ContentAreaCanvas extends JComponent {
     private boolean loupeAnchorTop;
     private boolean loupeAnchorKnown;
 
+    private final List<List<Point>> siblingPolygons;
+    private int hoveredSiblingIndex = -1;
+
     /**
      * @param image the entry's full-resolution image to trace over
      * @param initial the region's existing {@link CatalogEntry.Region#polygon},
@@ -126,10 +145,15 @@ final class ContentAreaCanvas extends JComponent {
      * {@code image}'s full coordinates regardless.
      * @param initialAngle the region's existing {@link CatalogEntry.Region#angle},
      * pre-loaded for review; {@code 0} for a fresh trace
+     * @param siblingPolygons every other already-traced region's polygon (in
+     * {@code image}'s full coordinates, not this trace's own), purely for
+     * hover feedback — see {@link #updateHoverHighlight}; {@code null} or
+     * empty for none
      */
     ContentAreaCanvas(BufferedImage image, List<CatalogEntry.Vertex> initial, Rectangle viewport,
-            double initialAngle) {
+            double initialAngle, List<List<Point>> siblingPolygons) {
         this.image = image;
+        this.siblingPolygons = null == siblingPolygons ? List.of() : siblingPolygons;
         if (null == viewport) {
             this.displayImage = image;
             this.originX = 0;
@@ -179,6 +203,10 @@ final class ContentAreaCanvas extends JComponent {
                     repaint(loupeBounds(loupeAnchorLeft, loupeAnchorTop));
                 }
                 lastPanelPoint = null;
+                if (hoveredSiblingIndex >= 0) {
+                    drawSiblingOutlineXor(hoveredSiblingIndex);
+                    hoveredSiblingIndex = -1;
+                }
             }
         });
         addMouseMotionListener(new MouseMotionAdapter() {
@@ -188,6 +216,7 @@ final class ContentAreaCanvas extends JComponent {
                     updateRubberBand(e.getPoint());
                 }
                 updateLoupes(e.getPoint());
+                updateHoverHighlight(e.getPoint());
             }
 
             @Override
@@ -412,15 +441,24 @@ final class ContentAreaCanvas extends JComponent {
         return changed;
     }
 
+    /**
+     * The loupe grid is a fixed 2x2 square (plain, contrast, Sobel, and one
+     * reserved-empty cell) rather than a taller stack — it was a stack
+     * originally, but a third loupe made that an L-shape eating unclaimed
+     * vertical space for no reason; a square uses less of it and already has
+     * room for a fourth loupe should one ever be worth adding.
+     */
     private Point loupeOrigin(boolean anchorLeft, boolean anchorTop) {
-        int x = anchorLeft ? LOUPE_MARGIN : getWidth() - LOUPE_MARGIN - LOUPE_SIZE;
-        int y = anchorTop ? LOUPE_MARGIN : getHeight() - LOUPE_MARGIN - (2 * LOUPE_SIZE + LOUPE_GAP);
+        int side = 2 * LOUPE_SIZE + LOUPE_GAP;
+        int x = anchorLeft ? LOUPE_MARGIN : getWidth() - LOUPE_MARGIN - side;
+        int y = anchorTop ? LOUPE_MARGIN : getHeight() - LOUPE_MARGIN - side;
         return new Point(x, y);
     }
 
     private Rectangle loupeBounds(boolean anchorLeft, boolean anchorTop) {
         Point o = loupeOrigin(anchorLeft, anchorTop);
-        return new Rectangle(o.x - 2, o.y - 2, LOUPE_SIZE + 4, 2 * LOUPE_SIZE + LOUPE_GAP + 4);
+        int side = 2 * LOUPE_SIZE + LOUPE_GAP;
+        return new Rectangle(o.x - 2, o.y - 2, side + 4, side + 4);
     }
 
     private void paintLoupes(Graphics2D g2) {
@@ -433,9 +471,87 @@ final class ContentAreaCanvas extends JComponent {
         int srcY = imgPt.y - half;
         BufferedImage crop = extractLoupeCrop(srcX, srcY);
         BufferedImage contrastCrop = applyContrast(crop);
+        BufferedImage edgeCrop = applySobel(crop);
         Point o = loupeOrigin(loupeAnchorLeft, loupeAnchorTop);
         paintLoupeBox(g2, crop, o.x, o.y, "4x", srcX, srcY);
-        paintLoupeBox(g2, contrastCrop, o.x, o.y + LOUPE_SIZE + LOUPE_GAP, "4x, contrast boosted", srcX, srcY);
+        paintLoupeBox(g2, contrastCrop, o.x + LOUPE_SIZE + LOUPE_GAP, o.y, "4x, contrast boosted", srcX, srcY);
+        paintLoupeBox(g2, edgeCrop, o.x, o.y + LOUPE_SIZE + LOUPE_GAP, "4x, Sobel edges", srcX, srcY);
+    }
+
+    /**
+     * Cheap hover feedback for already-traced neighbors while tracing a new
+     * region: on every mouse move, tests the cursor's image-space point
+     * against each {@link #siblingPolygons} entry and, when the "which
+     * region is under the cursor" answer changes, XOR-draws the old
+     * outline away and the new one in — the same erase-by-redrawing-the-
+     * identical-lines trick as the rubber-band guide, so this doesn't cost
+     * a repaint of the (potentially huge) underlying image either. Purely
+     * visual — doesn't affect tracing, selection, or what Commit saves.
+     */
+    private void updateHoverHighlight(Point panelPt) {
+        int newHover = findSiblingAt(panelToImage(panelPt));
+        if (newHover == hoveredSiblingIndex) {
+            return;
+        }
+        if (hoveredSiblingIndex >= 0) {
+            drawSiblingOutlineXor(hoveredSiblingIndex);
+        }
+        hoveredSiblingIndex = newHover;
+        if (hoveredSiblingIndex >= 0) {
+            drawSiblingOutlineXor(hoveredSiblingIndex);
+        }
+    }
+
+    /**
+     * @return the index into {@link #siblingPolygons} of the topmost (last
+     * in list order, so a later Add wins over an older overlapping one)
+     * polygon containing {@code imagePt}, or {@code -1} if none does
+     */
+    private int findSiblingAt(Point imagePt) {
+        for (int i = siblingPolygons.size() - 1; i >= 0; i--) {
+            if (containsPoint(siblingPolygons.get(i), imagePt)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Standard even-odd ray-casting point-in-polygon test — cheap enough to
+     * run against every sibling on every mouse move given these polygons
+     * only ever run to a few dozen vertices.
+     */
+    private boolean containsPoint(List<Point> polygon, Point p) {
+        boolean inside = false;
+        int n = polygon.size();
+        for (int i = 0, j = n - 1; i < n; j = i++) {
+            Point pi = polygon.get(i);
+            Point pj = polygon.get(j);
+            if ((pi.y > p.y) != (pj.y > p.y)
+                    && p.x < (pj.x - pi.x) * (double) (p.y - pi.y) / (pj.y - pi.y) + pi.x) {
+                inside = !inside;
+            }
+        }
+        return inside;
+    }
+
+    private void drawSiblingOutlineXor(int siblingIndex) {
+        Graphics2D g2 = (Graphics2D) getGraphics();
+        if (null == g2) {
+            return;
+        }
+        List<Point> polygon = siblingPolygons.get(siblingIndex);
+        g2.setXORMode(Color.WHITE);
+        g2.setColor(HOVER_COLOR);
+        g2.setStroke(HOVER_STROKE);
+        Point prev = imageToPanel(polygon.get(polygon.size() - 1));
+        for (Point v : polygon) {
+            Point cur = imageToPanel(v);
+            g2.drawLine(prev.x, prev.y, cur.x, cur.y);
+            prev = cur;
+        }
+        g2.setPaintMode();
+        g2.dispose();
     }
 
     /**
@@ -474,6 +590,74 @@ final class ContentAreaCanvas extends JComponent {
         BufferedImage dst = new BufferedImage(src.getWidth(), src.getHeight(), src.getType());
         op.filter(src, dst);
         return dst;
+    }
+
+    private static final int SOBEL_EDGE_THRESHOLD = 60;
+
+    /**
+     * Sobel gradient-magnitude edge map: the standard 3x3 Gx/Gy kernel pair
+     * run on luminance, combined as {@code sqrt(Gx^2 + Gy^2)}. Luminance is
+     * box-blurred first and the magnitude is thresholded to black-below-cutoff
+     * before display — at native pixel resolution, unblurred vellum grain
+     * produces gradients everywhere, burying real ink/vellum boundaries under
+     * what reads as noise rather than lines; the blur+threshold turns this
+     * into what it's meant to be, a mask of the actual edges, near-black
+     * except right at a real transition. Border pixels (no full 3x3
+     * neighborhood available) are left black.
+     */
+    private BufferedImage applySobel(BufferedImage src) {
+        int w = src.getWidth();
+        int h = src.getHeight();
+        int[][] gray = new int[w][h];
+        for (int x = 0; x < w; x++) {
+            for (int y = 0; y < h; y++) {
+                int rgb = src.getRGB(x, y);
+                int r = (rgb >> 16) & 0xFF;
+                int g = (rgb >> 8) & 0xFF;
+                int b = rgb & 0xFF;
+                gray[x][y] = (int) Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+            }
+        }
+        int[][] blurred = boxBlur3(gray, w, h);
+        BufferedImage dst = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        for (int x = 1; x < w - 1; x++) {
+            for (int y = 1; y < h - 1; y++) {
+                int gx = -blurred[x - 1][y - 1] - 2 * blurred[x - 1][y] - blurred[x - 1][y + 1]
+                        + blurred[x + 1][y - 1] + 2 * blurred[x + 1][y] + blurred[x + 1][y + 1];
+                int gy = -blurred[x - 1][y - 1] - 2 * blurred[x][y - 1] - blurred[x + 1][y - 1]
+                        + blurred[x - 1][y + 1] + 2 * blurred[x][y + 1] + blurred[x + 1][y + 1];
+                int mag = Math.min(255, (int) Math.round(Math.sqrt((double) gx * gx + (double) gy * gy)));
+                int shown = mag <= SOBEL_EDGE_THRESHOLD ? 0
+                        : Math.min(255, (mag - SOBEL_EDGE_THRESHOLD) * 255 / (255 - SOBEL_EDGE_THRESHOLD));
+                int rgb = (shown << 16) | (shown << 8) | shown;
+                dst.setRGB(x, y, rgb);
+            }
+        }
+        return dst;
+    }
+
+    /**
+     * Simple 3x3 box blur (edge pixels reuse the nearest in-bounds value
+     * rather than skipping), run before {@link #applySobel}'s gradient pass
+     * to average out per-pixel vellum grain noise ahead of, not instead of,
+     * real ink/vellum edges.
+     */
+    private int[][] boxBlur3(int[][] gray, int w, int h) {
+        int[][] out = new int[w][h];
+        for (int x = 0; x < w; x++) {
+            for (int y = 0; y < h; y++) {
+                int sum = 0;
+                for (int dx = -1; dx <= 1; dx++) {
+                    for (int dy = -1; dy <= 1; dy++) {
+                        int nx = Math.max(0, Math.min(w - 1, x + dx));
+                        int ny = Math.max(0, Math.min(h - 1, y + dy));
+                        sum += gray[nx][ny];
+                    }
+                }
+                out[x][y] = sum / 9;
+            }
+        }
+        return out;
     }
 
     /**
@@ -576,9 +760,15 @@ final class ContentAreaCanvas extends JComponent {
         g2.setStroke(BOUNDARY_STROKE);
         g2.drawRect(boxX, boxY, ROTATION_PREVIEW_SIZE, ROTATION_PREVIEW_SIZE);
 
+        double srcW = rotationPreviewSource.getWidth();
+        double srcH = rotationPreviewSource.getHeight();
+        double cos = Math.abs(Math.cos(angle));
+        double sin = Math.abs(Math.sin(angle));
+        double rotatedW = srcW * cos + srcH * sin;
+        double rotatedH = srcW * sin + srcH * cos;
         double fitScale = 0.85 * Math.min(
-                (double) ROTATION_PREVIEW_SIZE / rotationPreviewSource.getWidth(),
-                (double) ROTATION_PREVIEW_SIZE / rotationPreviewSource.getHeight());
+                ROTATION_PREVIEW_SIZE / rotatedW,
+                ROTATION_PREVIEW_SIZE / rotatedH);
         Graphics2D pg = (Graphics2D) g2.create(boxX, boxY, ROTATION_PREVIEW_SIZE, ROTATION_PREVIEW_SIZE);
         pg.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
         pg.translate(ROTATION_PREVIEW_SIZE / 2.0, ROTATION_PREVIEW_SIZE / 2.0);

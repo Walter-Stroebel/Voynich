@@ -5,10 +5,12 @@ package nl.infcomtec.voynich;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.Graphics2D;
 import java.awt.GraphicsDevice;
 import java.awt.GraphicsEnvironment;
 import java.awt.Point;
@@ -94,6 +96,7 @@ import javax.swing.SwingWorker;
 final class CatalogEntryEditor {
 
     private static final int EAST_WIDTH = 440;
+    private static final BasicStroke HOVER_STROKE = new BasicStroke(3f);
 
     private final Catalog catalog;
     private final List<CatalogEntry> queue;
@@ -147,6 +150,7 @@ final class CatalogEntryEditor {
     private Point lastLabelPoint;
     private BufferedImage fullImage;
     private Icon plainIcon;
+    private int hoveredRegionIndex = -1;
 
     /**
      * @param owner window the dialog is sized/centered against; may be
@@ -247,6 +251,19 @@ final class CatalogEntryEditor {
                 }
             });
         }
+
+        imageLabel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseExited(MouseEvent evt) {
+                clearHoveredRegion();
+            }
+        });
+        imageLabel.addMouseMotionListener(new MouseMotionAdapter() {
+            @Override
+            public void mouseMoved(MouseEvent evt) {
+                updateHoveredRegion(evt.getPoint());
+            }
+        });
 
         // JTextArea binds Enter/Esc itself at WHEN_FOCUSED (insert-break /
         // nothing), which takes priority over these WHEN_IN_FOCUSED_WINDOW
@@ -417,6 +434,7 @@ final class CatalogEntryEditor {
      * whatever ends up selected.
      */
     private void onRegionsChanged() {
+        hoveredRegionIndex = -1;
         refreshRegionSelector(true);
         updateDisplayedRegion();
     }
@@ -433,6 +451,7 @@ final class CatalogEntryEditor {
      * disagree.
      */
     private void updateDisplayedRegion() {
+        hoveredRegionIndex = -1;
         if (null == fullImage) {
             return;
         }
@@ -468,6 +487,115 @@ final class CatalogEntryEditor {
                 }
             }
         }.execute();
+    }
+
+    /**
+     * Cheap "where did I leave off" hover feedback on the whole-page view:
+     * on every mouse move, tests the cursor against every traced region's
+     * polygon and, when the answer changes, XOR-draws the old outline away
+     * and the new one in directly on {@link #imageLabel} — same
+     * draw-twice-to-erase trick {@link ContentAreaCanvas} uses for its
+     * rubber-band guide and hover highlight, so this doesn't cost a repaint
+     * of the (potentially huge) scaled icon either. A no-op while a
+     * region-scoped crop is selected, since {@link #imageLabel}'s icon is
+     * then a crop with different coordinates than {@link CatalogEntry.Region}
+     * polygons (which are always in full-page coordinates) would map to.
+     */
+    private void updateHoveredRegion(Point labelPoint) {
+        if (regionSelector.getSelectedIndex() > 0) {
+            return;
+        }
+        Icon icon = imageLabel.getIcon();
+        if (null == icon || null == entry) {
+            return;
+        }
+        Point imgPoint = ImageDisplay.toImageCoordinates(entry, icon.getIconWidth(), icon.getIconHeight(),
+                imageLabel.getWidth(), imageLabel.getHeight(), labelPoint);
+        int newHover = findRegionAt(imgPoint);
+        if (newHover == hoveredRegionIndex) {
+            return;
+        }
+        if (hoveredRegionIndex >= 0) {
+            drawRegionOutlineXor(hoveredRegionIndex);
+        }
+        hoveredRegionIndex = newHover;
+        if (hoveredRegionIndex >= 0) {
+            drawRegionOutlineXor(hoveredRegionIndex);
+        }
+    }
+
+    private void clearHoveredRegion() {
+        if (hoveredRegionIndex >= 0) {
+            drawRegionOutlineXor(hoveredRegionIndex);
+            hoveredRegionIndex = -1;
+        }
+    }
+
+    /**
+     * @return the index into {@link CatalogEntry#regions} (index 0, the
+     * synthetic whole-page region, never matches) of the topmost — last in
+     * list order, so a later Add wins over an older overlapping one —
+     * region containing {@code imagePoint}, or {@code -1} if none does
+     */
+    private int findRegionAt(Point imagePoint) {
+        for (int i = entry.regions.size() - 1; i >= 1; i--) {
+            if (containsPoint(entry.regions.get(i).polygon, imagePoint)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Standard even-odd ray-casting point-in-polygon test — cheap enough to
+     * run against every region on every mouse move given these polygons
+     * only ever run to a few dozen vertices.
+     */
+    private static boolean containsPoint(List<CatalogEntry.Vertex> polygon, Point p) {
+        boolean inside = false;
+        int n = polygon.size();
+        for (int i = 0, j = n - 1; i < n; j = i++) {
+            CatalogEntry.Vertex vi = polygon.get(i);
+            CatalogEntry.Vertex vj = polygon.get(j);
+            if ((vi.y > p.y) != (vj.y > p.y)
+                    && p.x < (vj.x - vi.x) * (double) (p.y - vi.y) / (vj.y - vi.y) + vi.x) {
+                inside = !inside;
+            }
+        }
+        return inside;
+    }
+
+    private void drawRegionOutlineXor(int regionIndex) {
+        Icon icon = imageLabel.getIcon();
+        if (null == icon) {
+            return;
+        }
+        Graphics2D g2 = (Graphics2D) imageLabel.getGraphics();
+        if (null == g2) {
+            return;
+        }
+        int iconW = icon.getIconWidth();
+        int iconH = icon.getIconHeight();
+        int offX = (imageLabel.getWidth() - iconW) / 2;
+        int offY = (imageLabel.getHeight() - iconH) / 2;
+        double scaleX = iconW / (double) entry.width;
+        double scaleY = iconH / (double) entry.height;
+        List<CatalogEntry.Vertex> polygon = entry.regions.get(regionIndex).polygon;
+        g2.setXORMode(Color.WHITE);
+        g2.setColor(Color.CYAN);
+        g2.setStroke(HOVER_STROKE);
+        CatalogEntry.Vertex last = polygon.get(polygon.size() - 1);
+        int prevX = offX + (int) Math.round(last.x * scaleX);
+        int prevY = offY + (int) Math.round(last.y * scaleY);
+        for (CatalogEntry.Vertex v : polygon) {
+            int curX = offX + (int) Math.round(v.x * scaleX);
+            int curY = offY + (int) Math.round(v.y * scaleY);
+            g2.drawLine(prevX, prevY, curX, curY);
+            prevX = curX;
+            prevY = curY;
+        }
+        g2.setPaintMode();
+        g2.dispose();
     }
 
     private Color pixelAt(Point p) {
@@ -549,6 +677,7 @@ final class CatalogEntryEditor {
         }
         entry = queue.get(index);
         lastLabelPoint = null;
+        hoveredRegionIndex = -1;
 
         ObjectNode blob = JSON.getMapper().valueToTree(entry);
         blob.remove("tags");

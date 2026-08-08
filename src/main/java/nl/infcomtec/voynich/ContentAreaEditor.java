@@ -4,11 +4,13 @@
 package nl.infcomtec.voynich;
 
 import java.awt.BorderLayout;
+import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Window;
 import java.awt.event.ActionEvent;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import javax.swing.JButton;
 import javax.swing.JLabel;
@@ -82,7 +84,19 @@ final class ContentAreaEditor {
         List<CatalogEntry.Vertex> initial = null != existing ? existing.polygon : List.of();
         String kindLabel = null != existing ? existing.kind : newKind;
         double initialAngle = null != existing ? existing.angle : 0.0;
-        ContentAreaCanvas canvas = new ContentAreaCanvas(image, initial, viewport, initialAngle);
+        List<List<Point>> siblingPolygons = new ArrayList<>();
+        for (int i = 1; i < entry.regions.size(); i++) {
+            CatalogEntry.Region region = entry.regions.get(i);
+            if (region == existing) {
+                continue;
+            }
+            List<Point> polygon = new ArrayList<>(region.polygon.size());
+            for (CatalogEntry.Vertex v : region.polygon) {
+                polygon.add(new Point(v.x, v.y));
+            }
+            siblingPolygons.add(polygon);
+        }
+        ContentAreaCanvas canvas = new ContentAreaCanvas(image, initial, viewport, initialAngle, siblingPolygons);
 
         JLabel status = new JLabel(
                 "Click to trace \"" + kindLabel + "\" (right-click undoes the last point);"
