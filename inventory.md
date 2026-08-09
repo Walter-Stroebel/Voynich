@@ -138,6 +138,18 @@ app's own catalog. Six `voynich*` directories:
 - `CLAUDE.md` — build commands, architecture table, Java style rules
 - `replication/README.md` — replication setup walkthrough
 
+## Ideas (parked, out of repo scope)
+
+- `~/Documents/imageview-project.md` — cross-platform Java/Swing image
+  viewer (fit-to-window, arbitrary-angle rotation, optional `BitSet2D`
+  masking), scoped as its own standalone project, not a Voynich module.
+  Motivated by no OS having a "decent" viewer (feh needs `-Z`, Nemo's
+  viewer/Preview/Photos are right-angle-only rotation, IrfanView is
+  Windows-only). If it existed, "open in ImageView" from
+  `CatalogEntryEditor`/`CatalogCli` would be an obvious integration
+  (replacing the current fallback of GIMP or whatever's installed).
+  Idea stage only, 2026-08-09.
+
 ## Research findings (not yet in code)
 
 - f1r is a colour-transfer ghost of f1v (copper-green pigment, chroma
