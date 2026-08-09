@@ -94,7 +94,9 @@ final class StorageDialog {
 
         refresh();
 
-        dialog.setSize(480, 420);
+        dialog.pack();
+        java.awt.Dimension size = dialog.getSize();
+        dialog.setSize(Math.max(size.width, 620), Math.max(size.height, 420));
         dialog.setLocationRelativeTo(owner);
         dialog.setVisible(true);
     }
