@@ -9,19 +9,28 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Point;
 import java.awt.RenderingHints;
+import java.awt.Toolkit;
 import java.awt.Window;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.Transferable;
+import java.awt.datatransfer.UnsupportedFlavorException;
 import java.awt.event.ActionEvent;
 import java.awt.event.MouseWheelEvent;
 import java.awt.event.MouseWheelListener;
 import java.awt.image.BufferedImage;
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import javax.imageio.ImageIO;
 import javax.swing.JButton;
 import javax.swing.JComponent;
+import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.filechooser.FileNameExtensionFilter;
 
 /**
  * Opens one already-traced {@link CatalogEntry.Region} as its own full-window
@@ -47,6 +56,9 @@ final class RegionViewer {
 
     private RegionViewer() {
     }
+
+    /** Remembered across "Export…" calls within one run, not persisted to {@link Config}. */
+    private static File lastExportDir;
 
     /**
      * @param owner window the new viewer is opened near
@@ -101,7 +113,21 @@ final class RegionViewer {
             }
         }.withTooltip("Trace a new region nested inside this one, zoomed to its bounding box —"
                 + " kind/author asked for first"));
+        JButton export = new JButton(new EzAction("Export…") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                exportToFile(owner, entry, region, canvas.rotatedRaster());
+            }
+        }.withTooltip("Save this region, rotated as currently shown, to a PNG file"));
+        JButton copy = new JButton(new EzAction("Copy to Clipboard") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                copyToClipboard(owner, canvas.rotatedRaster());
+            }
+        }.withTooltip("Copy this region, rotated as currently shown, to the system clipboard"));
         JPanel buttons = new JPanel();
+        buttons.add(export);
+        buttons.add(copy);
         buttons.add(addChild);
         JPanel south = new JPanel(new BorderLayout());
         south.add(status, BorderLayout.CENTER);
@@ -112,6 +138,72 @@ final class RegionViewer {
         panel.add(south, BorderLayout.SOUTH);
 
         ViewFrame.open("Region View", owner, panel, true, true);
+    }
+
+    /**
+     * Saves {@code raster} (already rotation-baked by
+     * {@link RotatableCropPanel#rotatedRaster()}) as a PNG the user picks a
+     * path for — the GUI equivalent of {@code CatalogCli extract
+     * --content-area}/{@code --region-name}'s {@code --out}, which until now
+     * was the only way to get a rotated region out as an actual file.
+     */
+    private static void exportToFile(Window owner, CatalogEntry entry, CatalogEntry.Region region,
+            BufferedImage raster) {
+        JFileChooser chooser = new JFileChooser(lastExportDir);
+        chooser.setFileFilter(new FileNameExtensionFilter("PNG image", "png"));
+        chooser.setSelectedFile(new File(lastExportDir, entry.filename + "." + region.kind + ".png"));
+        if (JFileChooser.APPROVE_OPTION != chooser.showSaveDialog(owner)) {
+            return;
+        }
+        File target = chooser.getSelectedFile();
+        if (!target.getName().toLowerCase().endsWith(".png")) {
+            target = new File(target.getParentFile(), target.getName() + ".png");
+        }
+        lastExportDir = target.getParentFile();
+        try {
+            ImageIO.write(raster, "png", target);
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(owner, "Export failed:\n" + ex.getMessage(),
+                    "Export failed", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    /**
+     * Puts {@code raster} on the system clipboard as an image — for pasting
+     * straight into another application (a note, an email, a chat) without
+     * the round trip through a saved file that {@link #exportToFile} needs.
+     */
+    private static void copyToClipboard(Window owner, BufferedImage raster) {
+        Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+        clipboard.setContents(new ImageTransferable(raster), null);
+    }
+
+    /** Minimal {@link Transferable} wrapping a single {@link BufferedImage} for clipboard image copy. */
+    private static final class ImageTransferable implements Transferable {
+
+        private final BufferedImage image;
+
+        ImageTransferable(BufferedImage image) {
+            this.image = image;
+        }
+
+        @Override
+        public DataFlavor[] getTransferDataFlavors() {
+            return new DataFlavor[]{DataFlavor.imageFlavor};
+        }
+
+        @Override
+        public boolean isDataFlavorSupported(DataFlavor flavor) {
+            return DataFlavor.imageFlavor.equals(flavor);
+        }
+
+        @Override
+        public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException {
+            if (!isDataFlavorSupported(flavor)) {
+                throw new UnsupportedFlavorException(flavor);
+            }
+            return image;
+        }
     }
 
     private static java.awt.Rectangle boundingBox(List<CatalogEntry.Vertex> polygon) {
@@ -148,6 +240,11 @@ final class RegionViewer {
 
         double angle() {
             return angle;
+        }
+
+        /** Bakes the currently-shown rotation into a real raster, black outside — for Export/Copy. */
+        BufferedImage rotatedRaster() {
+            return BitSet2D.rotateUpright(crop, angle);
         }
 
         @Override

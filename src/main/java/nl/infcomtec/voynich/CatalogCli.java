@@ -4,9 +4,7 @@
 package nl.infcomtec.voynich;
 
 import java.awt.Color;
-import java.awt.Graphics2D;
 import java.awt.Point;
-import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -24,19 +22,43 @@ import javax.imageio.ImageIO;
  * kept reinventing as a throwaway one-shot {@code main} class every time an
  * entry needed reading or a tag needed adding. Not a Swing app; run via:
  * <pre>
- * java -cp target/Voynich-1.0-jar-with-dependencies.jar nl.infcomtec.voynich.CatalogCli &lt;command&gt; [args]
+ * java -cp target/Voynich-1.0-jar-with-dependencies.jar nl.infcomtec.voynich.CatalogCli [--config path] &lt;command&gt; [args]
  * </pre>
  * (the {@code -cp} plus explicit class name bypasses the fat jar's GUI
- * {@code Main-Class}, so no packaging changes were needed for this).
+ * {@code Main-Class}, so no packaging changes were needed for this). An
+ * optional {@code --config}/{@code -c &lt;path&gt;}, found anywhere in the
+ * argument list and stripped before command dispatch, overrides
+ * {@link Voynich#configFile} (the default {@code ~/.infVoy/config.json}) —
+ * for a user running more than one {@link Config#scanPath}/catalog pair
+ * side by side, since the GUI's own config-file-as-first-arg override
+ * (see {@code Voynich.main}) has no CatalogCli equivalent otherwise.
  */
 public class CatalogCli {
 
     public static void main(String[] args) throws IOException {
+        File configFile = Voynich.configFile;
+        List<String> argList = new ArrayList<>(List.of(args));
+        int configIdx = argList.indexOf("--config");
+        if (configIdx < 0) {
+            configIdx = argList.indexOf("-c");
+        }
+        if (configIdx >= 0) {
+            if (configIdx + 1 >= argList.size()) {
+                System.err.println("--config requires a path");
+                System.exit(1);
+                return;
+            }
+            configFile = new File(argList.get(configIdx + 1));
+            argList.remove(configIdx + 1);
+            argList.remove(configIdx);
+        }
+        args = argList.toArray(new String[0]);
+
         if (0 == args.length) {
             usage();
             return;
         }
-        Config cfg = JSON.getMapper().readValue(Voynich.configFile, Config.class);
+        Config cfg = JSON.getMapper().readValue(configFile, Config.class);
         Catalog catalog = Catalog.open(cfg);
 
         String command = args[0];
@@ -335,7 +357,7 @@ public class CatalogCli {
         }
         BufferedImage cropped = BitSet2D.cropToPolygon(full, vertices);
         if (0.0 != main.angle) {
-            cropped = rotateUpright(cropped, main.angle);
+            cropped = BitSet2D.rotateUpright(cropped, main.angle);
         }
 
         if (null == out) {
@@ -391,31 +413,6 @@ public class CatalogCli {
             String matchOut = matches.size() > 1 ? out + "." + n : out;
             extractContentArea(entry, matches.get(n), imgFile, matchOut);
         }
-    }
-
-    /**
-     * Rotates {@code src} about its own center by {@code angle} radians into
-     * a new, larger canvas sized to fit the whole rotated image, black
-     * outside — same "black outside the traced content" convention as
-     * {@link BitSet2D#cropToPolygon} itself, just extended to the corners a
-     * rotation newly exposes.
-     */
-    private static BufferedImage rotateUpright(BufferedImage src, double angle) {
-        double sin = Math.abs(Math.sin(angle)), cos = Math.abs(Math.cos(angle));
-        int w = src.getWidth(), h = src.getHeight();
-        int newW = (int) Math.ceil(w * cos + h * sin);
-        int newH = (int) Math.ceil(w * sin + h * cos);
-        BufferedImage rotated = new BufferedImage(newW, newH, BufferedImage.TYPE_INT_RGB);
-        Graphics2D g2 = rotated.createGraphics();
-        g2.setColor(Color.BLACK);
-        g2.fillRect(0, 0, newW, newH);
-        g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-        g2.translate(newW / 2.0, newH / 2.0);
-        g2.rotate(angle);
-        g2.translate(-w / 2.0, -h / 2.0);
-        g2.drawImage(src, 0, 0, null);
-        g2.dispose();
-        return rotated;
     }
 
     private static File resolveExistingLocation(CatalogEntry entry) {
@@ -513,7 +510,8 @@ public class CatalogCli {
     }
 
     private static void usage() {
-        System.err.println("Usage: CatalogCli <command> [args]");
+        System.err.println("Usage: CatalogCli [--config|-c path] <command> [args]");
+        System.err.println("  --config|-c path             use this config file instead of ~/.infVoy/config.json");
         System.err.println("  list [-v|--invert] [filter]  list filenames (optionally whose JSON contains/lacks 'filter', case-insensitive)");
         System.err.println("  get <filename>              print the entry's JSON");
         System.err.println("  tag <filename> <text...>    add a tag/note (no-op if already present)");

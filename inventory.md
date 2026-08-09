@@ -1,107 +1,67 @@
 # Inventory
 
-A snapshot of what exists in this project, taken 2026-08-04. This is a
-point-in-time listing, not a maintained architecture doc — see `CLAUDE.md`
-for the actively-kept class rundown and `README.md` for current
-state/roadmap. Re-generate rather than hand-edit when it goes stale.
+Two things live in this file: a **function matrix** (every user-facing
+function, where it's reachable, and exactly where it lives in the code —
+the gap-detection tool, re-derive by re-auditing the code rather than
+hand-editing when it goes stale) and a snapshot of non-code assets (data,
+`/usb1`, infra, research findings) that aren't tracked anywhere else. See
+`CLAUDE.md` for the actively-kept class rundown and `README.md` for
+current state/roadmap.
 
-## Code (`src/main/java/nl/infcomtec/voynich/`, 26 classes — see 2026-08-06 note)
+## Function matrix
 
-- **App shell**: `Voynich` (entry point/JFrame), `Config`/`JSON` (settings,
-  Jackson wrappers), `EzAction` (styled Swing actions)
-- **Catalog layer**: `Catalog` (contract + `recordSighting`/`checkpoint`/
-  `restoreLatestCheckpoint`), `CatalogEntry`, `FileCatalog` — filename-keyed
-  JSON sidecars, thumbnail inlined as base64 (2026-08-06); manual
-  whole-catalog checkpoint/undo, one zip per checkpoint (2026-08-04,
-  reworked to zip 2026-08-06)
-- **UI**: `OverviewPanel` (thumbnail grid), `TaskWindow`/`ScanTaskWindow`
-  (background-task progress pattern), `CatalogEntryEditor` (non-modal
-  per-entry edit and shuffled whole-catalog review, sharing one
-  window/save path), `RapidReviewAction` (pluggable review judgment, e.g.
-  toolbar's "MarkUp"), `ImageDisplay` (scale-to-fit + click-to-pixel
-  mapping for an entry's actual image), `ViewFrame` (named tool window
-  with remembered bounds), `FrequencyBarChart`/`DeltaEHeatmap` (per-entry
-  colour visualizations, opened via `ViewFrame`)
-- **Colour pipeline**: `EnhancedColor` (RGB↔CIELAB↔XYZ↔YUV↔HSB, ΔE),
-  `FloatColor`, `YUV`, `ColorBase` (two-level RGB→LAB cache), `ColorImage`
-  (per-image colour inventory), `TriElm`
+Audited 2026-08-09. "GUI"/"CLI" are checkmarked when that path exists;
+"Location" is the class (and specific control) that implements it.
 
-Note (2026-08-05): `RingDiagramSegmenter` was deleted — a failed first-pass
-experiment at extracting upright figure crops from circle-diagram pages,
-superseded by the page-level `Circular diagram` tagging pass via MarkUp.
+| # | Function | GUI | CLI | Location |
+|---|---|---|---|---|
+| 1 | Scan folder / catalog new+changed images | ✅ Scan button | ❌ | `Voynich` toolbar → `ScanTaskWindow` |
+| 2 | Sort thumbnail grid | ✅ Sort button | ❌ | `OverviewPanel.sort()` |
+| 3 | Filter/search entries (JSON substring, invert) | ✅ Filter button | ✅ `list [filter] [-v]` | `OverviewPanel.filter()` / `CatalogCli.list()` |
+| 4 | Toggle "content area only" dim view | ✅ toggle button | ❌ | `Voynich` toolbar toggle → `OverviewPanel` |
+| 5 | Rapid-review / MarkUp tagging pass | ✅ MarkUp button | ❌ | `Voynich` toolbar → `CatalogEntryEditor.review()` + `RapidReviewAction` |
+| 6 | Open single entry editor | ✅ click thumbnail | ❌ | `OverviewPanel` → `CatalogEntryEditor.edit()` |
+| 7 | View raw entry JSON | ✅ JSON box in editor | ✅ `get <filename>` | `CatalogEntryEditor` / `CatalogCli.get()` |
+| 8 | Edit/replace raw entry JSON | ✅ JSON box Save | ✅ `save <filename> [jsonFile]` | `CatalogEntryEditor` / `CatalogCli.save()` |
+| 9 | Add/edit free-text tags | ✅ Tags box | ✅ `tag <filename> <text>` | `CatalogEntryEditor` / `CatalogCli.tag()` |
+| 10 | View Color Frequency chart | ✅ button in editor | ❌ | `CatalogEntryEditor` → `FrequencyBarChart` (via `ViewFrame`) |
+| 11 | View ΔE Heatmap | ✅ button in editor | ❌ | `CatalogEntryEditor` → `DeltaEHeatmap` (via `ViewFrame`) |
+| 12 | Extract single pixel color (rgb/lab/hex) | ❌ | ✅ `extract --pixel` | `CatalogCli.extract()` |
+| 13 | Extract raw region pixel block | ❌ | ✅ `extract --region` | `CatalogCli.extract()` |
+| 14 | Select which region is active (whole page / region N) | ✅ Region combo | ❌ | `CatalogEntryEditor.regionSelector` |
+| 15 | Open Region Manager (list regions) | ✅ Regions… button | ❌ | `CatalogEntryEditor` → `RegionManagerDialog` |
+| 16 | Add new top-level region | ✅ Add Region | ❌ | `RegionManagerDialog` → `ContentAreaEditor` |
+| 17 | Add nested child region | ✅ Add Child | ❌ | `RegionManagerDialog` / `RegionViewer` → `ContentAreaEditor` |
+| 18 | Trace/re-trace a region's polygon | ✅ Trace / canvas | ❌ (human-only by design) | `ContentAreaEditor` / `ContentAreaCanvas` |
+| 19 | Rename region kind/author | ✅ Rename | ❌ | `RegionManagerDialog` → `KindAuthorPrompt` |
+| 20 | Reorder regions (Up/Down, promote to "main") | ✅ Up/Down | ❌ | `RegionManagerDialog` |
+| 21 | Delete a region | ✅ Delete | ❌ | `RegionManagerDialog` |
+| 22 | View a region at scale | ✅ View → RegionViewer | ❌ | `RegionManagerDialog` → `RegionViewer` |
+| 23 | Rotate a region's upright preview angle | ✅ mouse wheel | ❌ | `ContentAreaEditor`/`ContentAreaCanvas`, `RegionViewer` |
+| 24 | Export region cropped+rotated to PNG file | ✅ Export… button | ✅ `extract --content-area`/`--region-name` | `RegionViewer.exportToFile()` (added 2026-08-09) / `CatalogCli.extract()`; shared raster bake via `BitSet2D.rotateUpright()` |
+| 24b | Copy region cropped+rotated to system clipboard | ✅ Copy to Clipboard button | ❌ | `RegionViewer.copyToClipboard()` (added 2026-08-09) |
+| 25 | Take a whole-catalog checkpoint | ✅ Storage → Take Checkpoint Now | ✅ `checkpoint` | `StorageDialog` / `CatalogCli` |
+| 26 | Restore latest checkpoint | ✅ Storage → Restore Selected | ✅ `restore` | `StorageDialog` / `CatalogCli` |
+| 27 | Delete a checkpoint | ✅ Storage → Delete Selected | ❌ | `StorageDialog` |
+| 28 | List/browse available checkpoints | ✅ Storage dialog list | ❌ | `StorageDialog` |
+| 29 | Exit app | ✅ Exit button | n/a (process just ends) | `Voynich` toolbar |
+| 30 | Smoke-test startup | ✅ verifies main JFrame builds+paints | ✅ `--smokeTest` flag (Voynich main, not CatalogCli) | `Voynich.main()` |
+| 31 | Override config file path | ✅ n/a — positional arg to `Voynich` jar launch | ✅ `--config`/`-c <path>` (added 2026-08-09) | `Voynich.main()` / `CatalogCli.main()` |
 
-Note (2026-08-05, later same day): added `ViewFrame`, `FrequencyBarChart`,
-`DeltaEHeatmap` (see CLAUDE.md for what each does); fixed a `ColorBase`
-scaling bug that made `deltaE`/`distanceTo` results ~100x too small;
-`CatalogEntryEditor` and the new viz windows are now deliberately
-non-modal. Otherwise this inventory still reflects 2026-08-04.
-
-Note (2026-08-05, still later): added `CatalogEntry.workingArea`/`Vertex`
-(human-traced page-boundary polygon, excluding backdrop/frayed edge/other
-pages in the stack — never auto-detected), `WorkingAreaCanvas`/
-`WorkingAreaEditor` (the tracing tool, spawned from `CatalogEntryEditor`'s
-new "Working Area" button). Also converted `ViewFrame` from an
-owner-of-the-main-frame `JDialog` to a plain, ownerless `JFrame` — windows
-don't own windows in this app — and added its `maximizeInitially` option
-(real `JFrame.MAXIMIZED_BOTH`, used by `WorkingAreaEditor`). 26 classes now.
-
-Note (2026-08-05, still later still): added `BitSet2D` — Walter's own
-bit-per-pixel 2D mask class, ported in from his personal CodeLibrary and
-adapted here (dropped `BaseImage`-dependent Sobel/edge-detect factories not
-worth importing; fixed a real pre-existing iterator bug where `hasNext()`
-used `idx > 0` instead of `idx >= 0`, silently returning zero points
-whenever pixel (0,0) was set; added `createFromPolygon`, a scanline fill
-straight from vertices that avoids `Shape.contains()` entirely). This is
-the intended storage/query layer for turning a `workingArea` polygon into
-fast per-pixel ROI membership. 27 classes now.
-
-Note (2026-08-05, still later again): wired up `BitSet2D`'s first consumer —
-`CatalogEntryEditor` gained a "Show Mask" toggle button that darkens
-everything `workingArea` excludes on the inline image (built off-EDT via
-`BitSet2D.createFromPolygon`, cached per entry, invalidated if
-`WorkingAreaEditor` commits a new trace while this dialog is still open).
-
-Note (2026-08-05, one more time): `CatalogCli extract` gained
-`--working-area` — crops to `CatalogEntry.workingArea`'s bounding box and
-writes a PNG (stdout or `--out`), black outside the polygon. Second
-`BitSet2D.createFromPolygon` consumer. Verified end-to-end against 1r.png.
-
-Note (2026-08-05, yet again): added a cursor-tracking loupe pair (plain 4x
-+ contrast-boosted 4x, opposite-corner anchored, hysteresis around the
-center axes) to `WorkingAreaCanvas`, live-tested and confirmed working.
-Then: `workingArea` renamed to `contentArea` everywhere (field, both
-tracing classes → `ContentAreaCanvas`/`ContentAreaEditor`, CLI flag
-`--content-area`, button label "Content Area") — the documented "full
-physical page" contract was never actually followed in practice (tight
-content-hugging boxes felt natural, exhaustively including blank vellum
-didn't), so the name was changed to match the real, human-incentive-aligned
-behavior instead of asking the behavior to match the name. The 5 entries
-already traced at rename time were migrated in place (checkpoint, then
-each entry's stored JSON key rewritten via `CatalogCli save`, vertex
-counts diffed against a pre-rename backup to confirm nothing was lost) —
-see CLAUDE.md's Catalog persistence section for the full rationale.
-
-Note (2026-08-06): `MySqlCatalog` removed — thumbnails moved inline into
-`CatalogEntry` as base64 (`CatalogEntry.thumbnailPng`), all 213 entries
-exported from MySQL to `FileCatalog` and verified (counts, thumbnails,
-traced `contentArea` polygons) before the backend, its `mysql-connector-java`
-dependency, and its Docker/backup infra (`docker-compose.yml`,
-`docker-compose.nas.yml`, `.env.example`, `scripts/mysql-backup.sh`) were
-deleted. `FileCatalog` is now the only backend; `Catalog.open` no longer
-branches on `Config.db` (removed). Checkpoints changed from a per-file
-directory copy to a single `java.util.zip` archive per checkpoint, cheaper
-now that thumbnails are inlined. `OverviewPanel` gained a "Content Area
-Only" toolbar toggle — dims each thumbnail to just its traced
-`CatalogEntry.contentArea` (`AffineTransform`-mapped from full-res into
-256×256 thumbnail space), doubling as a visual to-trace checklist since an
-untraced entry stays plain. Fixed two build warnings in the same run
-(`BitSet2D.getOutline()` missing `@Deprecated`; `OverviewPanel.sort()`'s raw
-`Comparator[]` replaced with a `List`). Toolbar buttons reordered into
-logical groups with separators. 26 classes (net: `MySqlCatalog` removed,
-no classes added). See `CLAUDE.md`'s "Catalog persistence" section and
-`README.md`'s "Why plain files, not a DB" for the full rationale.
-
-Dependencies: FlatLaf 3.3, Jackson 2.18.2. No test framework yet.
+**Confirmed intentional asymmetries** (not gaps, checked 2026-08-09):
+- #10/11 (Color Frequency / ΔE Heatmap) have no CLI equivalent, even though
+  `extract --pixel`/`--region` produce the same underlying Lab data — no
+  scripting need identified yet for the aggregate view itself.
+- #14–23 (region management, tracing) are GUI-only by design — tracing is
+  pure human pixel judgment, never automatable.
+- #27/28 (checkpoint delete/list) have no CLI equivalent — only take/restore
+  latest are scriptable; enumerating/pruning checkpoints is a GUI-only task
+  so far.
+- A full audit (2026-08-09) of `CatalogEntry`/`Config` fields and every
+  constructed `JButton`/`EzAction` in the source tree found no functionality
+  that exists in code but has zero user-facing access path — everything
+  either has a dedicated widget/command or is reachable through the raw-JSON
+  box (`CatalogEntryEditor`) / `get`+`save` (`CatalogCli`).
 
 ## Data
 
@@ -109,11 +69,8 @@ Dependencies: FlatLaf 3.3, Jackson 2.18.2. No test framework yet.
   configured `scanPath`)
 - `data/voynich-page-index.json` — Yale Beinecke IIIF manifest mapping
   torrent-numbered JPGs (001–213) to canonical folio labels
-- `~/.infVoy/catalog` — the live catalog (213 entries as of 2026-08-06,
-  migrated from MySQL, see the 2026-08-06 code note above); one
-  `<filename>.json` per entry, thumbnail inlined. Moved here from
-  `~/.voynich-catalog` 2026-08-07 along with config and checkpoints, see
-  CLAUDE.md's Catalog persistence section
+- `~/.infVoy/catalog` — the live catalog (213 entries); one
+  `<filename>.json` per entry, thumbnail inlined as base64
 - `~/.infVoy/catalog-checkpoints/` — manual checkpoints, one
   `<epoch-millis>.zip` each, never auto-pruned
 - `src/main/resources/stolfi/` (gitignored — third-party sourced + one
@@ -124,8 +81,8 @@ Dependencies: FlatLaf 3.3, Jackson 2.18.2. No test framework yet.
     boxes
   - `voynich_labels.json` / `voynich_labels_spatial.json` — 988 unique
     labels across 51 folios, joining EVT transcription with voynichese.com
-    coordinates (a join that didn't exist anywhere before this project did
-    it), plus fitted-circle rotation geometry for zodiac-section folios
+    coordinates, plus fitted-circle rotation geometry for circle-diagram
+    folios
   - `circle_diagram_census.md` — manual per-file diagram count (~28-30
     diagrams; automated Hough-circle detection was tried and abandoned)
   - `segments/70v2/` — extracted figure crops (1 folio so far)
@@ -150,38 +107,28 @@ app's own catalog. Six `voynich*` directories:
   f1r only, 37 wavelength-band TIFFs (`MB365UV` through `MB940IR`, plus
   filter variants) from the Lazarus Project 2014 scan, per-file ~100MB. A
   large volume of data of questionable value/quality (unverified
-  provenance/calibration) — not worth the storage cost of a second copy,
-  so this exists **only** on the NAS, not on predator's NVMe or in
-  `voybak`. See "Research findings" below — completely unanalyzed as of
-  this writing.
+  provenance/calibration) — exists **only** on the NAS, not on predator's
+  NVMe or in `voybak`. Completely unanalyzed.
 - `voynich_mysql_backups/` — 5 gzipped `mysqldump` files, 49M; frozen as of
-  2026-08-06 when `MySqlCatalog`/`scripts/mysql-backup.sh` were retired
-  (the nightly cron that fed it is gone too — see the code note above), not
+  2026-08-06 when `MySqlCatalog`/`scripts/mysql-backup.sh` were retired, not
   actively cleaned up
 
 ## Infrastructure
 
-- `docker-compose.yml`, `docker-compose.nas.yml`, `.env.example`,
-  `scripts/mysql-backup.sh` — **deleted 2026-08-06** along with
-  `MySqlCatalog`; the `voynich-mysql` container on predator
-  (192.168.2.23:13306) that these provisioned was left running (a live
-  container on another machine, not a repo file — Walter's call to
-  stop/remove it separately) but the app no longer reads or writes it
 - `replication/` — GTID master-slave + master-master MySQL topology,
-  live-tested mach1↔mach2; always `Catalog`-independent, and now the only
-  MySQL-flavored infra left in the repo (2026-08-06) — see `README.md`'s
+  live-tested mach1↔mach2; always `Catalog`-independent — see `README.md`'s
   "Why plain files, not a DB"
 - predator also runs a nightly NAS backup (feeding the now-frozen
   `voynich_mysql_backups/` above) and hosts an unrelated local-LLM
   experiment (gemma-4-e4b via LM Studio)
 - **`predator:/home/walter/voybak/Voynich/`** — a full rsync mirror of
   this project directory (code + gitignored `stolfi/` research data), kept
-  on predator's own NVMe. Deliberate second-machine, second-disk backup —
-  predator and this machine are both commercial-grade hardware sharing one
-  hot office, so a single-machine failure is a real risk being backed up
-  against, not a hypothetical. Update with `rsync -av --exclude='target/'
-  /home/walter/github/Voynich/ predator:/home/walter/voybak/Voynich/`.
-  Freely usable over `ssh`/`scp`/`rsync` for read or write.
+  on predator's own NVMe. Deliberate second-machine, second-disk backup.
+  Update with `rsync -av --exclude='target/'
+  /home/walter/github/Voynich/ predator:/home/walter/voybak/Voynich/`
+  (or `scripts/sync-predator.sh`, which also mirrors memory/catalog/
+  checkpoints in the same call). Freely usable over `ssh`/`scp`/`rsync` for
+  read or write.
 
 ## Documentation
 

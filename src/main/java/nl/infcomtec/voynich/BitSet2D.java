@@ -7,8 +7,10 @@ package nl.infcomtec.voynich;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.Point;
 import java.awt.Rectangle;
+import java.awt.RenderingHints;
 import java.awt.Shape;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
@@ -781,6 +783,41 @@ public class BitSet2D extends BitSet implements Cloneable, Iterable<Point> {
         BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
         out.setRGB(0, 0, w, h, pixels, 0, w);
         return new Crop(out, localMask);
+    }
+
+    /**
+     * Rotates {@code src} about its own center by {@code angle} radians into
+     * a new, larger canvas sized to fit the whole rotated image, black
+     * outside — same "black outside the traced content" convention as
+     * {@link #cropToPolygon} itself, just extended to the corners a rotation
+     * newly exposes. Shared by {@code CatalogCli --content-area}/
+     * {@code --region-name} (where {@code angle} is
+     * {@code CatalogEntry.Region#angle}, the same value {@code RegionViewer}'s
+     * mouse wheel sets) and {@code RegionViewer}'s Export/Copy actions, both
+     * of which bake a region's live rotation preview into a real raster
+     * rather than leaving it as a paint-time transform.
+     *
+     * @param src the source image
+     * @param angle rotation in radians
+     * @return a new, larger {@code BufferedImage} containing the whole
+     * rotated {@code src}, black outside it
+     */
+    public static BufferedImage rotateUpright(BufferedImage src, double angle) {
+        double sin = Math.abs(Math.sin(angle)), cos = Math.abs(Math.cos(angle));
+        int w = src.getWidth(), h = src.getHeight();
+        int newW = (int) Math.ceil(w * cos + h * sin);
+        int newH = (int) Math.ceil(w * sin + h * cos);
+        BufferedImage rotated = new BufferedImage(newW, newH, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g2 = rotated.createGraphics();
+        g2.setColor(Color.BLACK);
+        g2.fillRect(0, 0, newW, newH);
+        g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g2.translate(newW / 2.0, newH / 2.0);
+        g2.rotate(angle);
+        g2.translate(-w / 2.0, -h / 2.0);
+        g2.drawImage(src, 0, 0, null);
+        g2.dispose();
+        return rotated;
     }
 
     /**
