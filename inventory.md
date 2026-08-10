@@ -10,7 +10,7 @@ current state/roadmap.
 
 ## Function matrix
 
-Audited 2026-08-09. "GUI"/"CLI" are checkmarked when that path exists;
+Audited 2026-08-09, rows added through 2026-08-10. "GUI"/"CLI" are checkmarked when that path exists;
 "Location" is the class (and specific control) that implements it.
 
 | # | Function | GUI | CLI | Location |
@@ -40,6 +40,7 @@ Audited 2026-08-09. "GUI"/"CLI" are checkmarked when that path exists;
 | 23 | Rotate a region's upright preview angle | ✅ mouse wheel | ❌ | `ContentAreaEditor`/`ContentAreaCanvas`, `RegionViewer` |
 | 24 | Export region cropped+rotated to PNG file | ✅ Export… button | ✅ `extract --content-area`/`--region-name` | `RegionViewer.exportToFile()` (added 2026-08-09) / `CatalogCli.extract()`; shared raster bake via `BitSet2D.rotateUpright()` |
 | 24b | Copy region cropped+rotated to system clipboard | ✅ Copy to Clipboard button | ❌ | `RegionViewer.copyToClipboard()` (added 2026-08-09) |
+| 24c | Save region cropped+rotated to `/tmp` and open in a detached viewer | ✅ Save to /tmp & View button | ✅ `extract --content-area`/`--region-name --view` | `RegionViewer.saveToTmpAndView()` / `CatalogCli.extract()`, both via `Voynich.launchImageView()` (added 2026-08-10) |
 | 25 | Take a whole-catalog checkpoint | ✅ Storage → Take Checkpoint Now | ✅ `checkpoint` | `StorageDialog` / `CatalogCli` |
 | 26 | Restore latest checkpoint | ✅ Storage → Restore Selected | ✅ `restore` | `StorageDialog` / `CatalogCli` |
 | 27 | Delete a checkpoint | ✅ Storage → Delete Selected | ❌ | `StorageDialog` |
@@ -121,14 +122,15 @@ app's own catalog. Six `voynich*` directories:
 - predator also runs a nightly NAS backup (feeding the now-frozen
   `voynich_mysql_backups/` above) and hosts an unrelated local-LLM
   experiment (gemma-4-e4b via LM Studio)
-- **`predator:/home/walter/voybak/Voynich/`** — a full rsync mirror of
-  this project directory (code + gitignored `stolfi/` research data), kept
-  on predator's own NVMe. Deliberate second-machine, second-disk backup.
-  Update with `rsync -av --exclude='target/'
-  /home/walter/github/Voynich/ predator:/home/walter/voybak/Voynich/`
-  (or `scripts/sync-predator.sh`, which also mirrors memory/catalog/
-  checkpoints in the same call). Freely usable over `ssh`/`scp`/`rsync` for
-  read or write.
+- **`predator:~/github/Voynich/`** and **`predator:~/github/infimg/`** —
+  full rsync mirrors of this project directory (code + gitignored
+  `stolfi/` research data) and of the sibling `infimg` repo (see "Sibling
+  project: infimg" above), kept on predator's own NVMe. Deliberate
+  second-machine, second-disk backup — `infimg` is a separate GitHub repo,
+  not part of this one, but mirrored alongside it purely for local backup
+  hygiene. Update both, plus memory/catalog/checkpoints, in one call via
+  `scripts/sync-predator.sh` (gitignored, agent convenience). Freely usable
+  over `ssh`/`scp`/`rsync` for read or write.
 
 ## Documentation
 
@@ -138,17 +140,26 @@ app's own catalog. Six `voynich*` directories:
 - `CLAUDE.md` — build commands, architecture table, Java style rules
 - `replication/README.md` — replication setup walkthrough
 
-## Ideas (parked, out of repo scope)
+## Sibling project: infimg
 
-- `~/Documents/imageview-project.md` — cross-platform Java/Swing image
-  viewer (fit-to-window, arbitrary-angle rotation, optional `BitSet2D`
-  masking), scoped as its own standalone project, not a Voynich module.
-  Motivated by no OS having a "decent" viewer (feh needs `-Z`, Nemo's
-  viewer/Preview/Photos are right-angle-only rotation, IrfanView is
-  Windows-only). If it existed, "open in ImageView" from
-  `CatalogEntryEditor`/`CatalogCli` would be an obvious integration
-  (replacing the current fallback of GIMP or whatever's installed).
-  Idea stage only, 2026-08-09.
+The `~/Documents/imageview-project.md` idea (parked 2026-08-09) was built
+2026-08-10 as `nl.infcomtec.voynich.ImageView` inside this repo first —
+fit-to-window (fills the current window exactly, up or down), mouse-wheel
+zoom/rotate, drag-pan, exact-view Save, own `~/.infimg.json` window-bounds
+config — then extracted the same day into its own standalone repo,
+[github.com/Walter-Stroebel/infimg](https://github.com/Walter-Stroebel/infimg)
+(package `nl.infcomtec.infimg`, MIT-licensed, GitHub Actions build-on-push
+plus tag-triggered release, first release `v1.0.0`). No Voynich dependency
+in the extracted copy beyond a raw Jackson `ObjectMapper`.
+
+Voynich itself keeps its own copy (`ImageView.java`, same package as
+everything else) rather than depending on the external jar — launched as a
+detached process, never sharing this app's EDT, via
+`Voynich.launchImageView(File)`. Wired into `RegionViewer`'s "Save to
+/tmp & View" button and `CatalogCli extract --content-area`/
+`--region-name --view` (see function-matrix row 24c) — the latter
+specifically so an agent driving the CLI has a "show the user something"
+path without a GUI window of its own.
 
 ## Research findings (not yet in code)
 
