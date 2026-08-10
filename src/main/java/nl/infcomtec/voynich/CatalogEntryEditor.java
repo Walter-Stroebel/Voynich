@@ -38,8 +38,10 @@ import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
+import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.KeyStroke;
@@ -109,10 +111,12 @@ final class CatalogEntryEditor {
     private final JTextArea jsonText = new JTextArea();
     private final JTextArea tagsText = new JTextArea();
     private final JComboBox<String> regionSelector = new JComboBox<>();
-    private final JButton freqButton = new JButton(new EzAction("Color Frequency") {
+    private final JButton viewButton = new JButton("View ▾");
+    private final JPopupMenu viewMenu = new JPopupMenu();
+    private final JMenuItem freqItem = new JMenuItem(new EzAction("Color Frequency") {
         @Override
         public void actionPerformed(ActionEvent e) {
-            openColorVisualization(freqButton, "Color Frequency", new ColorVisualizationFactory() {
+            openColorVisualization(viewButton, "Color Frequency", new ColorVisualizationFactory() {
                 @Override
                 public JComponent createPanel(ColorImage ci) {
                     return new JScrollPane(new FrequencyBarChart(ci));
@@ -120,10 +124,10 @@ final class CatalogEntryEditor {
             });
         }
     }.withTooltip("Ranked colour-frequency chart for the selected region (or the whole page)"));
-    private final JButton heatButton = new JButton(new EzAction("ΔE Heatmap") {
+    private final JMenuItem heatItem = new JMenuItem(new EzAction("ΔE Heatmap") {
         @Override
         public void actionPerformed(ActionEvent e) {
-            openColorVisualization(heatButton, "ΔE Heatmap", new ColorVisualizationFactory() {
+            openColorVisualization(viewButton, "ΔE Heatmap", new ColorVisualizationFactory() {
                 @Override
                 public JComponent createPanel(ColorImage ci) {
                     return new DeltaEHeatmap(ci);
@@ -131,6 +135,12 @@ final class CatalogEntryEditor {
             });
         }
     }.withTooltip("Spatial colour-distance-from-average map for the selected region (or the whole page)"));
+    private final JMenuItem infimgItem = new JMenuItem(new EzAction("Open in infimg") {
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            openInInfimg();
+        }
+    }.withTooltip("Save the selected region (or the whole page) to /tmp and open it full-resolution in infimg"));
     private final JButton areaButton = new JButton(new EzAction("Regions…") {
         @Override
         public void actionPerformed(ActionEvent e) {
@@ -212,18 +222,27 @@ final class CatalogEntryEditor {
         buttons.add(primary);
         buttons.add(cancel);
 
-        regionSelector.setToolTipText("Which region the displayed image and analysis buttons apply to");
+        regionSelector.setToolTipText("Which region the displayed image and View menu apply to");
         regionSelector.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
                 updateDisplayedRegion();
             }
         });
+        viewMenu.add(freqItem);
+        viewMenu.add(heatItem);
+        viewMenu.add(infimgItem);
+        viewButton.setToolTipText("View the selected region (or whole page): colour analysis or infimg");
+        viewButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                viewMenu.show(viewButton, 0, viewButton.getHeight());
+            }
+        });
         JPanel vizButtons = new JPanel();
         vizButtons.add(new JLabel("Region:"));
         vizButtons.add(regionSelector);
-        vizButtons.add(freqButton);
-        vizButtons.add(heatButton);
+        vizButtons.add(viewButton);
         vizButtons.add(areaButton);
 
         JPanel south = new JPanel(new BorderLayout());
@@ -393,6 +412,55 @@ final class CatalogEntryEditor {
                 } catch (Exception ex) {
                     JOptionPane.showMessageDialog(dialog, "Could not analyse image:\n" + ex.getMessage(),
                             "Analysis failed", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }.execute();
+    }
+
+    /**
+     * Same "whole page or {@link #regionSelector}'s current region" reading
+     * {@link #openColorVisualization} uses, but skips the CIELab decode
+     * entirely — this just wants pixels on screen, not a colour inventory —
+     * and hands the raw crop (via {@link BitSet2D#cropToPolygon}, black
+     * outside the polygon, same as {@code RegionViewer}'s "Save to /tmp &amp;
+     * View") straight to {@link Voynich#launchImageView}, same
+     * no-file-chooser convenience that button already offers one drill-down
+     * level deeper.
+     */
+    private void openInInfimg() {
+        int regionIndex = regionSelector.getSelectedIndex();
+        CatalogEntry.Region region = regionIndex > 0 ? entry.regions.get(regionIndex) : null;
+        if (null == fullImage) {
+            return;
+        }
+        BufferedImage source = fullImage;
+        String kindSuffix = null == region ? "" : "." + region.kind;
+        infimgItem.setEnabled(false);
+        new SwingWorker<File, Void>() {
+            @Override
+            protected File doInBackground() throws IOException {
+                BufferedImage raster = source;
+                if (null != region) {
+                    List<Point> vertices = new ArrayList<>(region.polygon.size());
+                    for (CatalogEntry.Vertex v : region.polygon) {
+                        vertices.add(new Point(v.x, v.y));
+                    }
+                    raster = BitSet2D.cropToPolygon(source, vertices);
+                }
+                File target = new File(System.getProperty("java.io.tmpdir"),
+                        entry.filename + kindSuffix + "." + System.currentTimeMillis() + ".png");
+                ImageIO.write(raster, "png", target);
+                return target;
+            }
+
+            @Override
+            protected void done() {
+                infimgItem.setEnabled(true);
+                try {
+                    Voynich.launchImageView(get());
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(dialog, "Could not open in infimg:\n" + ex.getMessage(),
+                            "Open failed", JOptionPane.ERROR_MESSAGE);
                 }
             }
         }.execute();
@@ -705,8 +773,7 @@ final class CatalogEntryEditor {
             imageLabel.setIcon(plainIcon);
         }
         refreshRegionSelector(false);
-        freqButton.setEnabled(null != fullImage);
-        heatButton.setEnabled(null != fullImage);
+        viewButton.setEnabled(null != fullImage);
         areaButton.setEnabled(null != fullImage);
 
         statusLabel.setText(null != action
