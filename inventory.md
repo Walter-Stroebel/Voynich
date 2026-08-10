@@ -122,15 +122,17 @@ app's own catalog. Six `voynich*` directories:
 - predator also runs a nightly NAS backup (feeding the now-frozen
   `voynich_mysql_backups/` above) and hosts an unrelated local-LLM
   experiment (gemma-4-e4b via LM Studio)
-- **`predator:~/github/Voynich/`** and **`predator:~/github/infimg/`** —
-  full rsync mirrors of this project directory (code + gitignored
-  `stolfi/` research data) and of the sibling `infimg` repo (see "Sibling
-  project: infimg" above), kept on predator's own NVMe. Deliberate
-  second-machine, second-disk backup — `infimg` is a separate GitHub repo,
-  not part of this one, but mirrored alongside it purely for local backup
-  hygiene. Update both, plus memory/catalog/checkpoints, in one call via
-  `scripts/sync-predator.sh` (gitignored, agent convenience). Freely usable
-  over `ssh`/`scp`/`rsync` for read or write.
+- **`predator:~/github/Voynich/`** — full rsync mirror of this project
+  directory (code + gitignored `stolfi/` research data), kept on
+  predator's own NVMe. Deliberate second-machine, second-disk backup for a
+  repo with no GitHub remote yet. Update it,
+  plus memory/catalog/checkpoints, in one call via `scripts/sync-predator.sh`
+  (gitignored, agent convenience). Freely usable over `ssh`/`scp`/`rsync`
+  for read or write. The sibling `infimg` repo was mirrored here too for
+  one day after extraction (2026-08-10) but dropped from the script the
+  same day once it had its own GitHub remote and tagged releases — GitHub
+  is that repo's backup now, so `predator:~/github/infimg/` no longer
+  exists (deleted 2026-08-10, see `reference_predator_machine.md`).
 
 ## Documentation
 
@@ -149,8 +151,9 @@ zoom/rotate, drag-pan, exact-view Save, own `~/.infimg.json` window-bounds
 config — then extracted the same day into its own standalone repo,
 [github.com/Walter-Stroebel/infimg](https://github.com/Walter-Stroebel/infimg)
 (package `nl.infcomtec.infimg`, MIT-licensed, GitHub Actions build-on-push
-plus tag-triggered release, first release `v1.0.0`). No Voynich dependency
-in the extracted copy beyond a raw Jackson `ObjectMapper`.
+plus tag-triggered release; `v1.0.0` initial, `v1.1.0` same-day follow-up
+below). No Voynich dependency in the extracted copy beyond a raw Jackson
+`ObjectMapper`.
 
 The forked `ImageView.java` copy inside this repo was removed 2026-08-10 —
 keeping two copies in sync was already a smell one day in. Voynich now
@@ -176,6 +179,16 @@ first so no pixel is ever really transparent, and on Linux/X11 copying an
 from a *different* process — confirmed fixed by live pan/rotate/Copy →
 close → reopen → Paste test, including still being able to paste an
 unrelated foreign image afterward.
+
+Released as `v1.1.0` (pom bumped `1.0`→`1.1`, all hardcoded
+`infimg-1.0-jar-with-dependencies.jar` references in `README.md`/
+`scripts/*` updated to match), tagged and pushed to `origin/main`,
+confirmed published via `gh release view v1.1.0` — asset
+`infimg-1.1-jar-with-dependencies.jar`. `Config.infimgJar` and
+`~/bin/infimg` on this machine point at the `1.1` jar. `gh` CLI (2.97.0,
+via GitHub's own apt repo — Mint's repo version was a stale 2.4.0)
+installed and authenticated on Legion 2026-08-10 for this; useful going
+forward for checking Actions runs/releases without a browser.
 
 ## Research findings (not yet in code)
 
