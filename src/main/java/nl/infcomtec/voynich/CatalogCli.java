@@ -239,6 +239,7 @@ public class CatalogCli {
         String out = null;
         boolean contentArea = false;
         String regionName = null;
+        boolean view = false;
         for (int i = 2; i < args.length; i++) {
             switch (args[i]) {
                 case "--pixel":
@@ -259,11 +260,19 @@ public class CatalogCli {
                 case "--out":
                     out = args[++i];
                     break;
+                case "--view":
+                    view = true;
+                    break;
                 default:
                     System.err.println("Unknown option: " + args[i]);
                     System.exit(1);
                     return;
             }
+        }
+        if (view && !contentArea && null == regionName) {
+            System.err.println("--view only applies to --content-area or --region-name");
+            System.exit(1);
+            return;
         }
         int modes = (null != pixel ? 1 : 0) + (!regions.isEmpty() ? 1 : 0) + (contentArea ? 1 : 0)
                 + (null != regionName ? 1 : 0);
@@ -284,11 +293,11 @@ public class CatalogCli {
         }
 
         if (contentArea) {
-            extractContentArea(entry, entry.mainRegion(), imgFile, out);
+            extractContentArea(entry, entry.mainRegion(), imgFile, out, view);
             return;
         }
         if (null != regionName) {
-            extractRegionByName(entry, imgFile, regionName, out);
+            extractRegionByName(entry, imgFile, regionName, out, view);
             return;
         }
 
@@ -339,12 +348,18 @@ public class CatalogCli {
      * {@code RegionViewer}'s mouse wheel sets and applies live, but only
      * ever bakes into the GUI's rendering — never into a saved file until
      * now), and writes the result as a PNG — either to {@code out} or, if
-     * {@code null}, straight to stdout. Doesn't go through {@link ColorImage}
+     * {@code null}, straight to stdout — unless {@code view} is set, in which
+     * case {@code out} (generating a {@code /tmp} path if not given) is always
+     * used as a real file and then opened in a detached {@link ImageView}
+     * process via {@link Voynich#launchImageView}, the CLI equivalent of
+     * {@code RegionViewer}'s "Save to /tmp & View" button — the "show me
+     * something" path for an agent driving this CLI without a GUI window of
+     * its own to display the result in. Doesn't go through {@link ColorImage}
      * (no CIELab decode needed for a raw crop), so it's cheaper than the
      * {@code --pixel}/{@code --region} modes above.
      */
-    private static void extractContentArea(CatalogEntry entry, CatalogEntry.Region main, File imgFile, String out)
-            throws IOException {
+    private static void extractContentArea(CatalogEntry entry, CatalogEntry.Region main, File imgFile, String out,
+            boolean view) throws IOException {
         if (null == main) {
             System.err.println("No content area traced yet for " + entry.filename);
             System.exit(1);
@@ -360,6 +375,9 @@ public class CatalogCli {
             cropped = BitSet2D.rotateUpright(cropped, main.angle);
         }
 
+        if (view && null == out) {
+            out = File.createTempFile(entry.filename + "." + main.kind + ".", ".png").getAbsolutePath();
+        }
         if (null == out) {
             ByteArrayOutputStream buf = new ByteArrayOutputStream();
             ImageIO.write(cropped, "png", buf);
@@ -372,6 +390,9 @@ public class CatalogCli {
                 "{\"filename\":\"%s\",\"width\":%d,\"height\":%d,\"vertices\":%d%s}",
                 entry.filename, cropped.getWidth(), cropped.getHeight(), main.polygon.size(),
                 null == out ? "" : ",\"path\":\"" + out + "\""));
+        if (view) {
+            Voynich.launchImageView(new File(out));
+        }
     }
 
     /**
@@ -389,8 +410,8 @@ public class CatalogCli {
      * convention as multiple {@code --region}: {@code <out>.0},
      * {@code <out>.1}, ...
      */
-    private static void extractRegionByName(CatalogEntry entry, File imgFile, String kind, String out)
-            throws IOException {
+    private static void extractRegionByName(CatalogEntry entry, File imgFile, String kind, String out,
+            boolean view) throws IOException {
         List<CatalogEntry.Region> matches = new ArrayList<>();
         for (int i = 1; i < entry.regions.size(); i++) {
             CatalogEntry.Region r = entry.regions.get(i);
@@ -403,15 +424,15 @@ public class CatalogCli {
             System.exit(1);
             return;
         }
-        if (matches.size() > 1 && null == out) {
+        if (matches.size() > 1 && null == out && !view) {
             System.err.println("Multiple regions match kind \"" + kind + "\" (" + matches.size()
                     + ") — need --out as a prefix: <out>.0, <out>.1, ...");
             System.exit(1);
             return;
         }
         for (int n = 0; n < matches.size(); n++) {
-            String matchOut = matches.size() > 1 ? out + "." + n : out;
-            extractContentArea(entry, matches.get(n), imgFile, matchOut);
+            String matchOut = matches.size() > 1 && null != out ? out + "." + n : out;
+            extractContentArea(entry, matches.get(n), imgFile, matchOut, view);
         }
     }
 
@@ -517,7 +538,7 @@ public class CatalogCli {
         System.err.println("  tag <filename> <text...>    add a tag/note (no-op if already present)");
         System.err.println("  save <filename> [jsonFile]  replace the entry (reads stdin if jsonFile omitted)");
         System.err.println("  extract <filename> --pixel x,y | --region x,y,w,h [--region ...] [--format rgb|lab|hex]");
-        System.err.println("                      | --content-area [--out path] | --region-name <kind> [--out path]");
+        System.err.println("                      | --content-area [--out path] [--view] | --region-name <kind> [--out path] [--view]");
         System.err.println("                              real decoded pixel colour via ColorImage/ColorBase;");
         System.err.println("                              --pixel prints to stdout, --region writes a binary blob");
         System.err.println("                              (stdout or --out) plus a JSON manifest on stderr; repeat");
@@ -526,7 +547,10 @@ public class CatalogCli {
         System.err.println("                              a PNG cropped to the traced main region's bounding");
         System.err.println("                              box, black outside the polygon (stdout or --out);");
         System.err.println("                              --region-name <kind> does the same for any traced region");
-        System.err.println("                              matched by its kind label (case-insensitive), not just the main area");
+        System.err.println("                              matched by its kind label (case-insensitive), not just the main area;");
+        System.err.println("                              --view (with --content-area or --region-name) skips the file entirely");
+        System.err.println("                              and opens the PNG(s) straight in a detached ImageView process —");
+        System.err.println("                              writes to a /tmp file when --out isn't given");
         System.err.println("  checkpoint                  clone the whole catalog's current state");
         System.err.println("  restore                     discard everything since the last checkpoint");
     }

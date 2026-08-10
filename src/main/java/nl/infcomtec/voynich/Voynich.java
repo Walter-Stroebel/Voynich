@@ -70,6 +70,39 @@ public class Voynich {
     }
 
     /**
+     * Launches {@link ImageView} as a brand new detached JVM process — not
+     * a second {@code JFrame} in this process's own EDT. A user routinely
+     * ends up with dozens of these open at once (comparing scans side by
+     * side); one shared EDT serving fifty windows' worth of repaint/input
+     * events would make all of them janky at once, whereas fifty separate
+     * processes each carry their own EDT and can't contend with each
+     * other or with this app's own UI. Fire-and-forget: I/O is discarded
+     * and the process is never waited on, since this app has no interest
+     * in an ImageView window's lifecycle once launched.
+     *
+     * @param file the image to open, or {@code null} to launch empty
+     */
+    public static void launchImageView(File file) {
+        try {
+            String javaBin = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
+            List<String> cmd = new ArrayList<>();
+            cmd.add(javaBin);
+            cmd.add("-cp");
+            cmd.add(System.getProperty("java.class.path"));
+            cmd.add("nl.infcomtec.voynich.ImageView");
+            if (null != file) {
+                cmd.add(file.getAbsolutePath());
+            }
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+            pb.redirectError(ProcessBuilder.Redirect.DISCARD);
+            pb.start();
+        } catch (IOException ex) {
+            Logger.getLogger(Voynich.class.getName()).log(Level.WARNING, "Could not launch ImageView", ex);
+        }
+    }
+
+    /**
      * Main.
      *
      * @param args {@code --smokeTest} (anywhere in the args) makes the app

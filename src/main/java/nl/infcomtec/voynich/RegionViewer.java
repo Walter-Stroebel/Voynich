@@ -125,9 +125,17 @@ final class RegionViewer {
                 copyToClipboard(owner, canvas.rotatedRaster());
             }
         }.withTooltip("Copy this region, rotated as currently shown, to the system clipboard"));
+        JButton viewTmp = new JButton(new EzAction("Save to /tmp & View") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                saveToTmpAndView(owner, entry, region, canvas.rotatedRaster());
+            }
+        }.withTooltip("Save this region, rotated as currently shown, to /tmp and open it in ImageView —"
+                + " no file chooser needed"));
         JPanel buttons = new JPanel();
         buttons.add(export);
         buttons.add(copy);
+        buttons.add(viewTmp);
         buttons.add(addChild);
         JPanel south = new JPanel(new BorderLayout());
         south.add(status, BorderLayout.CENTER);
@@ -166,6 +174,28 @@ final class RegionViewer {
             JOptionPane.showMessageDialog(owner, "Export failed:\n" + ex.getMessage(),
                     "Export failed", JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    /**
+     * Writes {@code raster} straight to a timestamped file under
+     * {@code /tmp} and opens it in a detached {@link ImageView} process
+     * (see {@link Voynich#launchImageView}) — for a quick look without
+     * subjecting the user to a {@link JFileChooser} dialog over their real
+     * filesystem, and without sharing this app's own EDT with whatever
+     * pile of viewer windows accumulates over a session.
+     */
+    private static void saveToTmpAndView(Window owner, CatalogEntry entry, CatalogEntry.Region region,
+            BufferedImage raster) {
+        File target = new File(System.getProperty("java.io.tmpdir"),
+                entry.filename + "." + region.kind + "." + System.currentTimeMillis() + ".png");
+        try {
+            ImageIO.write(raster, "png", target);
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(owner, "Save failed:\n" + ex.getMessage(),
+                    "Save failed", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        Voynich.launchImageView(target);
     }
 
     /**
