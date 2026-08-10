@@ -105,14 +105,15 @@ gap.
   many entry editors or tool windows a user has open at once; `JOptionPane`
   confirm/error prompts are the one deliberate exception, since those are
   synchronous answers, not parallel windows
-- A standalone image viewer (`ImageView`) launched as a detached process
-  (`Voynich.launchImageView`) — fit-to-window, mouse-wheel zoom/rotate,
-  drag-pan, exact-view Save — reachable from `RegionViewer`'s "Save to
-  /tmp & View" button and `CatalogCli extract --view`. Deliberately its
-  own process per window rather than another `JFrame` in this app's own
-  EDT, since a user routinely ends up with dozens open side by side. Also
-  extracted the same day into its own general-purpose repo,
-  [infimg](https://github.com/Walter-Stroebel/infimg) — see `inventory.md`
+- A standalone image viewer, [infimg](https://github.com/Walter-Stroebel/infimg)
+  (separate repo, no longer forked into this one — see `inventory.md`),
+  launched as a detached process (`Voynich.launchImageView`, jar path from
+  `Config.infimgJar`) — fit-to-window, mouse-wheel zoom/rotate, drag-pan,
+  clipboard paste/copy, exact-view Save — reachable from `RegionViewer`'s
+  "Save to /tmp & View" button and `CatalogCli extract --view`.
+  Deliberately its own process per window rather than another `JFrame` in
+  this app's own EDT, since a user routinely ends up with dozens open side
+  by side.
 
 ## Roadmap
 

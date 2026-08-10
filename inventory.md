@@ -152,14 +152,30 @@ config — then extracted the same day into its own standalone repo,
 plus tag-triggered release, first release `v1.0.0`). No Voynich dependency
 in the extracted copy beyond a raw Jackson `ObjectMapper`.
 
-Voynich itself keeps its own copy (`ImageView.java`, same package as
-everything else) rather than depending on the external jar — launched as a
-detached process, never sharing this app's EDT, via
-`Voynich.launchImageView(File)`. Wired into `RegionViewer`'s "Save to
-/tmp & View" button and `CatalogCli extract --content-area`/
-`--region-name --view` (see function-matrix row 24c) — the latter
-specifically so an agent driving the CLI has a "show the user something"
-path without a GUI window of its own.
+The forked `ImageView.java` copy inside this repo was removed 2026-08-10 —
+keeping two copies in sync was already a smell one day in. Voynich now
+launches the standalone infimg jar directly as a detached process
+(`Voynich.launchImageView(File)`, path from `Config.infimgJar` — a
+dev-machine setting, deliberately not defaulted; proper install-location
+handling is parked for the user manual's install section), never sharing
+this app's EDT. Wired into `RegionViewer`'s "Save to /tmp & View" button
+and `CatalogCli extract --content-area`/`--region-name --view` (see
+function-matrix row 24c) — the latter specifically so an agent driving the
+CLI has a "show the user something" path without a GUI window of its own.
+Also fixed the same day: the rotation/zoom pivot used to drift to wherever
+the image had been panned to (it was screen-space pan folded into the same
+translate as the pivot); pan is now stored in image-space units so the
+pivot stays pinned to the true viewport center regardless of pan. Added
+clipboard Paste/Copy buttons alongside Load/Save (plain text, no icon set
+— matches infimg's "no extra dependency" stance) — Copy renders
+`TYPE_INT_RGB`, not `_ARGB`: the canvas always paints an opaque background
+first so no pixel is ever really transparent, and on Linux/X11 copying an
+`_ARGB` image hit a JDK bug where the clipboard manager's PNG round-trip
+(kept alive after the source process exits) can't be read back via
+`imageFlavor`, failing "Error reading PNG image data" on the next paste
+from a *different* process — confirmed fixed by live pan/rotate/Copy →
+close → reopen → Paste test, including still being able to paste an
+unrelated foreign image afterward.
 
 ## Research findings (not yet in code)
 

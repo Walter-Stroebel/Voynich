@@ -130,7 +130,7 @@ final class RegionViewer {
             public void actionPerformed(ActionEvent e) {
                 saveToTmpAndView(owner, entry, region, canvas.rotatedRaster());
             }
-        }.withTooltip("Save this region, rotated as currently shown, to /tmp and open it in ImageView —"
+        }.withTooltip("Save this region, rotated as currently shown, to /tmp and open it in infimg —"
                 + " no file chooser needed"));
         JPanel buttons = new JPanel();
         buttons.add(export);
@@ -178,7 +178,7 @@ final class RegionViewer {
 
     /**
      * Writes {@code raster} straight to a timestamped file under
-     * {@code /tmp} and opens it in a detached {@link ImageView} process
+     * {@code /tmp} and opens it in a detached infimg process
      * (see {@link Voynich#launchImageView}) — for a quick look without
      * subjecting the user to a {@link JFileChooser} dialog over their real
      * filesystem, and without sharing this app's own EDT with whatever

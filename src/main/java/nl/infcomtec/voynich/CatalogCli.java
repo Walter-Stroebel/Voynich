@@ -350,8 +350,8 @@ public class CatalogCli {
      * now), and writes the result as a PNG — either to {@code out} or, if
      * {@code null}, straight to stdout — unless {@code view} is set, in which
      * case {@code out} (generating a {@code /tmp} path if not given) is always
-     * used as a real file and then opened in a detached {@link ImageView}
-     * process via {@link Voynich#launchImageView}, the CLI equivalent of
+     * used as a real file and then opened in a detached infimg process via
+     * {@link Voynich#launchImageView}, the CLI equivalent of
      * {@code RegionViewer}'s "Save to /tmp & View" button — the "show me
      * something" path for an agent driving this CLI without a GUI window of
      * its own to display the result in. Doesn't go through {@link ColorImage}
@@ -549,7 +549,7 @@ public class CatalogCli {
         System.err.println("                              --region-name <kind> does the same for any traced region");
         System.err.println("                              matched by its kind label (case-insensitive), not just the main area;");
         System.err.println("                              --view (with --content-area or --region-name) skips the file entirely");
-        System.err.println("                              and opens the PNG(s) straight in a detached ImageView process —");
+        System.err.println("                              and opens the PNG(s) straight in a detached infimg process —");
         System.err.println("                              writes to a /tmp file when --out isn't given");
         System.err.println("  checkpoint                  clone the whole catalog's current state");
         System.err.println("  restore                     discard everything since the last checkpoint");
