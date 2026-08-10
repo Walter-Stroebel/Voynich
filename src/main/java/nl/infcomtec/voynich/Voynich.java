@@ -79,8 +79,12 @@ public class Voynich {
      * EDT and can't contend with each other or with this app's own UI.
      * Fire-and-forget: I/O is discarded and the process is never waited
      * on, since this app has no interest in the viewer window's lifecycle
-     * once launched. No-ops with a warning if {@link Config#infimgJar}
-     * isn't set.
+     * once launched. Pops a {@link JOptionPane} (not just a log line — the
+     * old warning-only version was itself the "silent backup failure"
+     * anti-pattern this project already knows to avoid) if
+     * {@link Config#infimgJar} isn't set, since both call sites
+     * ({@code RegionViewer}'s "Save to /tmp & View" button and
+     * {@code CatalogCli}'s {@code --view}) run on a machine with a display.
      *
      * @param file the image to open, or {@code null} to launch empty
      */
@@ -88,6 +92,8 @@ public class Voynich {
         if (null == config.infimgJar) {
             Logger.getLogger(Voynich.class.getName()).log(Level.WARNING,
                     "Config.infimgJar is not set; cannot launch infimg");
+            JOptionPane.showMessageDialog(null, "No viewer selected, see manual",
+                    "Cannot open viewer", JOptionPane.WARNING_MESSAGE);
             return;
         }
         try {
