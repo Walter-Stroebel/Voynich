@@ -3,4 +3,3 @@ target/
 .claude/settings.local.json
 .env
 src/main/resources/stolfi/
-scripts/sync-predator.sh
