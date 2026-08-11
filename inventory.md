@@ -145,50 +145,33 @@ app's own catalog. Six `voynich*` directories:
 ## Sibling project: infimg
 
 The `~/Documents/imageview-project.md` idea (parked 2026-08-09) was built
-2026-08-10 as `nl.infcomtec.voynich.ImageView` inside this repo first —
-fit-to-window (fills the current window exactly, up or down), mouse-wheel
-zoom/rotate, drag-pan, exact-view Save, own `~/.infimg.json` window-bounds
-config — then extracted the same day into its own standalone repo,
+2026-08-10 as `nl.infcomtec.voynich.ImageView` inside this repo first, then
+extracted the same day into its own standalone repo,
 [github.com/Walter-Stroebel/infimg](https://github.com/Walter-Stroebel/infimg)
 (package `nl.infcomtec.infimg`, MIT-licensed, GitHub Actions build-on-push
-plus tag-triggered release; `v1.0.0` initial, `v1.1.0` same-day follow-up
-below). No Voynich dependency in the extracted copy beyond a raw Jackson
-`ObjectMapper`.
+plus tag-triggered release). No Voynich dependency in the extracted copy.
+The forked `ImageView.java` copy inside this repo was removed the same
+day — keeping two copies in sync was already a smell one day in.
 
-The forked `ImageView.java` copy inside this repo was removed 2026-08-10 —
-keeping two copies in sync was already a smell one day in. Voynich now
-launches the standalone infimg jar directly as a detached process
+**Now the standard "show the user an image" tool, not just a Voynich
+utility.** Currently released at **v1.2.0**: fit-to-window on load,
+mouse-wheel zoom, toolbar-toggle free-angle rotate, drag-pan, exact-view
+Save/Copy (zoom/rotation/pan/crop baked in), Load/Paste from file or
+clipboard, **10 remembered window-position slots** (`-0`..`-9`, launch
+flag), a **Menu** button holding Look & Feel (system default or FlatLaf
+Light/Dark/IntelliJ/Darcula), Lighter/Darker/More Contrast/Less Contrast
+(one-click CIELAB L* nudges), and an optional ImageMagick-backed Metadata
+viewer. Full changelog in the infimg repo's own `README.md`.
+
+Voynich launches the standalone jar directly as a detached process
 (`Voynich.launchImageView(File)`, path from `Config.infimgJar` — a
-dev-machine setting, deliberately not defaulted; proper install-location
-handling is parked for the user manual's install section), never sharing
-this app's EDT. Wired into `RegionViewer`'s "Save to /tmp & View" button
-and `CatalogCli extract --content-area`/`--region-name --view` (see
-function-matrix row 24c) — the latter specifically so an agent driving the
-CLI has a "show the user something" path without a GUI window of its own.
-Also fixed the same day: the rotation/zoom pivot used to drift to wherever
-the image had been panned to (it was screen-space pan folded into the same
-translate as the pivot); pan is now stored in image-space units so the
-pivot stays pinned to the true viewport center regardless of pan. Added
-clipboard Paste/Copy buttons alongside Load/Save (plain text, no icon set
-— matches infimg's "no extra dependency" stance) — Copy renders
-`TYPE_INT_RGB`, not `_ARGB`: the canvas always paints an opaque background
-first so no pixel is ever really transparent, and on Linux/X11 copying an
-`_ARGB` image hit a JDK bug where the clipboard manager's PNG round-trip
-(kept alive after the source process exits) can't be read back via
-`imageFlavor`, failing "Error reading PNG image data" on the next paste
-from a *different* process — confirmed fixed by live pan/rotate/Copy →
-close → reopen → Paste test, including still being able to paste an
-unrelated foreign image afterward.
-
-Released as `v1.1.0` (pom bumped `1.0`→`1.1`, all hardcoded
-`infimg-1.0-jar-with-dependencies.jar` references in `README.md`/
-`scripts/*` updated to match), tagged and pushed to `origin/main`,
-confirmed published via `gh release view v1.1.0` — asset
-`infimg-1.1-jar-with-dependencies.jar`. `Config.infimgJar` and
-`~/bin/infimg` on this machine point at the `1.1` jar. `gh` CLI (2.97.0,
-via GitHub's own apt repo — Mint's repo version was a stale 2.4.0)
-installed and authenticated on Legion 2026-08-10 for this; useful going
-forward for checking Actions runs/releases without a browser.
+dev-machine setting, deliberately not defaulted), never sharing this app's
+EDT. Wired into `RegionViewer`'s "Save to /tmp & View" button and
+`CatalogCli extract --content-area`/`--region-name --view` (see
+function-matrix row 24c). Outside the Voynich app itself, launch directly
+via `~/bin/infimg <path>` — this is now the default way to show Walter any
+image produced during a session (scratch probes, crops, diagrams), not
+just an in-app feature.
 
 ## Research findings (not yet in code)
 
@@ -204,3 +187,14 @@ forward for checking Actions runs/releases without a browser.
   and is unanalyzed — a candidate second encoding layer (color as
   structured information, not just decoration) orthogonal to the
   label/figure work, not yet started
+- CIELAB a* channel genuinely separates verso bleed-through pigment (e.g.
+  the faint star visible behind a leaf on a recto page) from plain vellum
+  grain — confirmed real color science, not scan artifact. But automated
+  isolation doesn't hold up past that: a "mark one sample, match by
+  statistics" classifier also fires broadly on real ink-stroke/pigment-fill
+  edges (antialiased blend pixels), which is structural to how the ink
+  sits on the page, not a threshold-tuning problem. Investigated and
+  deliberately closed 2026-08-11 (see
+  `memory/project_vellum_noise_filter_attempt.md`) — human judgment stays
+  the only reliable separator, consistent with tracing already being
+  human-only by design.
