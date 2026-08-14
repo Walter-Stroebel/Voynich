@@ -97,10 +97,7 @@ public class Voynich {
             return;
         }
         try {
-            String javaBin = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
             List<String> cmd = new ArrayList<>();
-            cmd.add(javaBin);
-            cmd.add("-jar");
             cmd.add(config.infimgJar);
             if (null != file) {
                 cmd.add(file.getAbsolutePath());
@@ -111,6 +108,8 @@ public class Voynich {
             pb.start();
         } catch (IOException ex) {
             Logger.getLogger(Voynich.class.getName()).log(Level.WARNING, "Could not launch infimg", ex);
+            JOptionPane.showMessageDialog(null, "Could not launch infimg:\n" + ex.getMessage(),
+                    "Cannot open viewer", JOptionPane.WARNING_MESSAGE);
         }
     }
 

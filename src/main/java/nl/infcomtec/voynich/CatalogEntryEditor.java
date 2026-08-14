@@ -15,7 +15,9 @@ import java.awt.GraphicsDevice;
 import java.awt.GraphicsEnvironment;
 import java.awt.Point;
 import java.awt.Rectangle;
+import java.awt.Toolkit;
 import java.awt.Window;
+import java.awt.datatransfer.StringSelection;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
@@ -23,6 +25,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -141,6 +144,12 @@ final class CatalogEntryEditor {
             openInInfimg();
         }
     }.withTooltip("Save the selected region (or the whole page) to /tmp and open it full-resolution in infimg"));
+    private final JMenuItem visionItem = new JMenuItem(new EzAction("Ask Vision…") {
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            askVision();
+        }
+    }.withTooltip("Ask the local vision model a free-text question about the selected region (or the whole page)"));
     private final JButton areaButton = new JButton(new EzAction("Regions…") {
         @Override
         public void actionPerformed(ActionEvent e) {
@@ -232,6 +241,7 @@ final class CatalogEntryEditor {
         viewMenu.add(freqItem);
         viewMenu.add(heatItem);
         viewMenu.add(infimgItem);
+        viewMenu.add(visionItem);
         viewButton.setToolTipText("View the selected region (or whole page): colour analysis or infimg");
         viewButton.addActionListener(new ActionListener() {
             @Override
@@ -366,6 +376,122 @@ final class CatalogEntryEditor {
         }
         double[] lab = EnhancedColor.getCIELAB(c);
         return String.format("%.1f,%.1f,%.1f", lab[0], lab[1], lab[2]);
+    }
+
+    /**
+     * Same "whole page or {@link #regionSelector}'s current region" crop as
+     * {@link #openInInfimg}, but instead of opening the result locally, ships
+     * it to the {@code predator} vision pipeline via {@link VisionClient} —
+     * prompts for a free-text question ({@code JOptionPane}, since a
+     * one-shot text prompt doesn't warrant a whole non-modal window of its
+     * own the way a real tool window would), uploads and asks off the EDT,
+     * then shows the answer in a read-only, scrollable, selectable text area
+     * (Ctrl+A/Ctrl+C work natively on a non-editable {@code JTextArea}) plus
+     * an explicit "Copy to Clipboard" button — answers routinely run several
+     * markdown-formatted paragraphs, too long for a plain
+     * {@code JOptionPane} message and needing more than a screenshot to get
+     * out of the dialog. Separately offers to stage just the question (not
+     * the full answer — a multi-paragraph answer is the wrong shape for the
+     * tags box's one-line-per-note convention) as a short "asked vision:
+     * ..." tag, so the fact that a question was asked is discoverable later
+     * even though the full answer itself isn't kept. Deliberately just one
+     * free-text entry point, no canned prompts — "a hammer, not a scalpel,"
+     * Walter's call.
+     */
+    private void askVision() {
+        if (null == fullImage) {
+            return;
+        }
+        String question = JOptionPane.showInputDialog(dialog,
+                "Question for the vision model:", "Ask Vision", JOptionPane.PLAIN_MESSAGE);
+        if (null == question || question.isBlank()) {
+            return;
+        }
+        int regionIndex = regionSelector.getSelectedIndex();
+        CatalogEntry.Region region = regionIndex > 0 ? entry.regions.get(regionIndex) : null;
+        BufferedImage source = fullImage;
+        visionItem.setEnabled(false);
+        new SwingWorker<String, Void>() {
+            @Override
+            protected String doInBackground() throws IOException, InterruptedException {
+                BufferedImage raster = source;
+                if (null != region) {
+                    List<Point> vertices = new ArrayList<>(region.polygon.size());
+                    for (CatalogEntry.Vertex v : region.polygon) {
+                        vertices.add(new Point(v.x, v.y));
+                    }
+                    raster = BitSet2D.cropToPolygon(source, vertices);
+                }
+                ByteArrayOutputStream buf = new ByteArrayOutputStream();
+                ImageIO.write(raster, "png", buf);
+                VisionClient vision = new VisionClient(Voynich.config);
+                String fileId = vision.uploadFile(buf.toByteArray());
+                return vision.askAboutImage(fileId, "png", question);
+            }
+
+            @Override
+            protected void done() {
+                visionItem.setEnabled(true);
+                try {
+                    showAnswer(question, get());
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(dialog, "Vision request failed:\n" + ex.getMessage(),
+                            "Ask Vision failed", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }.execute();
+    }
+
+    /**
+     * Shows a vision-model answer in a small non-modal dialog: a read-only,
+     * word-wrapped {@link JTextArea} (Ctrl+A/Ctrl+C already work on a
+     * non-editable text area without any extra wiring) inside a
+     * {@link JScrollPane} so a long multi-paragraph answer scrolls instead
+     * of stretching the dialog off-screen, plus an explicit
+     * "Copy to Clipboard" button (a screenshot was the only way to get an
+     * answer out before this). {@code question} is prefixed into the
+     * displayed/copied text (not just implied by context) since a
+     * copy-pasted answer is often shared or filed away separately from this
+     * dialog, where the question wouldn't otherwise be visible. Offers to
+     * stage just the {@code question} —
+     * not the full {@code answer}, which is routinely several
+     * markdown-formatted paragraphs and the wrong shape for the tags box's
+     * one-line-per-note convention — as a short "asked vision: ..." tag.
+     */
+    private void showAnswer(String question, String answer) {
+        String display = "Q: " + question + "\n\n" + answer;
+        JTextArea area = new JTextArea(display);
+        area.setEditable(false);
+        area.setLineWrap(true);
+        area.setWrapStyleWord(true);
+        area.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 13));
+        area.setCaretPosition(0);
+        JScrollPane scroll = new JScrollPane(area);
+        scroll.setPreferredSize(new Dimension(600, 400));
+
+        JButton copyButton = new JButton(new EzAction("Copy to Clipboard") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(display), null);
+            }
+        }.withTooltip("Copy the question and answer text to the system clipboard"));
+        JPanel south = new JPanel();
+        south.add(copyButton);
+
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.add(scroll, BorderLayout.CENTER);
+        panel.add(south, BorderLayout.SOUTH);
+
+        JOptionPane.showMessageDialog(dialog, panel, "Vision answer", JOptionPane.PLAIN_MESSAGE);
+
+        int choice = JOptionPane.showConfirmDialog(dialog,
+                "Stage a tag noting this question was asked?\n(\"asked vision: " + question + "\")",
+                "Add tag?", JOptionPane.YES_NO_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (JOptionPane.YES_OPTION == choice) {
+            String tag = "asked vision: " + question;
+            String existing = tagsText.getText().stripTrailing();
+            tagsText.setText(existing.isEmpty() ? tag : existing + "\n" + tag);
+        }
     }
 
     /**

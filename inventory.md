@@ -48,8 +48,10 @@ Audited 2026-08-09, rows added through 2026-08-10. "GUI"/"CLI" are checkmarked w
 | 29 | Exit app | ✅ Exit button | n/a (process just ends) | `Voynich` toolbar |
 | 30 | Smoke-test startup | ✅ verifies main JFrame builds+paints | ✅ `--smokeTest` flag (Voynich main, not CatalogCli) | `Voynich.main()` |
 | 31 | Override config file path | ✅ n/a — positional arg to `Voynich` jar launch | ✅ `--config`/`-c <path>` (added 2026-08-09) | `Voynich.main()` / `CatalogCli.main()` |
+| 32 | Ask the local vision model a free-text question about a page/region | ✅ View ▾ → "Ask Vision…" | ✅ `vision <filename> <question...> [--content-area \| --region-name <kind>]` (both added 2026-08-14) | `CatalogEntryEditor.askVision()` / `CatalogCli.vision()`, both via `VisionClient` |
 
-**Confirmed intentional asymmetries** (not gaps, checked 2026-08-09):
+**Confirmed intentional asymmetries** (not gaps, checked 2026-08-09; #32 now
+GUI+CLI symmetric as of 2026-08-14, listed for contrast):
 - #10/11 (Color Frequency / ΔE Heatmap) have no CLI equivalent, even though
   `extract --pixel`/`--region` produce the same underlying Lab data — no
   scripting need identified yet for the aggregate view itself.
@@ -70,6 +72,19 @@ Audited 2026-08-09, rows added through 2026-08-10. "GUI"/"CLI" are checkmarked w
   configured `scanPath`)
 - `data/voynich-page-index.json` — Yale Beinecke IIIF manifest mapping
   torrent-numbered JPGs (001–213) to canonical folio labels
+- `data/folio-catalog-vision-draft.json` — per-folio content classification
+  (has_plants/circular_diagram/illustrated_process/only_voynese + notes)
+  for 199 pages, produced by a single automated local-vision pass
+  (mcp-service-catalog's `look_at_image`, 2026-08-13, 562s total, zero
+  pipeline errors). Explicitly NOT ground truth — see the file's own
+  `known_limitations` field for confirmed weak spots (an
+  `illustrated_process` undercount on pages where a small figure is
+  crowded into a text-dense margin, plus a few flagged anomaly rows) —
+  but a real, usable first-pass draft: ~15/17 agreement against the
+  existing hand-tagged "Circular diagram" pages, worth treating as
+  better-than-nothing input for corpus-wide questions, not a finished
+  answer. See `memory/project_vision_salience_bias_finding.md` for how it
+  was produced and validated.
 - `~/.infVoy/catalog` — the live catalog (213 entries); one
   `<filename>.json` per entry, thumbnail inlined as base64
 - `~/.infVoy/catalog-checkpoints/` — manual checkpoints, one
@@ -121,7 +136,8 @@ app's own catalog. Six `voynich*` directories:
   "Why plain files, not a DB"
 - predator also runs a nightly NAS backup (feeding the now-frozen
   `voynich_mysql_backups/` above) and hosts an unrelated local-LLM
-  experiment (gemma-4-e4b via LM Studio)
+  experiment (gemma-4-e4b, served via `llama.cpp`'s `llama-server`
+  directly as of 2026-08-14 — see the vision pipeline section below)
 - **`predator:~/github/Voynich/`** — full rsync mirror of this project
   directory (code + gitignored `stolfi/` research data), kept on
   predator's own NVMe. Deliberate second-machine, second-disk backup for a
@@ -152,6 +168,74 @@ extracted the same day into its own standalone repo,
 plus tag-triggered release). No Voynich dependency in the extracted copy.
 The forked `ImageView.java` copy inside this repo was removed the same
 day — keeping two copies in sync was already a smell one day in.
+
+## Sibling project: mcp-service-catalog — vision pipeline (live)
+
+[github.com/Walter-Stroebel/mcp-service-catalog](https://github.com/Walter-Stroebel/mcp-service-catalog)
+runs on predator as a proper **system-level** systemd service
+(`mcp-service-catalog.service`, confirmed 2026-08-14 via `systemctl
+list-unit-files` with no `--user` flag — not the user-scope unit this
+doc previously described) exposing an HTTP MCP transport (`:8764`) plus a
+file upload service (`:8765`). Wired in as a user-scope Claude Code MCP
+server (`predator-catalog`, `claude mcp add --transport http --scope
+user`, connects straight to that HTTP endpoint — no SSH launch involved)
+— available to every Claude Code session on this machine, any repo, not
+just this one.
+
+The vision model backing it (gemma-4-e4b) is served by a sibling
+system-level unit, `llama-gemma-vision.service`, running `llama.cpp`'s
+`llama-server` directly — as of 2026-08-14, Ollama and the LM Studio
+wrapper this doc previously named were both removed from predator in
+favor of that direct setup. Confirmed the `look_at_image` tool contract
+was unaffected by the migration (re-tested end to end same day).
+
+Gives any Claude Code session free, LAN-only, per-page vision Q&A over the
+Voynich scan set via `look_at_image` — upload a page through the file
+service, ask a natural-language question, get an answer, zero marginal
+cost, image bytes never leave the LAN. Validated at full corpus scale
+2026-08-13, see
+`docs/case-studies/2026-08-13-voynich-vision-stress-test.md` in that repo
+(213/213 pages processed, 99.1% structured-output success on a
+damage-counting task) and this repo's own
+`memory/project_vision_confabulation_finding.md` (a live test — "find the
+first 10 blue-flowered pages" — that surfaced a real prompt-sensitivity
+failure mode: confident fabricated detail on one prompt wording, a
+different systematic blind spot on dark/small blue with a "stricter"
+prompt). Treat any single vision-model answer as a first-pass draft
+needing human spot-check, not ground truth — same standing as the
+manual page-tracing work above.
+
+**Known operating ceiling (2026-08-14):** `look_at_image` reliably crashes
+(`IOException: Error writing to server`) on very large/high-resolution
+images — confirmed on the 93MB, 7925×7268px `85v_and_86r_(foldout).png`,
+both before and after the LM Studio→llama.cpp migration, so it's not a
+wrapper bug. Root cause (per web research, not yet independently verified
+against llama.cpp source): Gemma's CLIP preprocessor in llama.cpp clamps
+input to a fixed pixel-count range (~580K–645K px) before tiling, and
+Gemma 4's vision encoder additionally needs all of an image's tokens to
+fit in a single `ubatch` (non-causal attention) — either constraint can
+break on a wildly oversized input rather than gracefully downscaling.
+VRAM is tight on predator's 8GB card (~1.6GB free at idle) but isn't
+required to explain the crash. Fix: downscale to ~2048px max dimension
+(e.g. `convert -resize 2048x2048`) before uploading — confirmed working
+on the same foldout page, with an accurate description returned. See
+`memory/project_vision_resolution_floor_finding.md` for the full writeup
+and sourcing.
+
+**This app now has its own direct vision access too (added 2026-08-14),
+not just Claude Code's MCP tool.** `VisionClient` is a plain
+`java.net.http.HttpClient` wrapper — no MCP client library, since the two
+calls involved (`PUT :8765/files`, `POST :8764/mcp` JSON-RPC `tools/call`)
+don't need one; MCP stays the tool-definition contract, image bytes travel
+over the separate plain-HTTP upload. Reachable via `CatalogCli vision
+<filename> <question...>` and the GUI's `CatalogEntryEditor` "View ▾" →
+"Ask Vision…" — always free-text, no canned prompts. Live use immediately
+surfaced two more confabulation examples (confident wrong answers on a
+six-armed star/rosette diagram and a plant illustration misidentified as
+a pineapple — the latter also historically impossible for this corpus,
+since pineapples were unknown in Europe before Columbus and this
+manuscript's vellum radiocarbon-dates to the early 1400s) — see
+`memory/project_vision_confabulation_finding.md`'s 2026-08-14 addenda.
 
 **Now the standard "show the user an image" tool, not just a Voynich
 utility.** Currently released at **v1.2.0**: fit-to-window on load,

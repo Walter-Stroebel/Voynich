@@ -17,16 +17,42 @@ public class Config {
     public String scanPath;
 
     /**
-     * Path to the standalone infimg viewer's fat jar (see
-     * {@code github.com/Walter-Stroebel/infimg}), launched by
-     * {@link Voynich#launchImageView}. Not shipped with a default: a dev
-     * checkout path only makes sense on the machine that has one, so
-     * {@link Voynich#launchImageView} logs a warning rather than guessing
-     * when this is unset — this "install location" question is intended to
-     * be settled properly in the user manual's install section, not baked
-     * in here.
+     * Command to launch the standalone infimg viewer (see
+     * {@code github.com/Walter-Stroebel/infimg}), invoked directly by
+     * {@link Voynich#launchImageView} (not wrapped in {@code java -jar} —
+     * point this at a launcher script, e.g. {@code ~/bin/infimg}, that does
+     * its own {@code java -jar <versioned-jar>} internally, so this config
+     * value survives infimg version bumps without needing an edit here each
+     * time). A bare jar path also still works, as long as it's directly
+     * executable (unusual for a plain {@code .jar}) — the launcher-script
+     * indirection is the intended usage. Not shipped with a default: a
+     * dev-machine launcher path only makes sense on the machine that has
+     * one, so {@link Voynich#launchImageView} logs a warning rather than
+     * guessing when this is unset — this "install location" question is
+     * intended to be settled properly in the user manual's install section,
+     * not baked in here.
      */
     public String infimgJar;
+
+    /**
+     * Host running the {@code mcp-service-catalog} vision pipeline (see
+     * {@link VisionClient}) — defaults to "predator", the only machine that
+     * currently runs it. Overridable for anyone pointing this at a different
+     * box.
+     */
+    public String visionHost = "predator";
+
+    /**
+     * Port for the vision pipeline's file upload service (plain
+     * {@code PUT}), paired with {@link #visionMcpPort}.
+     */
+    public int visionFilePort = 8765;
+
+    /**
+     * Port for the vision pipeline's Streamable HTTP MCP transport
+     * ({@code POST /mcp}, JSON-RPC).
+     */
+    public int visionMcpPort = 8764;
 
     /**
      * Last on-screen bounds of named tool windows (visualization popups and

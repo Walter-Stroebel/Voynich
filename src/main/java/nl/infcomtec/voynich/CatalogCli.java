@@ -93,6 +93,10 @@ public class CatalogCli {
                         + "| --content-area [--out path] | --region-name <kind> [--out path]");
                 extract(catalog, args);
                 break;
+            case "vision":
+                requireArgs(args, 3, "vision <filename> <question...> [--content-area | --region-name <kind>]");
+                vision(cfg, catalog, args);
+                break;
             case "checkpoint":
                 catalog.checkpoint();
                 System.out.println("checkpointed");
@@ -436,6 +440,101 @@ public class CatalogCli {
         }
     }
 
+    /**
+     * {@code vision <filename> <question...> [--content-area | --region-name <kind>]}:
+     * uploads the page (or, with {@code --content-area}/{@code --region-name},
+     * the same cropped-to-polygon PNG {@code extract} would write — reusing
+     * {@link #extractContentArea}/{@link #extractRegionByName}'s crop path via
+     * a temp file rather than duplicating it) to the vision pipeline via
+     * {@link VisionClient} and prints the model's free-text answer. See
+     * {@code CLAUDE.md}'s "Vision Pipeline (MCP)" section for the model this
+     * calls and its known limits (spot-check, don't trust blindly; very large
+     * images — see {@code memory/project_vision_resolution_floor_finding.md} —
+     * need downscaling first, not done automatically here).
+     */
+    private static void vision(Config cfg, Catalog catalog, String[] args) throws IOException {
+        String filename = args[1];
+        CatalogEntry entry = catalog.loadEntry(filename);
+        if (null == entry) {
+            System.err.println("No entry for " + filename);
+            System.exit(1);
+            return;
+        }
+        File imgFile = resolveExistingLocation(entry);
+        if (null == imgFile) {
+            System.err.println("No on-disk location found for " + filename);
+            System.exit(1);
+            return;
+        }
+
+        boolean contentArea = false;
+        String regionName = null;
+        List<String> questionParts = new ArrayList<>();
+        for (int i = 2; i < args.length; i++) {
+            switch (args[i]) {
+                case "--content-area":
+                    contentArea = true;
+                    break;
+                case "--region-name":
+                    regionName = args[++i];
+                    break;
+                default:
+                    questionParts.add(args[i]);
+            }
+        }
+        if (contentArea && null != regionName) {
+            System.err.println("--content-area and --region-name are mutually exclusive");
+            System.exit(1);
+            return;
+        }
+        if (questionParts.isEmpty()) {
+            System.err.println("Need a question to ask");
+            System.exit(1);
+            return;
+        }
+        String question = String.join(" ", questionParts);
+
+        File toUpload = imgFile;
+        File tempCrop = null;
+        if (contentArea || null != regionName) {
+            CatalogEntry.Region region = contentArea ? entry.mainRegion() : firstRegionNamed(entry, regionName);
+            if (null == region) {
+                System.err.println("No matching region for " + filename);
+                System.exit(1);
+                return;
+            }
+            tempCrop = File.createTempFile(filename + ".", ".png");
+            extractContentArea(entry, region, imgFile, tempCrop.getAbsolutePath(), false);
+            toUpload = tempCrop;
+        }
+
+        try {
+            VisionClient vision = new VisionClient(cfg);
+            byte[] bytes = Files.readAllBytes(toUpload.toPath());
+            String fileId = vision.uploadFile(bytes);
+            String answer = vision.askAboutImage(fileId, "png", question);
+            System.out.println(answer);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            System.err.println("Interrupted");
+            System.exit(1);
+        } finally {
+            if (null != tempCrop) {
+                tempCrop.delete();
+            }
+        }
+    }
+
+    private static CatalogEntry.Region firstRegionNamed(CatalogEntry entry, String kind) {
+        for (int i = 1; i < entry.regions.size(); i++) {
+            CatalogEntry.Region r = entry.regions.get(i);
+            if (r.kind.equalsIgnoreCase(kind)) {
+                return r;
+            }
+        }
+        return null;
+    }
+
     private static File resolveExistingLocation(CatalogEntry entry) {
         for (CatalogEntry.Location loc : entry.locations) {
             File f = new File(loc.path);
@@ -551,6 +650,10 @@ public class CatalogCli {
         System.err.println("                              --view (with --content-area or --region-name) skips the file entirely");
         System.err.println("                              and opens the PNG(s) straight in a detached infimg process —");
         System.err.println("                              writes to a /tmp file when --out isn't given");
+        System.err.println("  vision <filename> <question...> [--content-area | --region-name <kind>]");
+        System.err.println("                              ask the local vision model a free-text question about the");
+        System.err.println("                              page (or a traced region), prints its answer to stdout;");
+        System.err.println("                              very large images (see CLAUDE.md) may fail without downscaling first");
         System.err.println("  checkpoint                  clone the whole catalog's current state");
         System.err.println("  restore                     discard everything since the last checkpoint");
     }

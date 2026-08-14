@@ -103,6 +103,13 @@ public class OverviewPanel extends JPanel {
         list.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent evt) {
+                if (evt.getClickCount() > 1) {
+                    // A double-click still delivers a first single-click event that
+                    // already opens the editor below — the second click's event is
+                    // just noise, not a "open it again" signal, so it's ignored here
+                    // rather than opening a second CatalogEntryEditor on the same entry.
+                    return;
+                }
                 int idx = list.locationToIndex(evt.getPoint());
                 if (idx < 0 || !list.getCellBounds(idx, idx).contains(evt.getPoint())) {
                     return;
