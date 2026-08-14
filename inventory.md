@@ -10,16 +10,18 @@ current state/roadmap.
 
 ## Function matrix
 
-Audited 2026-08-09, rows added through 2026-08-10. "GUI"/"CLI" are checkmarked when that path exists;
+Audited 2026-08-09, rows added through 2026-08-14 (toolbar → menu bar
+migration, thumbnail-grid selection, Two-Page View, Thumbnail Matrix,
+multi-page Ask Vision). "GUI"/"CLI" are checkmarked when that path exists;
 "Location" is the class (and specific control) that implements it.
 
 | # | Function | GUI | CLI | Location |
 |---|---|---|---|---|
-| 1 | Scan folder / catalog new+changed images | ✅ Scan button | ❌ | `Voynich` toolbar → `ScanTaskWindow` |
-| 2 | Sort thumbnail grid | ✅ Sort button | ❌ | `OverviewPanel.sort()` |
-| 3 | Filter/search entries (JSON substring, invert) | ✅ Filter button | ✅ `list [filter] [-v]` | `OverviewPanel.filter()` / `CatalogCli.list()` |
-| 4 | Toggle "content area only" dim view | ✅ toggle button | ❌ | `Voynich` toolbar toggle → `OverviewPanel` |
-| 5 | Rapid-review / MarkUp tagging pass | ✅ MarkUp button | ❌ | `Voynich` toolbar → `CatalogEntryEditor.review()` + `RapidReviewAction` |
+| 1 | Scan folder / catalog new+changed images | ✅ File → Scan | ❌ | `Voynich` menu bar → `ScanTaskWindow` |
+| 2 | Sort thumbnail grid | ✅ View → Sort | ❌ | `OverviewPanel.sort()` |
+| 3 | Filter/search entries (JSON substring, invert) | ✅ View → Filter | ✅ `list [filter] [-v]` | `OverviewPanel.filter()` / `CatalogCli.list()` |
+| 4 | Toggle "content area only" dim view | ✅ View → Content Area Only (checkbox) | ❌ | `Voynich` menu bar checkbox → `OverviewPanel` |
+| 5 | Rapid-review / MarkUp tagging pass | ✅ Review → MarkUp… | ❌ | `Voynich` menu bar → `CatalogEntryEditor.review()` + `RapidReviewAction` |
 | 6 | Open single entry editor | ✅ click thumbnail | ❌ | `OverviewPanel` → `CatalogEntryEditor.edit()` |
 | 7 | View raw entry JSON | ✅ JSON box in editor | ✅ `get <filename>` | `CatalogEntryEditor` / `CatalogCli.get()` |
 | 8 | Edit/replace raw entry JSON | ✅ JSON box Save | ✅ `save <filename> [jsonFile]` | `CatalogEntryEditor` / `CatalogCli.save()` |
@@ -45,12 +47,18 @@ Audited 2026-08-09, rows added through 2026-08-10. "GUI"/"CLI" are checkmarked w
 | 26 | Restore latest checkpoint | ✅ Storage → Restore Selected | ✅ `restore` | `StorageDialog` / `CatalogCli` |
 | 27 | Delete a checkpoint | ✅ Storage → Delete Selected | ❌ | `StorageDialog` |
 | 28 | List/browse available checkpoints | ✅ Storage dialog list | ❌ | `StorageDialog` |
-| 29 | Exit app | ✅ Exit button | n/a (process just ends) | `Voynich` toolbar |
+| 29 | Exit app | ✅ File → Exit | n/a (process just ends) | `Voynich` menu bar |
 | 30 | Smoke-test startup | ✅ verifies main JFrame builds+paints | ✅ `--smokeTest` flag (Voynich main, not CatalogCli) | `Voynich.main()` |
 | 31 | Override config file path | ✅ n/a — positional arg to `Voynich` jar launch | ✅ `--config`/`-c <path>` (added 2026-08-09) | `Voynich.main()` / `CatalogCli.main()` |
-| 32 | Ask the local vision model a free-text question about a page/region | ✅ View ▾ → "Ask Vision…" | ✅ `vision <filename> <question...> [--content-area \| --region-name <kind>]` (both added 2026-08-14) | `CatalogEntryEditor.askVision()` / `CatalogCli.vision()`, both via `VisionClient` |
+| 32 | Ask the local vision model a free-text question about a page/region | ✅ `CatalogEntryEditor` View ▾ → "Ask Vision…" (single open entry) or menu bar Selected → "Ask Vision…" (any selection size — N=1 unchanged, N=2 offers a Combined/Separate choice, N≥3 confirms then fires sequential calls; see #37) | ✅ `vision <filename> [<filename>...] <question...> [--content-area \| --region-name <kind>] [--combine]` (single-file added 2026-08-14, multi-file/`--combine` added the same day) | `CatalogEntryEditor.askVision()` / `RegionView.askVision()`/`askVisionOnImage()` / `CatalogCli.vision()`, all via `VisionClient` |
+| 33 | Select/deselect thumbnails in the grid (click toggles/ranges, double-click opens) | ✅ click/ctrl-click/shift-click on grid | ❌ | `OverviewPanel` mouse listener (native `JList` selection) |
+| 34 | Select every thumbnail currently shown | ✅ Edit → Select All | ❌ | `OverviewPanel.selectAllEntries()` |
+| 35 | Clear the current selection | ✅ Edit → Clear Selection | ❌ | `OverviewPanel.clearEntrySelection()` |
+| 36 | Open one or more selected pages full-resolution in infimg | ✅ Selected → Open in infimg (nags above 12 selected) | ❌ | `Voynich` (multi-file branch) / `RegionView.openInInfimg()`, both via `Voynich.launchImageView(List<File>)` |
+| 37 | Compose a folio's recto+verso pair side by side and open in infimg | ✅ Selected → Two-Page View (2 selected entries, or 1 with an inferable r/v counterpart; disabled otherwise, including all non-foliated pages) | ✅ `two-page <filename> [<other-filename>] [--out path]` (added 2026-08-14) | `Voynich.openTwoPageView()` / `twoPagePair()` / `CatalogCli.twoPage()`, all via `ImageGrid` |
+| 38 | Compose selected pages' thumbnails into one grid image and open in infimg | ✅ Selected → Thumbnail Matrix (screen-fit warning above the current display's usable bounds) | ✅ `matrix <filename> [<filename>...] [--out path]` (added 2026-08-14, no screen-fit check — a CLI invocation has no "current screen" to fit against) | `Voynich.openThumbnailMatrix()` / `CatalogCli.matrix()`, both via `ImageGrid` |
 
-**Confirmed intentional asymmetries** (not gaps, checked 2026-08-09; #32 now
+**Confirmed intentional asymmetries** (not gaps, checked 2026-08-09; #32/37/38 now
 GUI+CLI symmetric as of 2026-08-14, listed for contrast):
 - #10/11 (Color Frequency / ΔE Heatmap) have no CLI equivalent, even though
   `extract --pixel`/`--region` produce the same underlying Lab data — no
@@ -60,6 +68,16 @@ GUI+CLI symmetric as of 2026-08-14, listed for contrast):
 - #27/28 (checkpoint delete/list) have no CLI equivalent — only take/restore
   latest are scriptable; enumerating/pruning checkpoints is a GUI-only task
   so far.
+- #33–36 (thumbnail-grid selection, Select All/Clear Selection, multi-file
+  Open in infimg) are GUI-only — selection itself is inherently a spatial
+  "pick pages off a visual grid" action with no CLI equivalent to build, and
+  `CatalogCli` has no batch-launch-infimg command since a shell one-liner
+  (`ls *.png | xargs ...`) already covers that scripted case without needing
+  a dedicated subcommand. #37/38 (Two-Page View, Thumbnail Matrix) *did* get
+  a full CLI equivalent (`two-page`/`matrix`, added 2026-08-14, see the
+  table above) once a real scripting need was identified — the two
+  composite-building actions, unlike raw selection, are genuinely useful
+  outside the GUI.
 - A full audit (2026-08-09) of `CatalogEntry`/`Config` fields and every
   constructed `JButton`/`EzAction` in the source tree found no functionality
   that exists in code but has zero user-facing access path — everything

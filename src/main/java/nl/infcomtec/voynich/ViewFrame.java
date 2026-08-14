@@ -97,16 +97,18 @@ final class ViewFrame {
         view.setVisible(true);
     }
 
-    private static GraphicsDevice defaultDevice(Window nearWindow) {
+    static GraphicsDevice defaultDevice(Window nearWindow) {
         return null != nearWindow ? nearWindow.getGraphicsConfiguration().getDevice()
                 : GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice();
     }
 
     /**
      * @return {@code device}'s bounds minus screen insets (taskbars, panels)
-     * — the same area a native maximize would fill
+     * — the same area a native maximize would fill. Package-visible so the
+     * Thumbnail Matrix fit check ({@link Voynich}) can reuse it without
+     * duplicating the insets math.
      */
-    private static Rectangle usableBounds(GraphicsDevice device) {
+    static Rectangle usableBounds(GraphicsDevice device) {
         Rectangle screen = device.getDefaultConfiguration().getBounds();
         Insets insets = Toolkit.getDefaultToolkit().getScreenInsets(device.getDefaultConfiguration());
         return new Rectangle(screen.x + insets.left, screen.y + insets.top,

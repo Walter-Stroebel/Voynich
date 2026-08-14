@@ -35,6 +35,8 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
 import javax.swing.ListCellRenderer;
+import javax.swing.ListSelectionModel;
+import javax.swing.event.ListSelectionListener;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 
@@ -83,6 +85,7 @@ public class OverviewPanel extends JPanel {
         this.catalog = catalog;
         list.setLayoutOrientation(JList.HORIZONTAL_WRAP);
         list.setVisibleRowCount(-1);
+        list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         list.setCellRenderer(new EntryRenderer());
         // Every thumbnail is exactly THUMB_SIZE square, so a fixed cell size
         // is both correct and required: without it JList falls onto its
@@ -103,16 +106,20 @@ public class OverviewPanel extends JPanel {
         list.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent evt) {
-                if (evt.getClickCount() > 1) {
-                    // A double-click still delivers a first single-click event that
-                    // already opens the editor below — the second click's event is
-                    // just noise, not a "open it again" signal, so it's ignored here
-                    // rather than opening a second CatalogEntryEditor on the same entry.
+                if (evt.getClickCount() != 2) {
+                    // JList's own mouse handling (registered before this listener)
+                    // already applied the click as a plain/ctrl/shift selection
+                    // change — nothing left to do for a single click.
                     return;
                 }
                 int idx = list.locationToIndex(evt.getPoint());
                 if (idx < 0 || !list.getCellBounds(idx, idx).contains(evt.getPoint())) {
                     return;
+                }
+                if (!list.isSelectedIndex(idx)) {
+                    // File-manager convention: double-clicking an item outside the
+                    // current selection acts on just that item, replacing it.
+                    list.setSelectedIndex(idx);
                 }
                 CatalogEntryEditor.edit(SwingUtilities.getWindowAncestor(OverviewPanel.this), catalog,
                         model.getElementAt(idx), new EntrySavedListener() {
@@ -123,6 +130,41 @@ public class OverviewPanel extends JPanel {
                         });
             }
         });
+    }
+
+    /**
+     * The catalog entries currently selected in the thumbnail grid, in
+     * on-screen order. Empty when nothing is selected. Drives the menu
+     * bar's "Selected" menu — see {@link Voynich}.
+     */
+    public List<CatalogEntry> getSelectedEntries() {
+        return list.getSelectedValuesList();
+    }
+
+    /**
+     * Selects every entry currently shown in the grid (i.e. passing the
+     * active filter, if any) — the "Edit &gt; Select All" menu action.
+     */
+    public void selectAllEntries() {
+        if (!model.isEmpty()) {
+            list.setSelectionInterval(0, model.getSize() - 1);
+        }
+    }
+
+    /**
+     * Deselects everything — the "Edit &gt; Clear Selection" menu action.
+     */
+    public void clearEntrySelection() {
+        list.clearSelection();
+    }
+
+    /**
+     * Notifies {@code listener} whenever the thumbnail grid's selection
+     * changes, so a caller (the menu bar's "Selected" menu) can refresh
+     * its enabled state live rather than only when it's about to show.
+     */
+    public void addSelectionListener(ListSelectionListener listener) {
+        list.addListSelectionListener(listener);
     }
 
     /**
@@ -425,6 +467,65 @@ public class OverviewPanel extends JPanel {
             }
         }
         return -1;
+    }
+
+    /**
+     * @return the cataloged entry named {@code filename}, or {@code null} if
+     * none exists — a linear scan over {@link #allEntries}, same cost as
+     * {@link #indexOf}; not worth a {@code Map} for its one caller
+     * (Two-Page View's r/v counterpart lookup, see {@link Voynich}).
+     */
+    CatalogEntry findByFilename(String filename) {
+        int idx = indexOf(filename);
+        return idx < 0 ? null : allEntries.get(idx);
+    }
+
+    /**
+     * @return the cached 256×256 thumbnail for {@code entry}, or
+     * {@code null} if none has been decoded yet — exposes {@link #thumbnails}
+     * to the Thumbnail Matrix compositor (see {@link Voynich}), which reuses
+     * these already-decoded images rather than re-reading full-resolution
+     * files from disk.
+     */
+    BufferedImage thumbnailOf(CatalogEntry entry) {
+        return thumbnails.get(entry.filename);
+    }
+
+    /**
+     * A parsed {@code <number><r|v>} folio reference — see
+     * {@link #parseFolio(String)}. Deliberately a plain explicit class, not
+     * a record, per this project's Java style.
+     */
+    static final class Folio {
+
+        final int number;
+        final char side;
+
+        Folio(int number, char side) {
+            this.number = number;
+            this.side = side;
+        }
+    }
+
+    private static final Pattern FOLIO_PATTERN = Pattern.compile("^(\\d+)([rv])\\.png$");
+
+    /**
+     * Parses {@code filename} as an exact {@code <digits><r|v>.png} folio
+     * reference (e.g. "3r.png" → number 3, side 'r'), or returns
+     * {@code null} if it doesn't match that exact shape — deliberately
+     * strict (anchored, no trailing text allowed) so irregular filenames
+     * like "100v_and_101r.png" (a multi-folio composite scan) or
+     * "Front_cover.png" (non-foliated) never get treated as a folio with an
+     * inferable recto/verso counterpart. Used by Two-Page View (see
+     * {@link Voynich}) — distinct from {@link SortKey#pageNumberOf}, which
+     * only needs the leading number for sorting and tolerates any suffix.
+     */
+    static Folio parseFolio(String filename) {
+        Matcher m = FOLIO_PATTERN.matcher(filename);
+        if (!m.matches()) {
+            return null;
+        }
+        return new Folio(Integer.parseInt(m.group(1)), m.group(2).charAt(0));
     }
 
     private final class EntryRenderer extends JLabel implements ListCellRenderer<CatalogEntry> {

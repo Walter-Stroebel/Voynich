@@ -38,7 +38,7 @@ gap.
 - A catalog persistence layer (`Catalog`/`CatalogEntry`, `FileCatalog` backend) — one JSON record per filename, thumbnail inlined as base64, keyed by filename rather than path so the same file at two locations (e.g. a NAS copy and a local NVMe copy) is one entry, not two. A `MySqlCatalog` backend existed earlier in the project; retired 2026-08-06 once every entry had been exported to and verified against the file backend — see `CLAUDE.md`'s "Catalog persistence" section
 
 **Implemented (app level):**
-- `Catalog` wired into `Voynich.main`: the toolbar's Scan action walks
+- `Catalog` wired into `Voynich.main`: the menu bar's File → Scan action walks
   `config.scanPath`, decodes each image, and records it via
   `Catalog.recordSighting`, with progress shown live in a `TaskWindow`
   (background `SwingWorker`, Cancel while running/Close when done, one window
@@ -72,21 +72,23 @@ gap.
   invert checkbox (GUI) or `-v`/`--invert` flag (CLI) flips it, e.g. to find
   entries still missing a given tag
 - A general click/skip/note/abort review pass (`CatalogEntryEditor.review()`)
-  over a shuffled queue of every catalog entry — the toolbar's "MarkUp"
-  action is one instance of it (`RapidReviewAction`), not a special case. A
-  tag template field next to the button supports `$X`/`$Y`/`$RGB`/`$LAB`
+  over a shuffled queue of every catalog entry — the Review menu's
+  "MarkUp…" action (an on-demand prompt for the tag template, rather than
+  an always-visible field, since it's used rarely enough that permanent
+  screen space wasn't worth it) is one instance of it (`RapidReviewAction`),
+  not a special case. The template supports `$X`/`$Y`/`$RGB`/`$LAB`
   placeholders, filled in from the clicked pixel. Clicking the shown image
   stages a tag in an editable box; nothing is persisted until Done, so a
   whole pass is reviewable/correctable before any of it hits storage
 - Manual checkpoint/restore for the whole catalog (`Catalog.checkpoint()`/
   `Catalog.restoreCheckpoint()`) — a coarse, whole-catalog clone into one
-  timestamped zip (`java.util.zip`, no extra dependency), managed via the
-  toolbar's "Storage" button (`StorageDialog`: live catalog size, each
+  timestamped zip (`java.util.zip`, no extra dependency), managed via
+  File → "Storage…" (`StorageDialog`: live catalog size, each
   checkpoint's timestamp/age/size, take/restore/delete) or
   `CatalogCli checkpoint`/`restore`. No automatic pruning of old
   checkpoints — deliberate, left for hand cleanup (or the dialog's Delete)
-- A content-area-only view toggle in `OverviewPanel` (the toolbar's "Content
-  Area Only" button) — dims every thumbnail down to just its traced
+- A content-area-only view toggle in `OverviewPanel` (the View menu's
+  "Content Area Only" checkbox) — dims every thumbnail down to just its traced
   `CatalogEntry.contentArea`, mapped from the polygon's full-resolution
   coordinates into the 256×256 thumbnail's via the same scale-and-center
   `AffineTransform` used to build the thumbnail in the first place. An
@@ -110,10 +112,40 @@ gap.
   launched as a detached process (`Voynich.launchImageView`, jar path from
   `Config.infimgJar`) — fit-to-window, mouse-wheel zoom/rotate, drag-pan,
   clipboard paste/copy, exact-view Save — reachable from `RegionViewer`'s
-  "Save to /tmp & View" button and `CatalogCli extract --view`.
+  "Save to /tmp & View" button, `CatalogCli extract --view`, and the menu
+  bar's "Selected → Open in infimg" (single or multiple pages at once, via
+  a `launchImageView(List<File>)` overload that hands infimg one
+  browsable session instead of opening N separate windows; nags above 12
+  selected pages, since Select All made an accidental mass-open easy).
   Deliberately its own process per window rather than another `JFrame` in
   this app's own EDT, since a user routinely ends up with dozens open side
   by side.
+- File-manager-style thumbnail selection in `OverviewPanel` (single click
+  toggles/ranges a selection, double click opens the editor) feeds a
+  "Selected" menu with actions that operate on the whole selection at
+  once, not just one entry: Color Frequency/ΔE Heatmap/Ask Vision for
+  exactly one selected page (unchanged from the single-entry behavior),
+  Open in infimg for any number, and two new compose-then-open-in-infimg
+  actions — **Two-Page View** (an exact folio's recto+verso pair, side by
+  side, verso left/recto right as an open book actually reads; enabled
+  only for a genuine r/v pair or a single page whose counterpart exists in
+  the catalog, never for non-foliated pages like covers) and **Thumbnail
+  Matrix** (any number of selected pages' existing cached thumbnails
+  composited into one grid, with a screen-fit warning before building an
+  oversized one). Both hand their composite to infimg rather than opening
+  a new in-app viewer, so it can be saved, discarded, or clipboarded using
+  infimg's own tools. Ask Vision on more than one page confirms intent
+  first (a real vision call is the one genuinely expensive action in this
+  app) and, for exactly two pages, offers to send them as one combined
+  image (capped well under the vision model's real size limits before
+  compositing) instead of two separate calls. `CatalogCli` has full parity
+  for the vision/composite side of this: `vision` now takes one or more
+  filenames (a literal `--` separates filenames from the question once
+  there's more than one) with the same single-call/`--combine`/sequential
+  shapes as the GUI, and `two-page`/`matrix` build the same composites and
+  either open them in infimg or write to `--out` — no CLI equivalent for
+  raw multi-select/Open-in-infimg itself, since a shell one-liner already
+  covers that scripted case.
 
 ## Roadmap
 

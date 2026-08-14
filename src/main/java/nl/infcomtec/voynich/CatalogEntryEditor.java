@@ -25,13 +25,11 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import javax.imageio.ImageIO;
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.Icon;
@@ -409,56 +407,22 @@ final class CatalogEntryEditor {
         }
         int regionIndex = regionSelector.getSelectedIndex();
         CatalogEntry.Region region = regionIndex > 0 ? entry.regions.get(regionIndex) : null;
-        BufferedImage source = fullImage;
         visionItem.setEnabled(false);
-        new SwingWorker<String, Void>() {
-            @Override
-            protected String doInBackground() throws IOException, InterruptedException {
-                BufferedImage raster = source;
-                if (null != region) {
-                    List<Point> vertices = new ArrayList<>(region.polygon.size());
-                    for (CatalogEntry.Vertex v : region.polygon) {
-                        vertices.add(new Point(v.x, v.y));
-                    }
-                    raster = BitSet2D.cropToPolygon(source, vertices);
-                }
-                ByteArrayOutputStream buf = new ByteArrayOutputStream();
-                ImageIO.write(raster, "png", buf);
-                VisionClient vision = new VisionClient(Voynich.config);
-                String fileId = vision.uploadImageDownscaled(buf.toByteArray());
-                return vision.askAboutImage(fileId, "png", question);
-            }
-
-            @Override
-            protected void done() {
-                visionItem.setEnabled(true);
-                try {
-                    showAnswer(question, get());
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(dialog, "Vision request failed:\n" + ex.getMessage(),
-                            "Ask Vision failed", JOptionPane.ERROR_MESSAGE);
-                }
-            }
-        }.execute();
+        // fullImage is already decoded in memory, but RegionView.askVision re-reads
+        // from disk to stay usable without an open editor — one extra decode is a
+        // fine trade for one code path instead of two near-duplicates.
+        RegionView.askVision(dialog.getOwner(), entry, region, question);
+        visionItem.setEnabled(true);
     }
 
     /**
-     * Shows a vision-model answer in a small non-modal dialog: a read-only,
-     * word-wrapped {@link JTextArea} (Ctrl+A/Ctrl+C already work on a
-     * non-editable text area without any extra wiring) inside a
-     * {@link JScrollPane} so a long multi-paragraph answer scrolls instead
-     * of stretching the dialog off-screen, plus an explicit
-     * "Copy to Clipboard" button (a screenshot was the only way to get an
-     * answer out before this). {@code question} is prefixed into the
-     * displayed/copied text (not just implied by context) since a
-     * copy-pasted answer is often shared or filed away separately from this
-     * dialog, where the question wouldn't otherwise be visible. Offers to
-     * stage just the {@code question} —
-     * not the full {@code answer}, which is routinely several
-     * markdown-formatted paragraphs and the wrong shape for the tags box's
-     * one-line-per-note convention — as a short "asked vision: ..." tag.
+     * Package-visible entry point for {@link RegionView#askVision} to show
+     * its answer the same way {@link #askVision()} does, without needing an
+     * open {@link CatalogEntryEditor} instance — a static method taking
+     * {@code owner}/{@code question}/{@code answer} directly rather than the
+     * instance method's implicit {@link #dialog}/{@link #tagsText} fields.
      */
-    private void showAnswer(String question, String answer) {
+    static void showStandaloneAnswer(Window owner, String question, String answer) {
         String display = "Q: " + question + "\n\n" + answer;
         JTextArea area = new JTextArea(display);
         area.setEditable(false);
@@ -482,7 +446,27 @@ final class CatalogEntryEditor {
         panel.add(scroll, BorderLayout.CENTER);
         panel.add(south, BorderLayout.SOUTH);
 
-        JOptionPane.showMessageDialog(dialog, panel, "Vision answer", JOptionPane.PLAIN_MESSAGE);
+        JOptionPane.showMessageDialog(owner, panel, "Vision answer", JOptionPane.PLAIN_MESSAGE);
+    }
+
+    /**
+     * Shows a vision-model answer in a small non-modal dialog: a read-only,
+     * word-wrapped {@link JTextArea} (Ctrl+A/Ctrl+C already work on a
+     * non-editable text area without any extra wiring) inside a
+     * {@link JScrollPane} so a long multi-paragraph answer scrolls instead
+     * of stretching the dialog off-screen, plus an explicit
+     * "Copy to Clipboard" button (a screenshot was the only way to get an
+     * answer out before this). {@code question} is prefixed into the
+     * displayed/copied text (not just implied by context) since a
+     * copy-pasted answer is often shared or filed away separately from this
+     * dialog, where the question wouldn't otherwise be visible. Offers to
+     * stage just the {@code question} —
+     * not the full {@code answer}, which is routinely several
+     * markdown-formatted paragraphs and the wrong shape for the tags box's
+     * one-line-per-note convention — as a short "asked vision: ..." tag.
+     */
+    private void showAnswer(String question, String answer) {
+        showStandaloneAnswer(dialog.getOwner(), question, answer);
 
         int choice = JOptionPane.showConfirmDialog(dialog,
                 "Stage a tag noting this question was asked?\n(\"asked vision: " + question + "\")",
@@ -507,40 +491,11 @@ final class CatalogEntryEditor {
      * if the entry has no readable file.
      */
     private void openColorVisualization(JButton source, String viewName, ColorVisualizationFactory panelFactory) {
-        File file = ImageDisplay.pickExistingFile(entry);
-        if (null == file) {
-            return;
-        }
         int regionIndex = regionSelector.getSelectedIndex();
         CatalogEntry.Region region = regionIndex > 0 ? entry.regions.get(regionIndex) : null;
         source.setEnabled(false);
-        new SwingWorker<ColorImage, Void>() {
-            @Override
-            protected ColorImage doInBackground() throws IOException {
-                if (null == region) {
-                    return new ColorImage(file);
-                }
-                BufferedImage full = ImageIO.read(file);
-                List<Point> vertices = new ArrayList<>(region.polygon.size());
-                for (CatalogEntry.Vertex v : region.polygon) {
-                    vertices.add(new Point(v.x, v.y));
-                }
-                BitSet2D.Crop crop = BitSet2D.cropAndMaskPolygon(full, vertices);
-                return new ColorImage(crop.image, entry.filename + " [" + region.kind + "]", crop.mask);
-            }
-
-            @Override
-            protected void done() {
-                source.setEnabled(null != fullImage);
-                try {
-                    String frameTitle = null == region ? viewName : viewName + " — " + region.kind;
-                    ViewFrame.open(frameTitle, dialog.getOwner(), panelFactory.createPanel(get()), true, false);
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(dialog, "Could not analyse image:\n" + ex.getMessage(),
-                            "Analysis failed", JOptionPane.ERROR_MESSAGE);
-                }
-            }
-        }.execute();
+        RegionView.openColorVisualization(dialog.getOwner(), entry, region, viewName, panelFactory);
+        source.setEnabled(true);
     }
 
     /**
@@ -559,37 +514,11 @@ final class CatalogEntryEditor {
         if (null == fullImage) {
             return;
         }
-        BufferedImage source = fullImage;
-        String kindSuffix = null == region ? "" : "." + region.kind;
         infimgItem.setEnabled(false);
-        new SwingWorker<File, Void>() {
-            @Override
-            protected File doInBackground() throws IOException {
-                BufferedImage raster = source;
-                if (null != region) {
-                    List<Point> vertices = new ArrayList<>(region.polygon.size());
-                    for (CatalogEntry.Vertex v : region.polygon) {
-                        vertices.add(new Point(v.x, v.y));
-                    }
-                    raster = BitSet2D.cropToPolygon(source, vertices);
-                }
-                File target = new File(System.getProperty("java.io.tmpdir"),
-                        entry.filename + kindSuffix + "." + System.currentTimeMillis() + ".png");
-                ImageIO.write(raster, "png", target);
-                return target;
-            }
-
-            @Override
-            protected void done() {
-                infimgItem.setEnabled(true);
-                try {
-                    Voynich.launchImageView(get());
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(dialog, "Could not open in infimg:\n" + ex.getMessage(),
-                            "Open failed", JOptionPane.ERROR_MESSAGE);
-                }
-            }
-        }.execute();
+        // Re-reads from disk rather than reusing fullImage, same trade as askVision
+        // above — keeps one code path shared with OverviewPanel's editor-free call.
+        RegionView.openInInfimg(dialog.getOwner(), entry, region);
+        infimgItem.setEnabled(true);
     }
 
     /**
@@ -888,24 +817,70 @@ final class CatalogEntryEditor {
         tagsText.setText(String.join("\n", entry.tags));
         tagsText.setCaretPosition(0);
 
-        fullImage = ImageDisplay.loadFull(entry);
-        if (null == fullImage) {
-            plainIcon = null;
-            imageLabel.setIcon(null);
-            imageLabel.setText("No readable file for " + entry.filename);
-        } else {
-            imageLabel.setText(null);
-            plainIcon = new ImageIcon(ImageDisplay.scaleToFit(fullImage, imageMaxW, imageMaxH));
-            imageLabel.setIcon(plainIcon);
-        }
+        fullImage = null;
+        plainIcon = null;
+        imageLabel.setIcon(null);
+        imageLabel.setText("Loading " + entry.filename + "…");
+        viewButton.setEnabled(false);
+        areaButton.setEnabled(false);
         refreshRegionSelector(false);
-        viewButton.setEnabled(null != fullImage);
-        areaButton.setEnabled(null != fullImage);
 
         statusLabel.setText(null != action
                 ? String.format("%d / %d — %s — click the image to add a \"%s\" tag",
                         index + 1, queue.size(), entry.filename, action.label())
                 : entry.filename);
+
+        loadFullImage(entry);
+    }
+
+    /**
+     * Decodes {@code target}'s full-resolution image off the EDT — can be
+     * slow on a large scan, especially on weaker hardware, and blocking the
+     * EDT for it would freeze the whole app (menu bar, busy indicator
+     * included, since nothing can repaint) rather than just this dialog.
+     * Reports through {@link RegionView#busy}, the same shared indicator
+     * {@link RegionView}'s own background actions already drive. Guards
+     * against a stale result landing after the dialog has since moved on to
+     * a different {@link #entry} (the MarkUp review queue can call
+     * {@link #advance()} again — via Save — before a slow load finishes) by
+     * discarding the result if {@link #entry} no longer matches
+     * {@code target} once the decode completes.
+     */
+    private void loadFullImage(CatalogEntry target) {
+        RegionView.busy.enter();
+        new SwingWorker<BufferedImage, Void>() {
+            @Override
+            protected BufferedImage doInBackground() {
+                return ImageDisplay.loadFull(target);
+            }
+
+            @Override
+            protected void done() {
+                RegionView.busy.exit();
+                BufferedImage loaded;
+                try {
+                    loaded = get();
+                } catch (Exception ex) {
+                    loaded = null;
+                }
+                if (target != entry) {
+                    // A newer advance() has since moved on; this result is stale.
+                    return;
+                }
+                fullImage = loaded;
+                if (null == fullImage) {
+                    plainIcon = null;
+                    imageLabel.setIcon(null);
+                    imageLabel.setText("No readable file for " + target.filename);
+                } else {
+                    imageLabel.setText(null);
+                    plainIcon = new ImageIcon(ImageDisplay.scaleToFit(fullImage, imageMaxW, imageMaxH));
+                    imageLabel.setIcon(plainIcon);
+                }
+                viewButton.setEnabled(null != fullImage);
+                areaButton.setEnabled(null != fullImage);
+            }
+        }.execute();
     }
 
     /**

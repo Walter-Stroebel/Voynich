@@ -4,6 +4,7 @@
 package nl.infcomtec.voynich;
 
 import java.awt.Color;
+import java.awt.Dimension;
 import java.awt.Point;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -60,6 +61,11 @@ public class CatalogCli {
         }
         Config cfg = JSON.getMapper().readValue(configFile, Config.class);
         Catalog catalog = Catalog.open(cfg);
+        // Voynich.launchImageView reads the static Voynich.config, not any config passed
+        // to it directly — without this, --view (and the new two-page/matrix commands
+        // below) silently used whatever Voynich.config happened to be (usually null)
+        // instead of the config this process just loaded.
+        Voynich.config = cfg;
 
         String command = args[0];
         switch (command) {
@@ -94,8 +100,18 @@ public class CatalogCli {
                 extract(catalog, args);
                 break;
             case "vision":
-                requireArgs(args, 3, "vision <filename> <question...> [--content-area | --region-name <kind>]");
+                requireArgs(args, 3, "vision <filename> [<filename>...] <question...> "
+                        + "[--content-area | --region-name <kind>] [--combine] "
+                        + "(prefix the question with -- once more than one filename is given)");
                 vision(cfg, catalog, args);
+                break;
+            case "two-page":
+                requireArgs(args, 2, "two-page <filename> [<other-filename>] [--out <path>]");
+                twoPage(catalog, args);
+                break;
+            case "matrix":
+                requireArgs(args, 2, "matrix <filename> [<filename>...] [--out <path>]");
+                matrix(catalog, args);
                 break;
             case "checkpoint":
                 catalog.checkpoint();
@@ -441,49 +457,121 @@ public class CatalogCli {
     }
 
     /**
-     * {@code vision <filename> <question...> [--content-area | --region-name <kind>]}:
-     * uploads the page (or, with {@code --content-area}/{@code --region-name},
-     * the same cropped-to-polygon PNG {@code extract} would write — reusing
+     * {@code vision <filename> [<filename>...] <question...> [--content-area |
+     * --region-name <kind>] [--combine]}: uploads one or more pages (or, with
+     * {@code --content-area}/{@code --region-name}, the same cropped-to-polygon
+     * PNG {@code extract} would write for each — reusing
      * {@link #extractContentArea}/{@link #extractRegionByName}'s crop path via
      * a temp file rather than duplicating it) to the vision pipeline via
-     * {@link VisionClient} and prints the model's free-text answer. See
-     * {@code CLAUDE.md}'s "Vision Pipeline (MCP)" section for the model this
-     * calls and its known limits (spot-check, don't trust blindly; very large
-     * images — see {@code memory/project_vision_resolution_floor_finding.md} —
-     * need downscaling first, not done automatically here).
+     * {@link VisionClient} and prints the model's free-text answer(s). Mirrors
+     * {@code Voynich}'s "Selected → Ask Vision…" menu action, minus its
+     * interactive confirms — a CLI invocation is already an explicit, scripted
+     * choice, so there's nothing to confirm the way an accidental multi-select
+     * click needs guarding against.
+     * <p>
+     * Single filename: unchanged from the original single-file form, question
+     * words follow directly. Two or more filenames: the boundary between
+     * filenames and the free-text question is ambiguous (both are trailing
+     * positional args), so a literal {@code --} is required before the
+     * question once more than one filename is given. {@code --combine}
+     * (valid only with exactly 2 filenames, and incompatible with
+     * {@code --content-area}/{@code --region-name} — that path is whole-page
+     * only) composes both into one side-by-side image via {@link ImageGrid},
+     * each source scaled to fit {@link VisionClient#MAX_DIMENSION}{@code / 2}
+     * per side first — the same pre-composite downscale that fixed a real bug
+     * in the GUI's equivalent path (an uncapped composite produced a
+     * ~50MB/21-megapixel PNG the vision model failed on with a confabulated
+     * "I can't see an image" answer instead of a clean error; never rely on
+     * {@link VisionClient#uploadImageDownscaled}'s post-hoc resize to save an
+     * already-oversized upload) — and asks once. Without {@code --combine},
+     * multiple filenames fire one sequential call per file (never concurrent),
+     * each answer printed prefixed with its filename.
+     * <p>
+     * See {@code CLAUDE.md}'s "Vision Pipeline (MCP)" section for the model
+     * this calls and its known limits (spot-check, don't trust blindly).
      */
     private static void vision(Config cfg, Catalog catalog, String[] args) throws IOException {
-        String filename = args[1];
-        CatalogEntry entry = catalog.loadEntry(filename);
-        if (null == entry) {
-            System.err.println("No entry for " + filename);
-            System.exit(1);
-            return;
-        }
-        File imgFile = resolveExistingLocation(entry);
-        if (null == imgFile) {
-            System.err.println("No on-disk location found for " + filename);
-            System.exit(1);
-            return;
+        int separatorIdx = -1;
+        for (int j = 1; j < args.length; j++) {
+            if ("--".equals(args[j])) {
+                separatorIdx = j;
+                break;
+            }
         }
 
+        // No -- given: exactly one filename at args[1], unchanged from the original
+        // single-file form — everything after it (flags aside) is the question, no
+        // ambiguity to resolve. A -- was given: everything before it (flags aside) is
+        // one or more filenames, everything after it is the question, unconditionally
+        // (even a single word after -- is the whole question, never re-parsed as a flag,
+        // so a question that happens to start with "--" still works).
+        List<String> filenames = new ArrayList<>();
         boolean contentArea = false;
+        boolean combine = false;
         String regionName = null;
         List<String> questionParts = new ArrayList<>();
-        for (int i = 2; i < args.length; i++) {
-            switch (args[i]) {
-                case "--content-area":
-                    contentArea = true;
-                    break;
-                case "--region-name":
-                    regionName = args[++i];
-                    break;
-                default:
-                    questionParts.add(args[i]);
+        if (separatorIdx < 0) {
+            filenames.add(args[1]);
+            // A forgotten -- before a second filename would otherwise silently fold that
+            // filename into the question text — catch the common case (the very next word
+            // itself names a real catalog entry) and fail loudly instead.
+            if (args.length > 2 && args[2].endsWith(".png") && null != catalog.loadEntry(args[2])) {
+                System.err.println("More than one filename requires -- before the question");
+                System.exit(1);
+                return;
             }
+            for (int i = 2; i < args.length; i++) {
+                switch (args[i]) {
+                    case "--content-area":
+                        contentArea = true;
+                        break;
+                    case "--region-name":
+                        regionName = args[++i];
+                        break;
+                    case "--combine":
+                        combine = true;
+                        break;
+                    default:
+                        questionParts.add(args[i]);
+                }
+            }
+        } else {
+            for (int i = 1; i < separatorIdx; i++) {
+                switch (args[i]) {
+                    case "--content-area":
+                        contentArea = true;
+                        break;
+                    case "--region-name":
+                        regionName = args[++i];
+                        break;
+                    case "--combine":
+                        combine = true;
+                        break;
+                    default:
+                        filenames.add(args[i]);
+                }
+            }
+            for (int i = separatorIdx + 1; i < args.length; i++) {
+                questionParts.add(args[i]);
+            }
+        }
+        if (filenames.isEmpty()) {
+            System.err.println("Need at least one filename");
+            System.exit(1);
+            return;
         }
         if (contentArea && null != regionName) {
             System.err.println("--content-area and --region-name are mutually exclusive");
+            System.exit(1);
+            return;
+        }
+        if (combine && (contentArea || null != regionName)) {
+            System.err.println("--combine is whole-page only, incompatible with --content-area/--region-name");
+            System.exit(1);
+            return;
+        }
+        if (combine && 2 != filenames.size()) {
+            System.err.println("--combine requires exactly 2 filenames");
             System.exit(1);
             return;
         }
@@ -494,34 +582,227 @@ public class CatalogCli {
         }
         String question = String.join(" ", questionParts);
 
+        List<CatalogEntry> entries = new ArrayList<>();
+        List<File> files = new ArrayList<>();
+        for (String filename : filenames) {
+            CatalogEntry entry = catalog.loadEntry(filename);
+            if (null == entry) {
+                System.err.println("No entry for " + filename);
+                System.exit(1);
+                return;
+            }
+            File imgFile = resolveExistingLocation(entry);
+            if (null == imgFile) {
+                System.err.println("No on-disk location found for " + filename);
+                System.exit(1);
+                return;
+            }
+            entries.add(entry);
+            files.add(imgFile);
+        }
+
+        if (combine) {
+            visionCombined(cfg, entries.get(0), files.get(0), entries.get(1), files.get(1), question);
+            return;
+        }
+        for (int n = 0; n < entries.size(); n++) {
+            String answer = askVisionOnFile(cfg, entries.get(n), files.get(n), contentArea, regionName, question);
+            System.out.println(filenames.size() > 1 ? filenames.get(n) + ": " + answer : answer);
+        }
+    }
+
+    private static String askVisionOnFile(Config cfg, CatalogEntry entry, File imgFile, boolean contentArea,
+            String regionName, String question) throws IOException {
         File toUpload = imgFile;
         File tempCrop = null;
         if (contentArea || null != regionName) {
             CatalogEntry.Region region = contentArea ? entry.mainRegion() : firstRegionNamed(entry, regionName);
             if (null == region) {
-                System.err.println("No matching region for " + filename);
+                System.err.println("No matching region for " + entry.filename);
                 System.exit(1);
-                return;
+                return null;
             }
-            tempCrop = File.createTempFile(filename + ".", ".png");
+            tempCrop = File.createTempFile(entry.filename + ".", ".png");
             extractContentArea(entry, region, imgFile, tempCrop.getAbsolutePath(), false);
             toUpload = tempCrop;
         }
-
         try {
             VisionClient vision = new VisionClient(cfg);
             byte[] bytes = Files.readAllBytes(toUpload.toPath());
             String fileId = vision.uploadImageDownscaled(bytes);
-            String answer = vision.askAboutImage(fileId, "png", question);
-            System.out.println(answer);
+            return vision.askAboutImage(fileId, "png", question);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             System.err.println("Interrupted");
             System.exit(1);
+            return null;
         } finally {
             if (null != tempCrop) {
                 tempCrop.delete();
             }
+        }
+    }
+
+    private static void visionCombined(Config cfg, CatalogEntry a, File fileA, CatalogEntry b, File fileB,
+            String question) throws IOException {
+        int cellCap = VisionClient.MAX_DIMENSION / 2;
+        BufferedImage imgA = ImageDisplay.scaleToFit(ImageIO.read(fileA), cellCap, cellCap);
+        BufferedImage imgB = ImageDisplay.scaleToFit(ImageIO.read(fileB), cellCap, cellCap);
+        int cellW = Math.max(imgA.getWidth(), imgB.getWidth());
+        int cellH = Math.max(imgA.getHeight(), imgB.getHeight());
+        BufferedImage composite = ImageGrid.paint(List.of(imgA, imgB), 2, new Dimension(cellW, cellH));
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        ImageIO.write(composite, "png", buf);
+        try {
+            VisionClient vision = new VisionClient(cfg);
+            String fileId = vision.uploadImageDownscaled(buf.toByteArray());
+            String answer = vision.askAboutImage(fileId, "png", question);
+            System.out.println(a.filename + "+" + b.filename + " combined: " + answer);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            System.err.println("Interrupted");
+            System.exit(1);
+        }
+    }
+
+    /**
+     * {@code two-page <filename> [<other-filename>] [--out <path>]}: composes
+     * a folio's recto+verso pair side by side, full resolution — verso left,
+     * recto right, the order an open book spread actually reads — and either
+     * writes the composite to {@code --out} (caller wants the file, same as
+     * {@code extract}'s existing {@code --out} meaning) or opens it in infimg
+     * via {@link Voynich#launchImageView(File)} (no {@code --out}, same
+     * "open it for me" convenience {@code extract --view} already offers).
+     * Mirrors {@code Voynich}'s "Selected → Two-Page View" menu action. One
+     * filename infers its r/v counterpart via {@link OverviewPanel#parseFolio}
+     * plus a direct {@link Catalog#loadEntry} lookup (no in-memory
+     * {@code OverviewPanel} to reuse here); two filenames must both parse and
+     * are reordered verso-first regardless of the order given. Either shape
+     * fails clearly for a non-foliated or irregular filename (a cover, a
+     * multi-folio composite scan) — same strict shape-matching the GUI action
+     * uses, not a nag, since there's no valid composite to build.
+     */
+    private static void twoPage(Catalog catalog, String[] args) throws IOException {
+        String out = null;
+        List<String> filenames = new ArrayList<>();
+        for (int i = 1; i < args.length; i++) {
+            if ("--out".equals(args[i])) {
+                out = args[++i];
+            } else {
+                filenames.add(args[i]);
+            }
+        }
+        if (filenames.isEmpty() || filenames.size() > 2) {
+            System.err.println("Usage: two-page <filename> [<other-filename>] [--out <path>]");
+            System.exit(1);
+            return;
+        }
+
+        String versoName;
+        String rectoName;
+        if (2 == filenames.size()) {
+            OverviewPanel.Folio a = OverviewPanel.parseFolio(filenames.get(0));
+            OverviewPanel.Folio b = OverviewPanel.parseFolio(filenames.get(1));
+            if (null == a || null == b) {
+                System.err.println("Both filenames must be plain <number><r|v>.png folio pages");
+                System.exit(1);
+                return;
+            }
+            boolean firstIsVerso = 'v' == a.side;
+            versoName = firstIsVerso ? filenames.get(0) : filenames.get(1);
+            rectoName = firstIsVerso ? filenames.get(1) : filenames.get(0);
+        } else {
+            String filename = filenames.get(0);
+            OverviewPanel.Folio folio = OverviewPanel.parseFolio(filename);
+            if (null == folio) {
+                System.err.println(filename + " is not a plain <number><r|v>.png folio page");
+                System.exit(1);
+                return;
+            }
+            char otherSide = 'r' == folio.side ? 'v' : 'r';
+            String otherName = folio.number + String.valueOf(otherSide) + ".png";
+            if (null == catalog.loadEntry(otherName)) {
+                System.err.println("No counterpart " + otherName + " for " + filename + " in the catalog");
+                System.exit(1);
+                return;
+            }
+            versoName = 'v' == folio.side ? filename : otherName;
+            rectoName = 'v' == folio.side ? otherName : filename;
+        }
+
+        CatalogEntry versoEntry = catalog.loadEntry(versoName);
+        CatalogEntry rectoEntry = catalog.loadEntry(rectoName);
+        File versoFile = resolveExistingLocation(versoEntry);
+        File rectoFile = resolveExistingLocation(rectoEntry);
+        if (null == versoFile || null == rectoFile) {
+            System.err.println("No on-disk location found for " + versoName + " or " + rectoName);
+            System.exit(1);
+            return;
+        }
+
+        BufferedImage a = ImageIO.read(versoFile);
+        BufferedImage b = ImageIO.read(rectoFile);
+        int cellW = Math.max(a.getWidth(), b.getWidth());
+        int cellH = Math.max(a.getHeight(), b.getHeight());
+        BufferedImage composite = ImageGrid.paint(List.of(a, b), 2, new Dimension(cellW, cellH));
+
+        if (null != out) {
+            ImageIO.write(composite, "png", new File(out));
+            System.out.println(out);
+        } else {
+            File target = File.createTempFile(versoName + "+" + rectoName + ".", ".png");
+            ImageIO.write(composite, "png", target);
+            Voynich.launchImageView(target);
+        }
+    }
+
+    /**
+     * {@code matrix <filename> [<filename>...] [--out <path>]}: composes
+     * every given page's already-cataloged 256×256 thumbnail into one
+     * square-ish grid image (via {@link ImageGrid#squareColumns}), and either
+     * writes it to {@code --out} or opens it in infimg — same {@code --out}/
+     * launch duality as {@link #twoPage}. Mirrors {@code Voynich}'s
+     * "Selected → Thumbnail Matrix" menu action, minus its screen-fit nag — a
+     * CLI invocation has no "current screen" to fit against, and per this
+     * class's existing no-confirm-prompts convention, just builds what was
+     * asked for.
+     */
+    private static void matrix(Catalog catalog, String[] args) throws IOException {
+        String out = null;
+        List<String> filenames = new ArrayList<>();
+        for (int i = 1; i < args.length; i++) {
+            if ("--out".equals(args[i])) {
+                out = args[++i];
+            } else {
+                filenames.add(args[i]);
+            }
+        }
+        if (filenames.isEmpty()) {
+            System.err.println("Usage: matrix <filename> [<filename>...] [--out <path>]");
+            System.exit(1);
+            return;
+        }
+
+        List<BufferedImage> thumbnails = new ArrayList<>();
+        for (String filename : filenames) {
+            if (null == catalog.loadEntry(filename)) {
+                System.err.println("No entry for " + filename);
+                System.exit(1);
+                return;
+            }
+            thumbnails.add(catalog.loadThumbnail(filename));
+        }
+        int columns = ImageGrid.squareColumns(filenames.size());
+        BufferedImage composite = ImageGrid.paint(thumbnails, columns,
+                new Dimension(ColorImage.THUMB_SIZE, ColorImage.THUMB_SIZE));
+
+        if (null != out) {
+            ImageIO.write(composite, "png", new File(out));
+            System.out.println(out);
+        } else {
+            File target = File.createTempFile("matrix.", ".png");
+            ImageIO.write(composite, "png", target);
+            Voynich.launchImageView(target);
         }
     }
 
@@ -650,10 +931,22 @@ public class CatalogCli {
         System.err.println("                              --view (with --content-area or --region-name) skips the file entirely");
         System.err.println("                              and opens the PNG(s) straight in a detached infimg process —");
         System.err.println("                              writes to a /tmp file when --out isn't given");
-        System.err.println("  vision <filename> <question...> [--content-area | --region-name <kind>]");
+        System.err.println("  vision <filename> [<filename>...] <question...> [--content-area | --region-name <kind>] [--combine]");
         System.err.println("                              ask the local vision model a free-text question about the");
         System.err.println("                              page (or a traced region), prints its answer to stdout;");
+        System.err.println("                              more than one filename requires -- before the question;");
+        System.err.println("                              without --combine, fires one sequential call per filename;");
+        System.err.println("                              --combine (exactly 2 filenames, whole-page only) composes");
+        System.err.println("                              them into one side-by-side image and asks once;");
         System.err.println("                              very large images (see CLAUDE.md) may fail without downscaling first");
+        System.err.println("  two-page <filename> [<other-filename>] [--out path]");
+        System.err.println("                              compose a folio's recto+verso pair side by side, full");
+        System.err.println("                              resolution, verso left/recto right; one filename infers");
+        System.err.println("                              the other side, if it's cataloged; opens in infimg, or");
+        System.err.println("                              writes to --out instead of opening");
+        System.err.println("  matrix <filename> [<filename>...] [--out path]");
+        System.err.println("                              compose the given pages' cached thumbnails into one grid");
+        System.err.println("                              image; opens in infimg, or writes to --out instead");
         System.err.println("  checkpoint                  clone the whole catalog's current state");
         System.err.println("  restore                     discard everything since the last checkpoint");
     }

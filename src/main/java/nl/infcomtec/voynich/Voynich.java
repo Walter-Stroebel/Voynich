@@ -5,21 +5,34 @@ package nl.infcomtec.voynich;
 
 import com.formdev.flatlaf.FlatDarculaLaf;
 import java.awt.BorderLayout;
+import java.awt.Dimension;
+import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.swing.JButton;
+import javax.imageio.ImageIO;
+import javax.swing.Box;
+import javax.swing.JCheckBoxMenuItem;
+import javax.swing.JComponent;
 import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.JTextField;
-import javax.swing.JToggleButton;
-import javax.swing.JToolBar;
 import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
+import javax.swing.event.MenuEvent;
+import javax.swing.event.MenuListener;
 
 /**
  * Entry point. Loads config, validates {@code scanPath}, builds the main
@@ -89,6 +102,21 @@ public class Voynich {
      * @param file the image to open, or {@code null} to launch empty
      */
     public static void launchImageView(File file) {
+        launchImageView(null == file ? Collections.<File>emptyList() : Collections.singletonList(file));
+    }
+
+    /**
+     * Same as {@link #launchImageView(File)}, but hands infimg every file in
+     * {@code files} on one command line — infimg already treats all trailing
+     * positional arguments as a navigable set (its Prev/Next buttons step
+     * through them), so a multi-selection from {@link OverviewPanel}'s
+     * "Selected" menu opens as one browsable session rather than N separate
+     * windows.
+     *
+     * @param files the images to open, in the order infimg's Prev/Next
+     * should step through; empty launches infimg with nothing loaded
+     */
+    public static void launchImageView(List<File> files) {
         if (null == config.infimgJar) {
             Logger.getLogger(Voynich.class.getName()).log(Level.WARNING,
                     "Config.infimgJar is not set; cannot launch infimg");
@@ -99,7 +127,7 @@ public class Voynich {
         try {
             List<String> cmd = new ArrayList<>();
             cmd.add(config.infimgJar);
-            if (null != file) {
+            for (File file : files) {
                 cmd.add(file.getAbsolutePath());
             }
             ProcessBuilder pb = new ProcessBuilder(cmd);
@@ -165,9 +193,10 @@ public class Voynich {
         fr.setExtendedState(JFrame.MAXIMIZED_BOTH);
         fr.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         JPanel outer = new JPanel(new BorderLayout());
-        JToolBar toolBar = new JToolBar();
-        // Acquisition.
-        toolBar.add(new JButton(new EzAction("Scan") {
+        JMenuBar menuBar = new JMenuBar();
+
+        JMenu fileMenu = new JMenu("File");
+        fileMenu.add(new JMenuItem(new EzAction("Scan") {
             @Override
             public void actionPerformed(ActionEvent e) {
                 TaskWindow existing = TaskWindow.getOrNull(ScanTaskWindow.TASK_TYPE);
@@ -178,37 +207,80 @@ public class Voynich {
                 }
             }
         }.withTooltip("Walk the configured scan folder and catalog anything new or changed")));
-        toolBar.addSeparator();
-        // Grid view/organize.
-        toolBar.add(new JButton(new EzAction("Sort") {
+        fileMenu.add(new JMenuItem(new EzAction("Storage…") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                StorageDialog.open(fr, catalog, new Runnable() {
+                    @Override
+                    public void run() {
+                        reloadOverview(fr, overview);
+                    }
+                });
+            }
+        }.withTooltip("View/take/restore/delete whole-catalog checkpoints")));
+        fileMenu.addSeparator();
+        fileMenu.add(new JMenuItem(new EzAction("Exit") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                System.exit(0);
+            }
+        }.withTooltip("Quit the application")));
+        menuBar.add(fileMenu);
+
+        JMenu editMenu = new JMenu("Edit");
+        editMenu.add(new JMenuItem(new EzAction("Select All") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                overview.selectAllEntries();
+            }
+        }.withTooltip("Select every thumbnail currently shown in the grid")));
+        editMenu.add(new JMenuItem(new EzAction("Clear Selection") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                overview.clearEntrySelection();
+            }
+        }.withTooltip("Deselect all thumbnails")));
+        menuBar.add(editMenu);
+
+        JMenu viewMenu = new JMenu("View");
+        viewMenu.add(new JMenuItem(new EzAction("Sort") {
             @Override
             public void actionPerformed(ActionEvent e) {
                 overview.sort();
             }
         }.withTooltip("Re-order the thumbnail grid by filename, page number, size, colour, or content-area size")));
-        toolBar.add(new JButton(new EzAction("Filter") {
+        viewMenu.add(new JMenuItem(new EzAction("Filter") {
             @Override
             public void actionPerformed(ActionEvent e) {
                 overview.filter();
             }
         }.withTooltip("Show only entries whose full JSON record matches (or, inverted, doesn't match) some text")));
-        toolBar.add(new JToggleButton(new EzAction("Content Area Only") {
+        JCheckBoxMenuItem contentAreaOnly = new JCheckBoxMenuItem(new EzAction("Content Area Only") {
             @Override
             public void actionPerformed(ActionEvent e) {
-                overview.setContentAreaOnly(((JToggleButton) e.getSource()).isSelected());
+                overview.setContentAreaOnly(((JCheckBoxMenuItem) e.getSource()).isSelected());
             }
-        }.withTooltip("Dim every thumbnail down to just its traced main content area")));
-        toolBar.addSeparator();
-        // Review/tagging.
-        JTextField markupTemplate = new JTextField("was@$X,$Y", 20);
-        markupTemplate.setMaximumSize(markupTemplate.getPreferredSize());
-        markupTemplate.setToolTipText("<html>Tag template for MarkUp review. Placeholders:<br>"
-                + "$X, $Y — clicked pixel, original image coordinates<br>"
-                + "$RGB — clicked pixel's colour as r,g,b<br>"
-                + "$LAB — clicked pixel's colour as CIELAB L,a,b</html>");
-        toolBar.add(new JButton(new EzAction("MarkUp") {
+        }.withTooltip("Dim every thumbnail down to just its traced main content area"));
+        viewMenu.add(contentAreaOnly);
+        menuBar.add(viewMenu);
+
+        JMenu reviewMenu = new JMenu("Review");
+        reviewMenu.add(new JMenuItem(new EzAction("MarkUp…") {
             @Override
             public void actionPerformed(ActionEvent e) {
+                JTextField markupTemplate = new JTextField("was@$X,$Y", 20);
+                markupTemplate.setToolTipText("<html>Tag template for MarkUp review. Placeholders:<br>"
+                        + "$X, $Y — clicked pixel, original image coordinates<br>"
+                        + "$RGB — clicked pixel's colour as r,g,b<br>"
+                        + "$LAB — clicked pixel's colour as CIELAB L,a,b</html>");
+                JPanel prompt = new JPanel(new BorderLayout(4, 4));
+                prompt.add(new JLabel("Tag template:"), BorderLayout.WEST);
+                prompt.add(markupTemplate, BorderLayout.CENTER);
+                int choice = JOptionPane.showConfirmDialog(fr, prompt, "Start MarkUp review",
+                        JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+                if (JOptionPane.OK_OPTION != choice) {
+                    return;
+                }
                 String template = markupTemplate.getText();
                 try {
                     CatalogEntryEditor.review(fr, catalog, new RapidReviewAction() {
@@ -233,29 +305,138 @@ public class Voynich {
                 }
             }
         }.withTooltip("Shuffle through every cataloged entry, clicking the image to stage a tag from the template")));
-        toolBar.add(markupTemplate);
-        toolBar.addSeparator();
-        // Whole-catalog safety net.
-        toolBar.add(new JButton(new EzAction("Storage") {
+        menuBar.add(reviewMenu);
+
+        JMenu selectedMenu = new JMenu("Selected");
+        JMenuItem freqItem = new JMenuItem(new EzAction("Color Frequency") {
             @Override
             public void actionPerformed(ActionEvent e) {
-                StorageDialog.open(fr, catalog, new Runnable() {
-                    @Override
-                    public void run() {
-                        reloadOverview(fr, overview);
+                CatalogEntry entry = overview.getSelectedEntries().get(0);
+                RegionView.openColorVisualization(fr, entry, entry.mainRegion(), "Color Frequency",
+                        new ColorVisualizationFactory() {
+                            @Override
+                            public JComponent createPanel(ColorImage ci) {
+                                return new JScrollPane(new FrequencyBarChart(ci));
+                            }
+                        });
+            }
+        }.withTooltip("Ranked colour-frequency chart for the selected page's main content area (or whole page)"));
+        JMenuItem heatItem = new JMenuItem(new EzAction("ΔE Heatmap") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                CatalogEntry entry = overview.getSelectedEntries().get(0);
+                RegionView.openColorVisualization(fr, entry, entry.mainRegion(), "ΔE Heatmap",
+                        new ColorVisualizationFactory() {
+                            @Override
+                            public JComponent createPanel(ColorImage ci) {
+                                return new DeltaEHeatmap(ci);
+                            }
+                        });
+            }
+        }.withTooltip("Spatial colour-distance-from-average map for the selected page's main content area (or whole page)"));
+        JMenuItem visionItem = new JMenuItem(new EzAction("Ask Vision…") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                List<CatalogEntry> selected = overview.getSelectedEntries();
+                String question = JOptionPane.showInputDialog(fr,
+                        "Question for the vision model:", "Ask Vision", JOptionPane.PLAIN_MESSAGE);
+                if (null == question || question.isBlank()) {
+                    return;
+                }
+                if (1 == selected.size()) {
+                    CatalogEntry entry = selected.get(0);
+                    RegionView.askVision(fr, entry, entry.mainRegion(), question);
+                } else if (2 == selected.size()) {
+                    askVisionOnPair(fr, selected.get(0), selected.get(1), question);
+                } else {
+                    int choice = JOptionPane.showConfirmDialog(fr,
+                            "Ask the vision model about " + selected.size() + " images ("
+                            + selected.size() + " calls)?",
+                            "Ask many images?", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+                    if (JOptionPane.YES_OPTION == choice) {
+                        askVisionSequentially(fr, selected, 0, question);
                     }
-                });
+                }
             }
-        }.withTooltip("View/take/restore/delete whole-catalog checkpoints")));
-        toolBar.addSeparator();
-        // Session control.
-        toolBar.add(new JButton(new EzAction("Exit") {
+        }.withTooltip("Ask the local vision model a free-text question about the selected page(s)"));
+        JMenuItem infimgItem = new JMenuItem(new EzAction("Open in infimg") {
             @Override
             public void actionPerformed(ActionEvent e) {
-                System.exit(0);
+                List<CatalogEntry> selected = overview.getSelectedEntries();
+                if (1 == selected.size()) {
+                    CatalogEntry entry = selected.get(0);
+                    RegionView.openInInfimg(fr, entry, entry.mainRegion());
+                } else {
+                    if (selected.size() > 12) {
+                        int choice = JOptionPane.showConfirmDialog(fr,
+                                "Open " + selected.size() + " images in infimg?",
+                                "Open many images?", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+                        if (JOptionPane.YES_OPTION != choice) {
+                            return;
+                        }
+                    }
+                    List<File> files = new ArrayList<>();
+                    for (CatalogEntry entry : selected) {
+                        File file = ImageDisplay.pickExistingFile(entry);
+                        if (null != file) {
+                            files.add(file);
+                        }
+                    }
+                    Voynich.launchImageView(files);
+                }
             }
-        }.withTooltip("Quit the application")));
-        outer.add(toolBar, BorderLayout.NORTH);
+        }.withTooltip("Open the selected page(s) full-resolution in infimg"));
+        JMenuItem twoPageItem = new JMenuItem(new EzAction("Two-Page View") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                List<CatalogEntry> pair = twoPagePair(overview);
+                if (null == pair) {
+                    return;
+                }
+                openTwoPageView(fr, pair.get(0), pair.get(1));
+            }
+        }.withTooltip("Compose the selected page and its r/v counterpart side by side, and open the result in infimg"));
+        JMenuItem matrixItem = new JMenuItem(new EzAction("Thumbnail Matrix") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                openThumbnailMatrix(fr, overview, overview.getSelectedEntries());
+            }
+        }.withTooltip("Compose the selected pages' thumbnails into one grid image, and open the result in infimg"));
+        selectedMenu.add(freqItem);
+        selectedMenu.add(heatItem);
+        selectedMenu.add(visionItem);
+        selectedMenu.add(infimgItem);
+        selectedMenu.addSeparator();
+        selectedMenu.add(twoPageItem);
+        selectedMenu.add(matrixItem);
+        selectedMenu.addMenuListener(new MenuListener() {
+            @Override
+            public void menuSelected(MenuEvent e) {
+                int count = overview.getSelectedEntries().size();
+                freqItem.setEnabled(1 == count);
+                heatItem.setEnabled(1 == count);
+                visionItem.setEnabled(count >= 1);
+                infimgItem.setEnabled(count >= 1);
+                twoPageItem.setEnabled(null != twoPagePair(overview));
+                matrixItem.setEnabled(count >= 1);
+            }
+
+            @Override
+            public void menuDeselected(MenuEvent e) {
+            }
+
+            @Override
+            public void menuCanceled(MenuEvent e) {
+            }
+        });
+        menuBar.add(selectedMenu);
+
+        menuBar.add(Box.createHorizontalGlue());
+        BusyIndicator busyIndicator = new BusyIndicator(fileMenu.getPreferredSize().height);
+        menuBar.add(busyIndicator);
+        RegionView.busy = busyIndicator;
+
+        fr.setJMenuBar(menuBar);
         outer.add(overview, BorderLayout.CENTER);
         fr.setContentPane(outer);
         final boolean doSmokeTest = smokeTest;
@@ -282,6 +463,225 @@ public class Voynich {
             JOptionPane.showMessageDialog(fr, "Could not reload catalog: " + ex.getMessage(),
                     "Reload failed", JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    /**
+     * @return the verso+recto pair (left-hand verso first, right-hand recto
+     * second — the order an open book spread actually reads: verso is the
+     * back of the previous leaf, sitting on the left; recto is the front of
+     * the current leaf, on the right) for "Selected &gt; Two-Page View" —
+     * either the current selection itself if it's exactly two entries that
+     * both parse as a {@link OverviewPanel.Folio}, or, for a single
+     * selected entry, that entry plus its inferred exact-filename
+     * counterpart if it exists in the catalog. {@code null} for any other
+     * shape (0, 3+, an unparseable filename, or a 1-selection whose
+     * counterpart isn't cataloged) — a disabled menu item, not a nag, since
+     * this is a shape mismatch rather than a scale risk. Non-foliated pages
+     * (covers, flyleaves) never parse, so they never offer this action.
+     */
+    private static List<CatalogEntry> twoPagePair(OverviewPanel overview) {
+        List<CatalogEntry> selected = overview.getSelectedEntries();
+        if (2 == selected.size()) {
+            OverviewPanel.Folio a = OverviewPanel.parseFolio(selected.get(0).filename);
+            OverviewPanel.Folio b = OverviewPanel.parseFolio(selected.get(1).filename);
+            if (null == a || null == b) {
+                return null;
+            }
+            boolean aIsVerso = 'v' == a.side;
+            return aIsVerso ? List.of(selected.get(0), selected.get(1)) : List.of(selected.get(1), selected.get(0));
+        }
+        if (1 == selected.size()) {
+            CatalogEntry entry = selected.get(0);
+            OverviewPanel.Folio folio = OverviewPanel.parseFolio(entry.filename);
+            if (null == folio) {
+                return null;
+            }
+            char otherSide = 'r' == folio.side ? 'v' : 'r';
+            CatalogEntry other = overview.findByFilename(folio.number + String.valueOf(otherSide) + ".png");
+            if (null == other) {
+                return null;
+            }
+            return 'v' == folio.side ? List.of(entry, other) : List.of(other, entry);
+        }
+        return null;
+    }
+
+    /**
+     * "Selected &gt; Ask Vision…" for exactly 2 selected entries: offers a
+     * real choice, since two pages side by side is a coherent single
+     * composite (the same reasoning Two-Page View already applies) — asks
+     * whether to send one combined image (1 vision call) or ask about each
+     * separately (2 calls), confirms the resulting call count either way
+     * (vision calls are the one genuinely expensive action in this app —
+     * always confirm intent above N=1, never infer it from a bare count),
+     * then fires accordingly.
+     */
+    private static void askVisionOnPair(JFrame fr, CatalogEntry a, CatalogEntry b, String question) {
+        Object[] options = {"Combined", "Separate", "Cancel"};
+        int choice = JOptionPane.showOptionDialog(fr,
+                "Send the 2 selected pages as one combined image (1 vision call), "
+                + "or ask about each separately (2 vision calls)?",
+                "Ask Vision on 2 pages", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
+                null, options, options[0]);
+        if (0 == choice) {
+            File fileA = ImageDisplay.pickExistingFile(a);
+            File fileB = ImageDisplay.pickExistingFile(b);
+            if (null == fileA || null == fileB) {
+                return;
+            }
+            RegionView.busy.enter();
+            new SwingWorker<File, Void>() {
+                @Override
+                protected File doInBackground() throws IOException {
+                    // Vision models have a real pixel/upload budget no server implementation
+                    // survives exceeding (see VisionClient's MAX_DIMENSION clamp) — unlike
+                    // Two-Page View's infimg composite (full-resolution, meant for local
+                    // viewing/saving), a composite headed for the vision model must already be
+                    // small when built, not rely on a post-hoc resize after decoding a huge file.
+                    int cellCap = VisionClient.MAX_DIMENSION / 2;
+                    BufferedImage imgA = ImageDisplay.scaleToFit(ImageIO.read(fileA), cellCap, cellCap);
+                    BufferedImage imgB = ImageDisplay.scaleToFit(ImageIO.read(fileB), cellCap, cellCap);
+                    int cellW = Math.max(imgA.getWidth(), imgB.getWidth());
+                    int cellH = Math.max(imgA.getHeight(), imgB.getHeight());
+                    BufferedImage composite = ImageGrid.paint(List.of(imgA, imgB), 2, new Dimension(cellW, cellH));
+                    File target = new File(System.getProperty("java.io.tmpdir"),
+                            a.filename + "+" + b.filename + ".combined." + System.currentTimeMillis() + ".png");
+                    ImageIO.write(composite, "png", target);
+                    return target;
+                }
+
+                @Override
+                protected void done() {
+                    RegionView.busy.exit();
+                    try {
+                        RegionView.askVisionOnImage(fr, a.filename + "+" + b.filename + " combined",
+                                get(), null, question, null);
+                    } catch (Exception ex) {
+                        JOptionPane.showMessageDialog(fr, "Could not compose combined image:\n" + ex.getMessage(),
+                                "Ask Vision failed", JOptionPane.ERROR_MESSAGE);
+                    }
+                }
+            }.execute();
+        } else if (1 == choice) {
+            askVisionSequentially(fr, List.of(a, b), 0, question);
+        }
+    }
+
+    /**
+     * Fires "Selected &gt; Ask Vision…" for {@code entries.get(index)}, then
+     * (via {@link RegionView#askVision}'s {@code onComplete} callback) moves
+     * to the next entry once that one's answer dialog has been dismissed —
+     * one call at a time, never several concurrently, so predator's vision
+     * pipeline only ever sees one request at once and the shared
+     * {@link BusyIndicator} on/off state stays meaningful.
+     */
+    private static void askVisionSequentially(JFrame fr, List<CatalogEntry> entries, int index, String question) {
+        if (index >= entries.size()) {
+            return;
+        }
+        CatalogEntry entry = entries.get(index);
+        RegionView.askVision(fr, entry, entry.mainRegion(), question, new Runnable() {
+            @Override
+            public void run() {
+                askVisionSequentially(fr, entries, index + 1, question);
+            }
+        });
+    }
+
+    /**
+     * Reads {@code verso} and {@code recto}'s full-resolution files, composes
+     * them side by side (verso left, recto right — the order an open book
+     * spread reads) via {@link ImageGrid}, and opens the result in infimg —
+     * same "compose then hand to infimg for save/discard/clipboard" shape as
+     * {@link RegionView#openInInfimg}, not a new in-app viewer.
+     */
+    private static void openTwoPageView(JFrame fr, CatalogEntry verso, CatalogEntry recto) {
+        File versoFile = ImageDisplay.pickExistingFile(verso);
+        File rectoFile = ImageDisplay.pickExistingFile(recto);
+        if (null == versoFile || null == rectoFile) {
+            return;
+        }
+        RegionView.busy.enter();
+        new SwingWorker<File, Void>() {
+            @Override
+            protected File doInBackground() throws IOException {
+                BufferedImage a = ImageIO.read(versoFile);
+                BufferedImage b = ImageIO.read(rectoFile);
+                int cellW = Math.max(a.getWidth(), b.getWidth());
+                int cellH = Math.max(a.getHeight(), b.getHeight());
+                BufferedImage composite = ImageGrid.paint(List.of(a, b), 2, new Dimension(cellW, cellH));
+                File target = new File(System.getProperty("java.io.tmpdir"),
+                        verso.filename + "+" + recto.filename + "." + System.currentTimeMillis() + ".png");
+                ImageIO.write(composite, "png", target);
+                return target;
+            }
+
+            @Override
+            protected void done() {
+                RegionView.busy.exit();
+                try {
+                    Voynich.launchImageView(get());
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(fr, "Could not open Two-Page View:\n" + ex.getMessage(),
+                            "Open failed", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }.execute();
+    }
+
+    /**
+     * Composes {@code selected}'s already-decoded 256×256 thumbnails
+     * ({@link OverviewPanel#thumbnailOf}) into one square-ish grid image via
+     * {@link ImageGrid}, and opens the result in infimg — same
+     * compose-then-infimg shape as Two-Page View, so both new grid features
+     * share one consistent path. Nags first if the computed grid is bigger
+     * than the current screen's usable bounds ({@link ViewFrame}'s own
+     * insets-aware size check, reused rather than duplicated).
+     */
+    private static void openThumbnailMatrix(JFrame fr, OverviewPanel overview, List<CatalogEntry> selected) {
+        if (selected.isEmpty()) {
+            return;
+        }
+        Dimension cellSize = new Dimension(ColorImage.THUMB_SIZE, ColorImage.THUMB_SIZE);
+        int columns = ImageGrid.squareColumns(selected.size());
+        Dimension gridSize = ImageGrid.dimensions(selected.size(), columns, cellSize);
+        Rectangle usable = ViewFrame.usableBounds(ViewFrame.defaultDevice(fr));
+        if (gridSize.width > usable.width || gridSize.height > usable.height) {
+            int choice = JOptionPane.showConfirmDialog(fr,
+                    "This " + columns + "x" + ((int) Math.ceil((double) selected.size() / columns))
+                    + " matrix (" + gridSize.width + "x" + gridSize.height + " px) is larger than your screen ("
+                    + usable.width + "x" + usable.height + "); continue?",
+                    "Matrix larger than screen", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (JOptionPane.YES_OPTION != choice) {
+                return;
+            }
+        }
+        List<BufferedImage> thumbs = new ArrayList<>();
+        for (CatalogEntry entry : selected) {
+            thumbs.add(overview.thumbnailOf(entry));
+        }
+        RegionView.busy.enter();
+        new SwingWorker<File, Void>() {
+            @Override
+            protected File doInBackground() throws IOException {
+                BufferedImage composite = ImageGrid.paint(thumbs, columns, cellSize);
+                File target = new File(System.getProperty("java.io.tmpdir"),
+                        "matrix." + System.currentTimeMillis() + ".png");
+                ImageIO.write(composite, "png", target);
+                return target;
+            }
+
+            @Override
+            protected void done() {
+                RegionView.busy.exit();
+                try {
+                    Voynich.launchImageView(get());
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(fr, "Could not open Thumbnail Matrix:\n" + ex.getMessage(),
+                            "Open failed", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }.execute();
     }
 
     /**
