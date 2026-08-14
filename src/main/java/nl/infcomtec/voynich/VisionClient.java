@@ -4,12 +4,17 @@
 package nl.infcomtec.voynich;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.awt.Image;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import javax.imageio.ImageIO;
 
 /**
  * Talks to the {@code mcp-service-catalog} sibling project's vision pipeline
@@ -43,6 +48,25 @@ import java.time.Duration;
  */
 public class VisionClient {
 
+    /**
+     * Max dimension (either axis) sent to the vision pipeline. This is not a
+     * tunable knob — it's a floor under what the pipeline can actually
+     * accept, for reasons entirely outside this app's control: llama.cpp's
+     * Gemma image preprocessing clamps to a fixed, much smaller pixel-count
+     * range before tiling, and the vision encoder needs an entire image's
+     * tokens to fit in one ubatch (non-causal attention). A 93MB,
+     * 7925x7268px Voynich foldout reliably crashed {@code look_at_image}
+     * with an {@code IOException} at full resolution — confirmed both
+     * before and after predator's LM Studio-to-llama.cpp migration, so it's
+     * a real ceiling in the model/server, not a wrapper bug. See
+     * {@code memory/project_vision_resolution_floor_finding.md}. Every
+     * upload through this class is downscaled to this size unconditionally
+     * — "vision is not huge-capable" is a standing constraint of the
+     * pipeline, not a per-call decision a caller should have to remember to
+     * make.
+     */
+    public static final int MAX_DIMENSION = 2048;
+
     private final String host;
     private final int filePort;
     private final int mcpPort;
@@ -56,7 +80,40 @@ public class VisionClient {
     }
 
     /**
-     * Uploads raw image bytes via {@code PUT} to the file service.
+     * Decodes {@code imageBytes}, downscales it to {@link #MAX_DIMENSION} on
+     * its longer axis if it's larger (a no-op resize below that size — never
+     * upscales), re-encodes as PNG, and uploads via {@link #uploadFile}. The
+     * normal entry point for every real caller; {@link #uploadFile} itself
+     * stays available for anything that's already guaranteed small (or
+     * already downscaled) and wants to skip the decode/re-encode round trip.
+     *
+     * @param imageBytes the raw source image bytes, any format {@link ImageIO} reads.
+     * @return the {@code file_id} to pass to {@link #askAboutImage}.
+     */
+    public String uploadImageDownscaled(byte[] imageBytes) throws IOException, InterruptedException {
+        BufferedImage src = ImageIO.read(new ByteArrayInputStream(imageBytes));
+        if (null == src) {
+            throw new IOException("Could not decode image (unsupported format or corrupt data)");
+        }
+        int w = src.getWidth(), h = src.getHeight();
+        if (w <= MAX_DIMENSION && h <= MAX_DIMENSION) {
+            return uploadFile(imageBytes);
+        }
+        double scale = MAX_DIMENSION / (double) Math.max(w, h);
+        int scaledW = Math.max(1, (int) Math.round(w * scale));
+        int scaledH = Math.max(1, (int) Math.round(h * scale));
+        BufferedImage scaled = new BufferedImage(scaledW, scaledH, BufferedImage.TYPE_INT_RGB);
+        scaled.getGraphics().drawImage(src.getScaledInstance(scaledW, scaledH, Image.SCALE_SMOOTH), 0, 0, null);
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        ImageIO.write(scaled, "png", buf);
+        return uploadFile(buf.toByteArray());
+    }
+
+    /**
+     * Uploads raw image bytes via {@code PUT} to the file service, exactly
+     * as given — no size check or downscaling. Prefer
+     * {@link #uploadImageDownscaled} unless the caller already knows the
+     * image is small.
      *
      * @param imageBytes the raw file bytes (whatever {@code imageExt} says they are).
      * @return the {@code file_id} to pass to {@link #askAboutImage}.
@@ -122,6 +179,30 @@ public class VisionClient {
         if (!choices.isArray() || 0 == choices.size()) {
             throw new IOException("look_at_image inner response had no choices: " + innerJson);
         }
-        return choices.get(0).path("message").path("content").asText();
+        return stripCodeFence(choices.get(0).path("message").path("content").asText());
+    }
+
+    /**
+     * The model routinely wraps a requested-JSON answer in a markdown code
+     * fence (<code>```json ... ```</code> or bare <code>``` ... ```</code>)
+     * despite being asked for JSON only, and does so inconsistently — some
+     * answers in the same batch have it, some don't. A caller that parses
+     * the answer as JSON (a triage script, say) shouldn't have to
+     * special-case that; stripped here, once, for every caller, rather than
+     * leaving it as a footgun every prompt-writer has to remember.
+     */
+    private static String stripCodeFence(String text) {
+        String trimmed = text.strip();
+        if (!trimmed.startsWith("```") || !trimmed.endsWith("```") || trimmed.length() < 6) {
+            return text;
+        }
+        String inner = trimmed.substring(3, trimmed.length() - 3);
+        int firstNewline = inner.indexOf('\n');
+        if (firstNewline >= 0 && !inner.substring(0, firstNewline).isBlank()
+                && !inner.substring(0, firstNewline).contains("{")) {
+            // First line is a language tag (e.g. "json"), not content — drop it.
+            inner = inner.substring(firstNewline + 1);
+        }
+        return inner.strip();
     }
 }

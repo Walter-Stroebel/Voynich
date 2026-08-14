@@ -425,7 +425,7 @@ final class CatalogEntryEditor {
                 ByteArrayOutputStream buf = new ByteArrayOutputStream();
                 ImageIO.write(raster, "png", buf);
                 VisionClient vision = new VisionClient(Voynich.config);
-                String fileId = vision.uploadFile(buf.toByteArray());
+                String fileId = vision.uploadImageDownscaled(buf.toByteArray());
                 return vision.askAboutImage(fileId, "png", question);
             }
 

@@ -511,7 +511,7 @@ public class CatalogCli {
         try {
             VisionClient vision = new VisionClient(cfg);
             byte[] bytes = Files.readAllBytes(toUpload.toPath());
-            String fileId = vision.uploadFile(bytes);
+            String fileId = vision.uploadImageDownscaled(bytes);
             String answer = vision.askAboutImage(fileId, "png", question);
             System.out.println(answer);
         } catch (InterruptedException ex) {
