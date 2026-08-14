@@ -487,6 +487,17 @@ public class CatalogCli {
      * multiple filenames fire one sequential call per file (never concurrent),
      * each answer printed prefixed with its filename.
      * <p>
+     * Each filename is resolved as a catalog entry first; if that fails, it's
+     * tried as a literal on-disk file path instead (added 2026-08-14 so a
+     * {@code two-page}/{@code matrix} composite — never itself a cataloged
+     * entry — can be asked about directly, e.g.
+     * {@code vision /tmp/spread.png "..."}). A nonexistent path either way
+     * still fails with the original "No entry for &lt;filename&gt;" message,
+     * not a new one, so a script checking for that exact string isn't broken.
+     * {@code --content-area}/{@code --region-name} only make sense against a
+     * real {@link CatalogEntry}'s traced regions, so either is rejected if
+     * any filename in the batch resolved as a raw path.
+     * <p>
      * See {@code CLAUDE.md}'s "Vision Pipeline (MCP)" section for the model
      * this calls and its known limits (spot-check, don't trust blindly).
      */
@@ -582,27 +593,45 @@ public class CatalogCli {
         }
         String question = String.join(" ", questionParts);
 
+        // Each filename is either a real catalog entry (the common case) or, if that
+        // lookup fails, a literal path to an already-on-disk PNG — e.g. a composite
+        // two-page/matrix just wrote, which is never itself a cataloged entry. A
+        // null placeholder in entries marks the latter; region flags (which only make
+        // sense against a real CatalogEntry's traced regions) are rejected below for
+        // any batch containing one.
         List<CatalogEntry> entries = new ArrayList<>();
         List<File> files = new ArrayList<>();
+        boolean anyRawPath = false;
         for (String filename : filenames) {
             CatalogEntry entry = catalog.loadEntry(filename);
-            if (null == entry) {
-                System.err.println("No entry for " + filename);
-                System.exit(1);
-                return;
-            }
-            File imgFile = resolveExistingLocation(entry);
-            if (null == imgFile) {
-                System.err.println("No on-disk location found for " + filename);
-                System.exit(1);
-                return;
+            File imgFile;
+            if (null != entry) {
+                imgFile = resolveExistingLocation(entry);
+                if (null == imgFile) {
+                    System.err.println("No on-disk location found for " + filename);
+                    System.exit(1);
+                    return;
+                }
+            } else {
+                imgFile = new File(filename);
+                if (!imgFile.exists()) {
+                    System.err.println("No entry for " + filename);
+                    System.exit(1);
+                    return;
+                }
+                anyRawPath = true;
             }
             entries.add(entry);
             files.add(imgFile);
         }
+        if (anyRawPath && (contentArea || null != regionName)) {
+            System.err.println("--content-area/--region-name require a cataloged filename, not a raw file path");
+            System.exit(1);
+            return;
+        }
 
         if (combine) {
-            visionCombined(cfg, entries.get(0), files.get(0), entries.get(1), files.get(1), question);
+            visionCombined(cfg, filenames.get(0), files.get(0), filenames.get(1), files.get(1), question);
             return;
         }
         for (int n = 0; n < entries.size(); n++) {
@@ -643,7 +672,7 @@ public class CatalogCli {
         }
     }
 
-    private static void visionCombined(Config cfg, CatalogEntry a, File fileA, CatalogEntry b, File fileB,
+    private static void visionCombined(Config cfg, String labelA, File fileA, String labelB, File fileB,
             String question) throws IOException {
         int cellCap = VisionClient.MAX_DIMENSION / 2;
         BufferedImage imgA = ImageDisplay.scaleToFit(ImageIO.read(fileA), cellCap, cellCap);
@@ -657,7 +686,7 @@ public class CatalogCli {
             VisionClient vision = new VisionClient(cfg);
             String fileId = vision.uploadImageDownscaled(buf.toByteArray());
             String answer = vision.askAboutImage(fileId, "png", question);
-            System.out.println(a.filename + "+" + b.filename + " combined: " + answer);
+            System.out.println(labelA + "+" + labelB + " combined: " + answer);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             System.err.println("Interrupted");
