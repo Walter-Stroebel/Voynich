@@ -50,7 +50,7 @@ multi-page Ask Vision). "GUI"/"CLI" are checkmarked when that path exists;
 | 29 | Exit app | ✅ File → Exit | n/a (process just ends) | `Voynich` menu bar |
 | 30 | Smoke-test startup | ✅ verifies main JFrame builds+paints | ✅ `--smokeTest` flag (Voynich main, not CatalogCli) | `Voynich.main()` |
 | 31 | Override config file path | ✅ n/a — positional arg to `Voynich` jar launch | ✅ `--config`/`-c <path>` (added 2026-08-09) | `Voynich.main()` / `CatalogCli.main()` |
-| 32 | Ask the local vision model a free-text question about a page/region | ✅ `CatalogEntryEditor` View ▾ → "Ask Vision…" (single open entry) or menu bar Selected → "Ask Vision…" (any selection size — N=1 unchanged, N=2 offers a Combined/Separate choice, N≥3 confirms then fires sequential calls; see #37) | ✅ `vision <filename> [<filename>...] <question...> [--content-area \| --region-name <kind>] [--combine]` (single-file added 2026-08-14, multi-file/`--combine` added the same day) | `CatalogEntryEditor.askVision()` / `RegionView.askVision()`/`askVisionOnImage()` / `CatalogCli.vision()`, all via `VisionClient` |
+| 32 | Ask the local vision model a free-text question about a page/region | ✅ `CatalogEntryEditor` View ▾ → "Ask Vision…" (single open entry) or menu bar Selected → "Ask Vision…" (any selection size — N=1 unchanged, N=2 offers a Combined/Separate choice, N≥3 confirms then fires sequential calls; see #37) | ✅ `vision <filename> [<filename>...] <question...> [--content-area \| --region-name <kind>] [--combine]` (single-file added 2026-08-14, multi-file/`--combine` added the same day) — each filename resolves as a catalog entry first, falling back to a literal on-disk file path if not (added 2026-08-14) so a `two-page`/`matrix` composite can be asked about directly, not just cataloged pages | `CatalogEntryEditor.askVision()` / `RegionView.askVision()`/`askVisionOnImage()` / `CatalogCli.vision()`, all via `VisionClient` |
 | 33 | Select/deselect thumbnails in the grid (click toggles/ranges, double-click opens) | ✅ click/ctrl-click/shift-click on grid | ❌ | `OverviewPanel` mouse listener (native `JList` selection) |
 | 34 | Select every thumbnail currently shown | ✅ Edit → Select All | ❌ | `OverviewPanel.selectAllEntries()` |
 | 35 | Clear the current selection | ✅ Edit → Clear Selection | ❌ | `OverviewPanel.clearEntrySelection()` |
@@ -160,13 +160,26 @@ app's own catalog. Six `voynich*` directories:
   directory (code + gitignored `stolfi/` research data), kept on
   predator's own NVMe. Deliberate second-machine, second-disk backup for a
   repo with no GitHub remote yet. Update it,
-  plus memory/catalog/checkpoints, in one call via `scripts/sync-predator.sh`
-  (gitignored, agent convenience). Freely usable over `ssh`/`scp`/`rsync`
-  for read or write. The sibling `infimg` repo was mirrored here too for
-  one day after extraction (2026-08-10) but dropped from the script the
-  same day once it had its own GitHub remote and tagged releases — GitHub
-  is that repo's backup now, so `predator:~/github/infimg/` no longer
-  exists (deleted 2026-08-10, see `reference_predator_machine.md`).
+  plus memory/catalog/checkpoints, in one call via `~/bin/sync-predator.sh`
+  (lives outside any repo, not tracked here — spans multiple sibling repos,
+  agent convenience rather than a deliverable of this one specifically).
+  Freely usable over `ssh`/`scp`/`rsync` for read or write. The sibling
+  `infimg` repo was mirrored here too for one day after extraction
+  (2026-08-10) but dropped from the script the same day once it had its
+  own GitHub remote and tagged releases — GitHub is that repo's backup
+  now, so `predator:~/github/infimg/` no longer exists (deleted
+  2026-08-10, see `reference_predator_machine.md`).
+- `scripts/test-catalog-cli.sh` (added 2026-08-14, tracked in this repo —
+  unlike `sync-predator.sh` above, this one only tests `CatalogCli` and
+  is a real deliverable of this project specifically) — a plain shell
+  regression script exercising `CatalogCli`'s actual argv contract end to
+  end against the built jar and a real catalog (no test framework, same
+  spirit as `--smokeTest`; see `CLAUDE.md`'s "Build and Run" and
+  `feedback_no_test_framework_by_design`). 42 checks across 5 groups:
+  `vision` argument-parsing edge cases, `two-page`/`matrix` shape
+  validation, the `Voynich.config`/`--view` regression, composite-size
+  sanity, and `vision` on a raw file path. Groups touching the vision
+  endpoint need predator reachable; everything else is offline.
 
 ## Documentation
 
