@@ -189,6 +189,16 @@ displays, or merges by it, and tags have no equivalent field at all. See
 [Known limitations](#known-limitations) for where the multi-person story
 actually stands.
 
+A region can also have **child regions** — a smaller figure nested inside
+a larger traced diagram, for instance — via each row's **Add Child**
+button, which zooms the tracing canvas to the parent's bounding box before
+you trace the child. A child's `kind`/`author` prompt currently starts
+blank rather than inheriting the parent's `author`, even though it was
+just traced inside that parent's boundary — worth knowing if you're
+tracing a family of nested regions and expect the author to carry down
+automatically; right now it doesn't, and you'll want to fill it in by
+hand each time.
+
 ![Region manager, one traced content region](docs/screenshots/region_manager.png)
 
 *10r's real traced "content" region — the botanical illustration plus its
@@ -443,7 +453,11 @@ in this manual plus a couple of things that only show up in practice:
   small seed already in the data model for this — each region carries a
   free-text `author` field (see [Content-area regions](#content-area-regions))
   — but it's not wired to anything: no UI shows it, filters by it, or uses
-  it to resolve a conflict, and tags have no equivalent field at all.
+  it to resolve a conflict, and tags have no equivalent field at all. Even
+  where `author` exists, it isn't propagated automatically — a child
+  region traced inside a parent's boundary via Add Child doesn't inherit
+  the parent's `author`, despite the nesting implying the same person
+  likely traced both.
 - **Vision answers aren't ground truth.** The local vision model
   confabulates confidently-wrong justifications on close calls and misses
   small figures crowded into busy pages — see [Vision
