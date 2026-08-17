@@ -64,11 +64,13 @@ replace the researcher's own judgment.
 
 ## Install & first run
 
-*This section assumes Java 17, Maven, and the repo are already in place
-and builds/runs from a terminal are familiar territory. If any of that
-isn't true yet, see [INSTALL.md](INSTALL.md) first — it starts from
-"what is Java and how do I get it" and ends right where this section
-begins.*
+*This section assumes you're building from source: Java 17, Maven, and
+the repo are already in place, and builds/runs from a terminal are
+familiar territory. If you just want to run the app without building it
+yourself, download the latest release jar instead — see
+[INSTALL.md](INSTALL.md#2-download-the-app-itself), which also starts
+from "what is Java and how do I get it" if that part isn't settled yet
+either.*
 
 From the repo root:
 

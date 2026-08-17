@@ -1,12 +1,19 @@
 # Installing the Voynich Cataloging Tool — from zero
 
-This is for someone who has never built a Java project before and may not
-have a terminal open right now. If you already have Java 17, Maven, and
-git installed and know how to use them, skip this and go straight to
-[MANUAL.md](MANUAL.md#install--first-run).
+This is for someone who has never installed a Java program before and may
+not have a terminal open right now. If you already have Java 17 and know
+your way around a terminal, skip ahead to [step 2](#2-download-the-app-itself)
+— you don't need to build anything from source, a ready-to-run download
+exists.
 
-Three things need installing before anything else: **Java 17**, **Maven**,
-and **git**. Then you clone the repo, build it, and run it.
+Only one thing needs installing before anything else: **Java 17**. Then
+you download the app itself (already built, no compiling needed), the
+scan images, and the companion viewer, and you're running.
+
+*(Maven/git and building from source are only needed if you want to
+modify the code yourself — that path is covered separately, at the end of
+this document, and isn't part of the normal path to just running the
+app.)*
 
 ---
 
@@ -49,74 +56,20 @@ You want to see `17` (or higher) in the output, e.g.
 didn't add Java to your PATH — reinstall and make sure that option is
 checked, or search "add Java to PATH \<your OS\>".
 
-## 2. Install Maven
+## 2. Download the app itself
 
-Maven is the build tool this project uses — it downloads the project's
-dependencies and compiles/packages the app.
+The app is published as a single ready-to-run file (a "jar") — no
+building or compiling needed:
 
-- **Windows:** download the binary zip from
-  [maven.apache.org/download.cgi](https://maven.apache.org/download.cgi),
-  unzip it somewhere permanent (e.g. `C:\Program Files\Maven`), then add
-  its `bin` folder to your PATH (search "edit environment variables
-  Windows" if you haven't done this before).
-- **Mac:** `brew install maven` if you have Homebrew, otherwise the
-  manual zip method above.
-- **Linux:** `sudo apt install maven` (Debian/Ubuntu) or
-  `sudo dnf install maven` (Fedora).
+1. Go to
+   [github.com/Walter-Stroebel/Voynich/releases/latest](https://github.com/Walter-Stroebel/Voynich/releases/latest)
+2. Download the one `.jar` file attached to that release (named something
+   like `Voynich-1.0-jar-with-dependencies.jar`).
+3. Put it somewhere permanent — e.g. a folder called `Voynich` in your
+   Documents, or wherever you keep this kind of thing. You'll run it
+   directly from there.
 
-**Verify:**
-
-```bash
-mvn -version
-```
-
-Should print a Maven version and, underneath it, confirm it's using the
-Java 17 you just installed.
-
-## 3. Install git
-
-Needed to download ("clone") the project's source code.
-
-- **Windows:** [git-scm.com/download/win](https://git-scm.com/download/win),
-  run the installer, accept defaults.
-- **Mac:** `brew install git`, or just run `git --version` in a terminal —
-  on a fresh Mac this alone often triggers an install prompt.
-- **Linux:** `sudo apt install git` / `sudo dnf install git`.
-
-**Verify:**
-
-```bash
-git --version
-```
-
-## 4. Get the source code
-
-This project doesn't have a public repository URL yet — you'll have been
-given the code directly (a zip, a folder copy, a private repo link).
-If it's a git repository someone shared with you:
-
-```bash
-git clone <the-url-you-were-given>
-cd Voynich
-```
-
-If you just have a folder/zip, unzip it and `cd` into it in your
-terminal.
-
-## 5. Build it
-
-Still inside the `Voynich` folder:
-
-```bash
-mvn package
-```
-
-This downloads the project's dependencies (needs an internet connection,
-first time only) and compiles everything into one runnable jar file. It
-can take a minute or two the first time. You'll see a lot of scrolling
-output; look for `BUILD SUCCESS` near the end.
-
-## 6. Get the scans themselves
+## 3. Get the scans themselves
 
 This repo doesn't include the manuscript images — you need your own
 local folder of them, and there's a wrinkle: the Beinecke Library's
@@ -151,7 +104,7 @@ public distribution is JPG. This app expects **PNG**.
 Point `scanPath` (next step) at that `png` folder, not the original
 JPG/TIFF folder.
 
-## 7. Build infimg (needed for viewing full-size images)
+## 4. Get infimg (needed for viewing full-size images)
 
 Several core menu actions — **Open in infimg**, **Two-Page View**,
 **Thumbnail Matrix**, and viewing an exported region — hand their result
@@ -172,11 +125,6 @@ tested and released, not whatever happens to be on `main` at clone time:
    with each release, so don't hardcode a version anywhere below).
 3. Put it somewhere permanent, e.g. `~/bin/infimg-1.5-jar-with-dependencies.jar`
    (or wherever you keep such things).
-
-(If you'd rather build it yourself from source instead — e.g. to test an
-unreleased change — `git clone https://github.com/Walter-Stroebel/infimg.git`
-then `mvn package` inside it works the same way `mvn package` did for this
-repo, producing the same jar under `target/`.)
 
 Then write a tiny wrapper script so this app can launch it without you
 having to update its config every time you download a newer release. On
@@ -203,7 +151,7 @@ points at.
 You'll point `"infimgJar"` at this wrapper script's path in the config
 step next.
 
-## 8. Set up a config file
+## 5. Set up a config file
 
 The app needs to know where your scanned images live, and where to find
 the infimg wrapper script from the previous step. Create a folder called
@@ -219,17 +167,22 @@ file named `config.json` containing:
 ```
 
 Replace `scanPath` with wherever your converted PNG scans actually are,
-and `infimgJar` with the wrapper script's path from step 7 (on Windows,
+and `infimgJar` with the wrapper script's path from step 4 (on Windows,
 the `.bat` file's path).
 
 (If you skip this step, the app will create the `.infVoy` folder itself
 on first run and tell you exactly this, then exit — it won't guess.)
 
-## 9. Run it
+## 6. Run it
 
 ```bash
-java -jar target/Voynich-1.0-jar-with-dependencies.jar
+java -jar /full/path/to/Voynich-1.0-jar-with-dependencies.jar
 ```
+
+(Use the actual path where you put the jar in step 2. On Windows you can
+also usually just double-click the jar file, though running it from a
+terminal like this makes any error message easier to see if something
+goes wrong.)
 
 The main window should open. From here, hand off to
 [MANUAL.md](MANUAL.md#the-main-window) for how to actually use the app —
@@ -243,16 +196,45 @@ from your scan folder.
 - **`java: command not found` / `'java' is not recognized`** — Java isn't
   on your PATH. Reinstall and check the PATH option, or search "add to
   PATH" for your OS.
-- **`mvn` not found** — same issue, for Maven.
-- **`BUILD FAILURE` mentioning a Java version** — you likely have an
-  older Java also installed and it's the one being used. Run
-  `java -version` and confirm it says 17+; if you have multiple JDKs
-  installed, you may need to set `JAVA_HOME` explicitly to the Temurin
-  17 install path.
 - **Open in infimg / Two-Page View / Thumbnail Matrix do nothing when
   clicked** — `infimgJar` is missing or wrong in `config.json`, or the
   wrapper script isn't executable (`chmod +x` on Linux/Mac). Re-check
-  step 7.
+  step 4.
 - **Everything above worked but some other menu item silently does
   nothing** — see [MANUAL.md's Known
   Limitations](MANUAL.md#known-limitations).
+
+---
+
+## Building from source instead
+
+Only relevant if you want to modify the code yourself, or need a version
+newer than the latest tagged release. You'll additionally need **Maven**
+and **git**:
+
+- **Maven** — Windows: download the binary zip from
+  [maven.apache.org/download.cgi](https://maven.apache.org/download.cgi),
+  unzip it somewhere permanent, add its `bin` folder to your PATH. Mac:
+  `brew install maven`. Linux: `sudo apt install maven` /
+  `sudo dnf install maven`. Verify with `mvn -version`.
+- **git** — Windows: [git-scm.com/download/win](https://git-scm.com/download/win).
+  Mac: `brew install git` (or just run `git --version`, which often
+  triggers an install prompt on a fresh Mac). Linux: `sudo apt install git` /
+  `sudo dnf install git`. Verify with `git --version`.
+
+Then, instead of step 2 above:
+
+```bash
+git clone https://github.com/Walter-Stroebel/Voynich.git
+cd Voynich
+mvn package
+java -jar target/Voynich-1.0-jar-with-dependencies.jar
+```
+
+`mvn package` downloads the project's dependencies (needs an internet
+connection, first time only) and compiles everything into one runnable
+jar under `target/`. Look for `BUILD SUCCESS` near the end of the output.
+If it fails mentioning a Java version, you likely have an older JDK also
+installed and it's the one being used — confirm `java -version` says 17+,
+and set `JAVA_HOME` explicitly to your Temurin 17 install if you have
+more than one JDK.

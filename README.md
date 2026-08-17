@@ -10,27 +10,43 @@ first launch. On a fresh install the catalog starts empty; run File → Scan
 against your own scan folder first. See [Install & first
 run](MANUAL.md#install--first-run).*
 
-A general-purpose toolkit for analysing and browsing large collections of
-images — decode at scale, generate consistent thumbnails, catalog by visual
-similarity, find duplicate/near-duplicate copies across a collection. The
-Voynich manuscript scans are the working dataset, not the subject: a large,
-freely available, high-resolution public-domain image collection with no
-licensing complications, a convenient stand-in for "some arbitrary massive
-public source of images." Nothing in the codebase assumes manuscript
-content.
+A cataloging and close-visual-analysis tool for the Voynich manuscript's
+scanned pages — it doesn't attempt to read or decode the text. Browse the
+full scan set, hand-trace the actual content area of a page (excluding
+vellum margins, photography backdrop, and other pages visible through the
+stack), run quantitative colour analysis (CIELAB frequency histograms, ΔE
+difference maps) over a page or a traced region to spot real pigment or
+staining anomalies, keep free-form notes and tags per folio, and —
+optionally — ask a local vision-language model free-text questions about
+a page or region. Nothing here is automated inference about the
+manuscript's content: region tracing is deliberately human-only, and the
+tool's job is to make that kind of close, repeatable visual work faster
+and better organized across ~200+ scans, not to replace the researcher's
+own judgment.
 
-Think Lightroom, but for a research corpus instead of a photo library:
-import and decode a directory of images at scale, catalog and search by
-visual similarity, trace and annotate regions of interest by hand, and run
-quantitative colour analysis over a page or a region.
+Under the hood it's a general-purpose large-image-collection cataloger —
+nothing in the codebase assumes manuscript content, so the same
+scan-decode-catalog-and-annotate machinery applies just as well to, say, a
+drone survey of power pylons or a photo-documented equipment failure
+report. Think Lightroom, but for a research corpus instead of a photo
+library. The Voynich manuscript scans just happen to be the dataset that
+motivated it.
 
 ## Getting started
 
-- **New to Java/Maven, or don't have the scans yet?** → [INSTALL.md](INSTALL.md)
-  (also covers building the required companion viewer,
-  [infimg](https://github.com/Walter-Stroebel/infimg) — several core menu
-  actions depend on it, especially on Linux where there's no fallback)
-- **Already set up, just want to build and run?** → [MANUAL.md](MANUAL.md#install--first-run)
+- **First time setting this up, or never installed a Java tool before?**
+  → [INSTALL.md](INSTALL.md) — starts from zero: getting Java, getting the
+  scans (and converting them to the format this app wants), and setting
+  up the companion viewer, [infimg](https://github.com/Walter-Stroebel/infimg),
+  that several core menu actions depend on.
+- **Already have Java installed and just want the app itself?** → grab
+  the latest release jar from [the Releases
+  page](https://github.com/Walter-Stroebel/Voynich/releases/latest), no
+  build tools needed — see [INSTALL.md](INSTALL.md#2-download-the-app-itself)
+  onward for the scans/infimg/config steps that come after.
+- **Building from source instead** (Maven/git, modifying the code) →
+  [MANUAL.md](MANUAL.md#install--first-run) or [INSTALL.md's source-build
+  appendix](INSTALL.md#building-from-source-instead)
 - **Using the app** — cataloging, region tracing, colour analysis, vision
   queries, multi-page views, CLI — → [MANUAL.md](MANUAL.md)
 - **Architecture, class-by-class rundown, build details** → [CLAUDE.md](CLAUDE.md)
