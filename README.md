@@ -192,3 +192,26 @@ something else. Nothing in `Catalog`/`Config` consumes it.
 See `CLAUDE.md` for build/run commands and the full class-by-class
 architecture rundown — kept there as the actively maintained reference so
 this file doesn't drift out of sync with it.
+
+## User manual
+
+`MANUAL.md` is the full walkthrough for actually using the app —
+installation, the main window, cataloging, region tracing, color
+analysis, vision queries, multi-page views, and a CLI reference, with
+real screenshots. Reads fine as plain Markdown, or render it to a
+single self-contained HTML file (all images embedded, nothing else
+needed) with:
+
+```bash
+pandoc MANUAL.md -o MANUAL.html --standalone --self-contained \
+  --metadata title="Voynich Cataloging Tool — Manual" --variable=title:
+```
+
+The `--metadata title=` plus empty `--variable=title:` pair is
+deliberate: pandoc's default HTML template renders a `title` metadata
+value as an extra `<h1>` at the top of the body on top of the
+document's own heading, so this combination gives the page a correct
+browser-tab title without a duplicated heading underneath it. The
+rendered `MANUAL.html` isn't checked into the repo — regenerate it on
+demand from the command above whenever you want to hand the manual to
+someone as one file.
