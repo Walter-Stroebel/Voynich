@@ -181,7 +181,13 @@ would be actively wrong more often than a traced one.
 Beyond the main content area, any further region (index 2 and up) is an
 "other area" — damage, a second reviewer's opinion, an inset detail,
 whatever else turns up — distinguished only by a free-text `kind` and
-`author`, not a fixed category enum.
+`author`, not a fixed category enum. That `author` field (blank means
+genuinely unattributed, never implicitly "you") is the one piece of the
+data model that already anticipates more than one person tracing regions
+— it's just not connected to anything yet: nothing in the UI filters,
+displays, or merges by it, and tags have no equivalent field at all. See
+[Known limitations](#known-limitations) for where the multi-person story
+actually stands.
 
 ![Region manager, one traced content region](docs/screenshots/region_manager.png)
 
@@ -433,7 +439,11 @@ in this manual plus a couple of things that only show up in practice:
   to design a merge model against, and tracing is personal technique, not
   a single documented procedure, so it isn't obvious what "reconciling"
   two people's traces of the same page should even mean. Only one person
-  should be the working copy's "owner" at a time, for now.
+  should be the working copy's "owner" at a time, for now. There is one
+  small seed already in the data model for this — each region carries a
+  free-text `author` field (see [Content-area regions](#content-area-regions))
+  — but it's not wired to anything: no UI shows it, filters by it, or uses
+  it to resolve a conflict, and tags have no equivalent field at all.
 - **Vision answers aren't ground truth.** The local vision model
   confabulates confidently-wrong justifications on close calls and misses
   small figures crowded into busy pages — see [Vision
