@@ -366,17 +366,23 @@ have to match — the catalog is keyed by filename, not by any shared ID)
 and their `~/.infVoy/catalog/` at your copied-over directory, and they'll
 see everything: your tags, your traced regions, your notes.
 
-What doesn't exist yet is a **merge tool**. If two people trace regions or
-add tags independently and then want to combine both sets of work, there's
-currently no diff/merge path — only "wholesale replace one catalog with
-the other." The traced regions and tags are a personal, per-collection
-research judgment (see [Content-area regions](#content-area-regions)
-above), not something re-derivable from the scans, so this will eventually
-need a real import/export path if the catalog is ever actively
-co-edited by more than one person at a time. Nobody's needed it yet, so
-it isn't built. If you're the second or third person to pick this catalog
-up, coordinate who "owns" the working copy at any given moment rather than
-editing two copies in parallel and hoping to reconcile them later.
+What doesn't exist yet is a **merge tool** — or even a settled design for
+one. If two people trace regions or add tags independently, there's
+currently no diff/merge path, only "wholesale replace one catalog with
+the other." That's not just an unimplemented feature; there's genuinely
+no community of co-editors yet to design it *against*. How region tracing
+is actually done is itself personal technique — order, precision, what
+counts as a boundary worth drawing — not a single documented procedure
+(see [Content-area regions](#content-area-regions)), so two people's
+traces of the same page are two independent judgments, not two attempts
+at the same measurement. A real merge tool would need to decide what
+"reconciling" even means for that kind of data — keep both as separate
+regions? Flag disagreement for a human to resolve? Something else? — and
+that's a question this project hasn't had reason to answer yet, because
+it's been one person's working catalog so far. If you're the second
+person to pick this catalog up: for now, coordinate who "owns" the
+working copy at any given moment rather than editing two copies in
+parallel and hoping to reconcile them later.
 
 ## CLI reference
 
@@ -420,10 +426,14 @@ every command's argument shape.
 A single honest list, gathering what's mentioned individually elsewhere
 in this manual plus a couple of things that only show up in practice:
 
-- **No catalog merge tool.** Two people's independently-traced regions or
-  tags can't be combined — see [Sharing a catalog with someone
-  else](#sharing-a-catalog-with-someone-else). Only one person should be
-  the working copy's "owner" at a time.
+- **No catalog merge tool, and no settled design for one either.** Two
+  people's independently-traced regions or tags can't be combined — see
+  [Sharing a catalog with someone else](#sharing-a-catalog-with-someone-else).
+  This isn't just unimplemented: there's no community of co-editors yet
+  to design a merge model against, and tracing is personal technique, not
+  a single documented procedure, so it isn't obvious what "reconciling"
+  two people's traces of the same page should even mean. Only one person
+  should be the working copy's "owner" at a time, for now.
 - **Vision answers aren't ground truth.** The local vision model
   confabulates confidently-wrong justifications on close calls and misses
   small figures crowded into busy pages — see [Vision
@@ -448,12 +458,13 @@ in this manual plus a couple of things that only show up in practice:
   manual-verification loop rather than a test suite — a deliberate choice
   for its scale, not an oversight, but worth knowing if you're expecting
   CI coverage before trusting a change.
-- **This manual has no screenshot of tracing itself in progress** — only
-  the before (no region) and after (region traced) states, in [Content-area
-  regions](#content-area-regions). Click-to-place, drag-to-adjust, and the
-  cursor-following loupes are all genuinely motion, not a single frame;
-  a static screenshot can't show the mechanic honestly. A short screen
-  recording would communicate it properly — not done yet.
+- **This manual only shows tracing's before/after, not the act itself**
+  ([Content-area regions](#content-area-regions)) — deliberately. A
+  screenshot or even a video would show *one person's* click order, pace,
+  and precision, which risks reading as "the correct way to trace" when
+  it isn't. How carefully you trace, in what order, how much you fuss
+  over a faint mark, is genuinely personal judgment (see the same
+  section) — there's no canonical technique to demonstrate.
 
 ## Appendix: how this manual got made
 
