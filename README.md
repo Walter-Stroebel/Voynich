@@ -50,6 +50,8 @@ motivated it.
 - **Using the app** — cataloging, region tracing, colour analysis, vision
   queries, multi-page views, CLI — → [MANUAL.md](MANUAL.md)
 - **Architecture, class-by-class rundown, build details** → [CLAUDE.md](CLAUDE.md)
+- **Which scan source to use, and the still-open page-naming question**
+  → [SCANS.md](SCANS.md)
 
 ## Current state
 

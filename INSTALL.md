@@ -87,16 +87,18 @@ close quantitative colour analysis (the ΔE Heatmap especially) rather
 than just looking at the pages.
 
 **If you want to avoid that** — for careful pixel-level colour work —
-PNG or TIFF sources are lossless and won't have that artifact. Yale
-doesn't publish a PNG set, and doesn't appear to offer a documented
-bulk-download or FTP route to raw TIFF originals either (we checked; if
-you know of one, this is worth a doc update). Higher-quality source
-material does circulate in the Voynich research community by other
-means — the original 2004 torrent release, or contacting the Beinecke
-Library directly — but expect to dig for it, and treat "TIFF exists
-somewhere" as something to track down yourself rather than a documented
-one-click option. If you do get TIFF or want to convert JPG to PNG
-anyway, [ImageMagick](https://imagemagick.org/) handles it in one line:
+Yale's own collections site offers lossless **TIFF** directly, no digging
+needed: their public IIIF manifest links a full-resolution TIFF download
+for every page, right on the same domain as the JPG viewer (a URL like
+`https://collections.library.yale.edu/download/tiff/<canvasId>`, no login
+or special access). Verified: same dimensions and same underlying scan as
+the JPG, just without the lossy compression (a direct pixel comparison
+showed only the expected small JPEG-noise difference, nothing structural
+or a different photograph). There's no separate, higher-quality "newer"
+scan set beyond this — the TIFF and JPG both trace back to the same one
+digitization. Yale doesn't publish PNG directly, so if you want PNG
+specifically, convert from the TIFF (or the JPG) yourself — either way
+[ImageMagick](https://imagemagick.org/) handles it in one line:
 
 ```bash
 # from inside your folder of .jpg or .tif files
