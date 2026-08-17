@@ -1,5 +1,23 @@
 # Voynich Cataloging Tool — Manual
 
+*Written 2026-08-17, against commit `09a4de1`. The app is under active
+development — if something here doesn't match what's on screen, the code
+is the tie-breaker, not this document.*
+
+**Contents:** [What this is](#what-this-is) ·
+[Install & first run](#install--first-run) ·
+[The main window](#the-main-window) ·
+[Cataloging basics](#cataloging-basics) ·
+[Content-area regions](#content-area-regions) ·
+[Color analysis tools](#color-analysis-tools) ·
+[Vision queries](#vision-queries) ·
+[Multi-page views](#multi-page-views) ·
+[Rapid review mode](#rapid-review-mode) ·
+[Data & backups](#data--backups) ·
+[CLI reference](#cli-reference) ·
+[Known limitations](#known-limitations) ·
+[Appendix: how this manual got made](#appendix-how-this-manual-got-made)
+
 ![Main window: thumbnail overview grid, folio order](docs/screenshots/overview_folio_order.png)
 
 *The main window after an initial scan, sorted by folio number
@@ -64,9 +82,12 @@ whatever order the scan threads happened to finish — not filesystem order,
 not alphabetical, not folio order. On a brand-new catalog the thumbnail
 grid will look shuffled until you pick a real sort. **View → Sort → Page
 number** gives true folio order (numeric on the leading page number, recto
-before verso for the same number) and is the one worth setting first. The
-choice persists to your config, so this is a one-time step, not something
-you repeat every session.
+before verso for the same number) and is the one worth setting first.
+Non-foliated files — covers, flyleaves, anything whose filename doesn't
+start with a digit-plus-r/v — have no folio number to sort by, so this
+sort always places them last as a group, in plain alphabetical order among
+themselves. The sort choice persists to your config, so this is a
+one-time step, not something you repeat every session.
 
 ## The main window
 
@@ -78,9 +99,13 @@ action lives in the menu bar, in a conventional CUA layout:
   (checkpoints, see [Data & backups](#data--backups)), Exit.
 - **Edit** — Select All, Clear Selection.
 - **View** — Sort (by filename or folio/page number, ascending or
-  descending), Filter, and a "Content Area Only" toggle that, where a page
-  has a traced content region, crops thumbnails and views to it rather
-  than showing the full scan.
+  descending — see the note on first-run ordering above), Filter (prompts
+  for free text and an optional "invert" checkbox, then narrows the grid
+  to entries whose whole JSON record does — or, inverted, does *not* —
+  contain that text case-insensitively; blank text clears the filter),
+  and a "Content Area Only" toggle that, where a page has a traced
+  content region, crops thumbnails and views to it rather than showing
+  the full scan.
 - **Review** — MarkUp…, which starts a rapid, shuffled pass over the whole
   catalog for quick tagging (see [Rapid review mode](#rapid-review-mode)).
 - **Selected** — every action that operates on one or more highlighted
@@ -389,6 +414,46 @@ Key commands:
 
 See `scripts/test-catalog-cli.sh` in the repo for a working example of
 every command's argument shape.
+
+## Known limitations
+
+A single honest list, gathering what's mentioned individually elsewhere
+in this manual plus a couple of things that only show up in practice:
+
+- **No catalog merge tool.** Two people's independently-traced regions or
+  tags can't be combined — see [Sharing a catalog with someone
+  else](#sharing-a-catalog-with-someone-else). Only one person should be
+  the working copy's "owner" at a time.
+- **Vision answers aren't ground truth.** The local vision model
+  confabulates confidently-wrong justifications on close calls and misses
+  small figures crowded into busy pages — see [Vision
+  queries](#vision-queries). Treat every answer as a lead to verify, not
+  a citation.
+- **Two-Page View needs a real recto/verso pair.** Non-foliated pages
+  (covers, flyleaves) and irregular filenames (a multi-folio composite
+  scan, say) have no inferable counterpart and can't use it, by design —
+  see [Multi-page views](#multi-page-views).
+- **infimg is a separate install**, not bundled with this repo — Two-Page
+  View, Thumbnail Matrix, and Open in infimg all depend on it being built
+  and configured correctly first. See the note in [Multi-page
+  views](#multi-page-views) if those menu items silently do nothing.
+- **Content-area tracing is entirely manual, on purpose** — there's no
+  auto-detection, and no plan to add one. See [Content-area
+  regions](#content-area-regions) for why an automated boundary would be
+  actively wrong more often than a traced one is right.
+- **Checkpoint restore is all-or-nothing.** There's no way to undo a
+  single entry's edit in isolation — only "replace the whole catalog with
+  an earlier snapshot." See [Data & backups](#data--backups).
+- **No automated tests.** This is a two-person project with a tight
+  manual-verification loop rather than a test suite — a deliberate choice
+  for its scale, not an oversight, but worth knowing if you're expecting
+  CI coverage before trusting a change.
+- **This manual has no screenshot of tracing itself in progress** — only
+  the before (no region) and after (region traced) states, in [Content-area
+  regions](#content-area-regions). Click-to-place, drag-to-adjust, and the
+  cursor-following loupes are all genuinely motion, not a single frame;
+  a static screenshot can't show the mechanic honestly. A short screen
+  recording would communicate it properly — not done yet.
 
 ## Appendix: how this manual got made
 
