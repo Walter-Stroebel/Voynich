@@ -72,37 +72,47 @@ building or compiling needed:
 ## 3. Get the scans themselves
 
 This repo doesn't include the manuscript images — you need your own
-local folder of them, and there's a wrinkle: the Beinecke Library's
-public distribution is JPG. This app expects **PNG**.
+local folder of them. The easy path works fine; the alternative below is
+only worth the extra effort for pixel-level colour work.
 
-- The default, easiest download from the
-  [Beinecke digital collection](https://collections.library.yale.edu/catalog/2002046)
-  is JPG — fine to grab as a starting point, but not what `scanPath`
-  should point at.
-- Higher-quality **TIFF** originals exist and are obtainable, but not
-  through the ordinary download button — expect to dig (archived
-  torrent releases, direct requests to the library, or similar) to get
-  them. TIFF is the best source to convert from if you can get it; JPG
-  works too, just with an extra generation of compression already baked
-  in.
-- Either way, **convert to PNG** before pointing the app at the folder.
-  [ImageMagick](https://imagemagick.org/) is the standard tool for this;
-  once installed, a one-liner converts a whole directory:
+**The easy way — just use JPG.** The
+[Beinecke digital collection](https://collections.library.yale.edu/catalog/2002046)'s
+own "download all" option gives you JPG files from the library's 2004
+scan of the whole manuscript, and this app reads them directly — no
+conversion needed. In practice these are quite good: minimal compression,
+easily good enough for browsing, tracing regions, and everyday work. The
+one thing to know is that JPG compression can occasionally introduce a
+small artifact right at the pixel level, which matters if you're doing
+close quantitative colour analysis (the ΔE Heatmap especially) rather
+than just looking at the pages.
 
-  ```bash
-  # from inside your folder of .jpg or .tif files
-  mkdir png
-  magick mogrify -format png -path png *.jpg
-  # or, for TIFFs:
-  magick mogrify -format png -path png *.tif
-  ```
+**If you want to avoid that** — for careful pixel-level colour work —
+PNG or TIFF sources are lossless and won't have that artifact. Yale
+doesn't publish a PNG set, and doesn't appear to offer a documented
+bulk-download or FTP route to raw TIFF originals either (we checked; if
+you know of one, this is worth a doc update). Higher-quality source
+material does circulate in the Voynich research community by other
+means — the original 2004 torrent release, or contacting the Beinecke
+Library directly — but expect to dig for it, and treat "TIFF exists
+somewhere" as something to track down yourself rather than a documented
+one-click option. If you do get TIFF or want to convert JPG to PNG
+anyway, [ImageMagick](https://imagemagick.org/) handles it in one line:
 
-  (Older ImageMagick installs use `convert`/`mogrify` as the command
-  name directly, without the `magick` prefix — if `magick` isn't found,
-  try `mogrify -format png -path png *.jpg` instead.)
+```bash
+# from inside your folder of .jpg or .tif files
+mkdir png
+magick mogrify -format png -path png *.jpg
+# or, for TIFFs:
+magick mogrify -format png -path png *.tif
+```
 
-Point `scanPath` (next step) at that `png` folder, not the original
-JPG/TIFF folder.
+(Older ImageMagick installs use `convert`/`mogrify` as the command
+name directly, without the `magick` prefix — if `magick` isn't found,
+try `mogrify -format png -path png *.jpg` instead.)
+
+Whichever format you end up with — JPG straight from Yale, or a
+converted PNG/TIFF folder — point `scanPath` (next step) at that
+folder.
 
 ## 4. Get infimg (needed for viewing full-size images)
 

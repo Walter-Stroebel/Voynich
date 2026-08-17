@@ -507,25 +507,29 @@ public class OverviewPanel extends JPanel {
         }
     }
 
-    private static final Pattern FOLIO_PATTERN = Pattern.compile("^(\\d+)([rv])\\.png$");
+    private static final Pattern FOLIO_PATTERN = Pattern.compile(
+            "^(\\d+)([rv])\\.(?:png|jpg|jpeg)$", Pattern.CASE_INSENSITIVE);
 
     /**
-     * Parses {@code filename} as an exact {@code <digits><r|v>.png} folio
-     * reference (e.g. "3r.png" → number 3, side 'r'), or returns
-     * {@code null} if it doesn't match that exact shape — deliberately
-     * strict (anchored, no trailing text allowed) so irregular filenames
-     * like "100v_and_101r.png" (a multi-folio composite scan) or
+     * Parses {@code filename} as an exact {@code <digits><r|v>.<ext>} folio
+     * reference (e.g. "3r.png" → number 3, side 'r'; "3r.jpg" the same), or
+     * returns {@code null} if it doesn't match that exact shape —
+     * deliberately strict (anchored, no trailing text allowed) so irregular
+     * filenames like "100v_and_101r.png" (a multi-folio composite scan) or
      * "Front_cover.png" (non-foliated) never get treated as a folio with an
-     * inferable recto/verso counterpart. Used by Two-Page View (see
-     * {@link Voynich}) — distinct from {@link SortKey#pageNumberOf}, which
-     * only needs the leading number for sorting and tolerates any suffix.
+     * inferable recto/verso counterpart. The accepted extensions mirror
+     * {@link ScanTaskWindow#SCANNABLE_EXTENSIONS} — a folio must be
+     * recognized regardless of which scannable format it was catalogued in.
+     * Used by Two-Page View (see {@link Voynich}) — distinct from
+     * {@link SortKey#pageNumberOf}, which only needs the leading number for
+     * sorting and tolerates any suffix.
      */
     static Folio parseFolio(String filename) {
         Matcher m = FOLIO_PATTERN.matcher(filename);
         if (!m.matches()) {
             return null;
         }
-        return new Folio(Integer.parseInt(m.group(1)), m.group(2).charAt(0));
+        return new Folio(Integer.parseInt(m.group(1)), Character.toLowerCase(m.group(2).charAt(0)));
     }
 
     private final class EntryRenderer extends JLabel implements ListCellRenderer<CatalogEntry> {

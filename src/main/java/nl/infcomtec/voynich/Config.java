@@ -12,7 +12,9 @@ import java.util.Map;
 public class Config {
 
     /**
-     * Base directory containing the PNG scans to browse.
+     * Base directory containing the scans to browse — see
+     * {@link ScanTaskWindow#SCANNABLE_EXTENSIONS} for which file
+     * extensions are recognized.
      */
     public String scanPath;
 

@@ -82,8 +82,9 @@ java -jar target/Voynich-1.0-jar-with-dependencies.jar
 On first launch the app creates `~/.infVoy/` if it doesn't exist yet. If
 `~/.infVoy/config.json` is missing, or missing its `scanPath` key, the app
 writes a template config to stderr and exits (code 2) instead of guessing.
-Create the file yourself, pointing `scanPath` at a local directory of PNG
-scans:
+Create the file yourself, pointing `scanPath` at a local directory of
+scans (PNG, JPG, or JPEG — see [INSTALL.md](INSTALL.md#3-get-the-scans-themselves)
+for where to get them and why JPG works fine for everyday use):
 
 ```json
 {

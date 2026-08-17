@@ -6,19 +6,20 @@ package nl.infcomtec.voynich;
 import java.awt.Window;
 import java.io.File;
 import java.io.FilenameFilter;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Walks {@link Config#scanPath}, decodes each PNG via {@link ColorImage},
- * and records it in the {@link Catalog} — the concrete {@link TaskWindow}
- * behind the toolbar's Scan button. Files are processed in parallel across
- * every available core (see {@link #runTask()}); progress is reported per
- * file as each one finishes, and the {@link OverviewPanel} is updated live,
- * so results appear while the scan is still running rather than only at the
- * end.
+ * Walks {@link Config#scanPath}, decodes each scan image via
+ * {@link ColorImage}, and records it in the {@link Catalog} — the concrete
+ * {@link TaskWindow} behind the toolbar's Scan button. Files are processed
+ * in parallel across every available core (see {@link #runTask()});
+ * progress is reported per file as each one finishes, and the
+ * {@link OverviewPanel} is updated live, so results appear while the scan
+ * is still running rather than only at the end.
  * <p>
  * A file whose catalog entry already has a {@link CatalogEntry.Location}
  * matching this path with the same {@code size}/{@code mtime} is skipped
@@ -30,6 +31,33 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ScanTaskWindow extends TaskWindow {
 
     public static final String TASK_TYPE = "scan";
+
+    /**
+     * Filename extensions {@link #runTask()} accepts as scannable images —
+     * PNG (the format this project's own catalog was originally built on)
+     * plus JPG/JPEG (Yale Beinecke's easy, default public download; PNG/TIFF
+     * take real digging to obtain — see {@code INSTALL.md}). Compared
+     * lowercased, so this also covers `.PNG`/`.JPG`/`.JPEG`. Shared with
+     * {@link OverviewPanel#parseFolio}, which needs the identical extension
+     * set to recognize a folio filename regardless of which of these formats
+     * it was scanned in — one canonical list, not two independently
+     * maintained ones.
+     */
+    static final String[] SCANNABLE_EXTENSIONS = {".png", ".jpg", ".jpeg"};
+
+    /**
+     * @return {@code true} if {@code name}, lowercased, ends with one of
+     * {@link #SCANNABLE_EXTENSIONS}
+     */
+    static boolean isScannable(String name) {
+        String lower = name.toLowerCase(Locale.ROOT);
+        for (String ext : SCANNABLE_EXTENSIONS) {
+            if (lower.endsWith(ext)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     private final Config config;
     private final Catalog catalog;
@@ -47,7 +75,7 @@ public class ScanTaskWindow extends TaskWindow {
         File[] files = new File(config.scanPath).listFiles(new FilenameFilter() {
             @Override
             public boolean accept(File dir, String name) {
-                return name.endsWith(".png");
+                return isScannable(name);
             }
         });
         if (null == files) {
@@ -55,7 +83,7 @@ public class ScanTaskWindow extends TaskWindow {
             return;
         }
         int cores = Runtime.getRuntime().availableProcessors();
-        publishLine("Found " + files.length + " PNG files, scanning with " + cores + " threads.");
+        publishLine("Found " + files.length + " image files, scanning with " + cores + " threads.");
 
         AtomicInteger completed = new AtomicInteger();
         AtomicInteger skipped = new AtomicInteger();
