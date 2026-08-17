@@ -1,16 +1,27 @@
 # Scan sources and page naming — research notes
 
-This document tracks an open question this project ran into while adding
-JPG scan support: which Voynich manuscript scan sources exist, which
-format/quality each one offers, and — the harder, still-unresolved part —
-what page-naming convention this app should use so that a page's filename
-means the same thing to this project, to the wider Voynich research
-community, and to [Rene Zandbergen's voynich.nu](https://www.voynich.nu/),
-the most established reference site for the manuscript.
+This document tracks what this project ran into while adding JPG scan
+support: which Voynich manuscript scan sources exist, which format/quality
+each one offers, and how page filenames differ between sources — the 2004
+torrent release, this project's own working set, and
+[Rene Zandbergen's voynich.nu](https://www.voynich.nu/), the most
+established reference site for the manuscript.
 
-This is genuinely unfinished. Sections below are marked accordingly.
-Nothing here should be treated as settled until the "Naming convention"
-section below says so.
+**Scope decision (2026-08-18): this app is not going to pick a single
+"correct" canonical naming convention.** Whether Rene's `f70v1`-style
+notation, this project's own IIIF-derived naming, or Yale's raw manifest
+labels is "right" is a question for the Voynich research community to
+settle among themselves, not something this app has any business having
+an opinion on. Instead: small, source-specific conversion
+scripts/utilities that let *whatever scan set the user already has*
+become the consistent, working-catalog naming for their own copy — so a
+user who downloaded the 2004 torrent JPGs gets a catalog where those
+files behave like proper folios (Two-Page View, folio sort, etc. all
+work), without this project asserting that naming is "the" canonical one
+for the manuscript at large.
+
+This is genuinely unfinished — see "What's left to build" below. Nothing
+here should be treated as settled until that section is empty.
 
 ## Why this matters
 
@@ -27,14 +38,19 @@ Different scan sources name their files differently:
   manuscript's irregular pages — `f70v1`, `f102v1`, `f85v+f86r` — which,
   from what little was found so far, does not match this project's
   IIIF-label-derived naming (`70v_(part)_seq127.png`,
-  `85v_and_86r_(foldout).png`) one-to-one. See "Open questions" below.
+  `85v_and_86r_(foldout).png`) one-to-one. Not a problem this app is
+  trying to solve (see the scope decision above) — just a fact worth
+  knowing if a page number mentioned in Voynich research literature
+  doesn't obviously match a filename in this project's own catalog.
 
 Code that infers a page's recto/verso counterpart (`OverviewPanel.parseFolio`,
 used by Two-Page View and folio-order sorting) currently only understands
 the project's own `<digits><r|v>.<ext>` naming — it doesn't recognize a
-raw torrent filename or Rene's shorthand at all. Fixing that properly
-means picking one canonical convention first, not bolting on lookups
-ad hoc — see "Open questions" below for why that got paused mid-build.
+raw torrent filename at all. Given the scope decision above, the fix is a
+source-specific conversion step (e.g. rename a folder of torrent JPGs to
+this project's own folio naming, using the mapping this project already
+has), run once before scanning — not a runtime multi-convention lookup
+inside `parseFolio` itself. See "What's left to build" below.
 
 ## What's confirmed (verified directly, not just claimed)
 
@@ -72,62 +88,46 @@ torrent JPG, Yale's live TIFF, this project's own PNG set) is the same
 underlying photography. Pick based on convenience/format, not on
 believing one is a "better scan" than another.
 
-## Open questions — NOT yet resolved
+## What's left to build
 
-1. **What naming convention should this app actually use?** Three
-   candidates exist and none has been confirmed as *the* answer:
-   - This project's own IIIF-label-derived naming (already in
-     `data/voynich-page-index.json`) — mechanically derived, consistent,
-     but not verified against what the research community actually uses.
-   - Rene Zandbergen's voynich.nu notation (`f70v1`, `f85v+f86r`, etc.) —
-     likely the more "standard" one among researchers, since voynich.nu
-     is the field's long-running reference site, but the exact rules
-     (and a full table, if one exists) haven't been located yet. A search
-     result claimed "René Zandbergen has a table of folio numbers with
-     the corresponding Beinecke catalog image number" but the actual
-     page/URL wasn't found in the research done so far — check
-     [voynich.nu](https://www.voynich.nu/) directly, starting from its
-     [folios page](https://www.voynich.nu/folios.html) (a thumbnail
-     gallery, not the table) and other pages linked from its front page.
-   - Yale's own raw IIIF manifest labels, unprocessed — probably not a
-     good final choice (inconsistent punctuation/wording,
-     `"70v (part)"` vs `"85v and 86r (foldout)"`), but the ground truth
-     everything else is derived from.
-2. **Does the manuscript's own foliation have gaps/splits this needs to
-   handle regardless of naming convention?** Found while reading
-   voynich.nu's gallery: split-page notation (`f67r1`/`f67r2`/`f67v2`/
-   `f67v1`, `f68r1`/`f68r2`/`f68r3`) that doesn't correspond to anything
-   currently in this project's data — not yet checked whether these are
-   present, correctly represented, or silently missing from the current
-   213-file PNG working set. Also: quire 2 skips `f12` entirely; quire 8
-   jumps from `f57r`–`f58v` straight to `f65r`–`f66v`. These are real
-   gaps in the manuscript's own historical foliation, not a scan-quality
-   problem — any naming/mapping tool needs to not choke on them.
-3. **Once 1–2 are settled**: build the actual mapping from every source
-   (2004 torrent JPG's sequential filenames, Yale's canvasId-keyed
-   TIFF/JPEG, this project's own PNG set) to whichever convention wins.
-4. **Then, and only then**: fix `OverviewPanel.parseFolio` to recognize
-   pages scanned from a non-canonically-named source (like the raw
-   torrent JPGs) — a design was started and paused mid-build (an embedded
-   `data/voynich-page-index.json` lookup inside `parseFolio`) once it
-   became clear the naming convention itself wasn't settled yet. A
-   simpler shape was also proposed — a one-time rename/convert utility
-   (tentatively `CatalogCli yalenames <dir>`) that renames a folder of
-   torrent JPGs to canonical names before scanning, so `parseFolio` itself
-   never needs to change — but which shape is right depends on question 1
-   being answered first.
-
-**Until these are resolved: don't recommend a "torrent JPG rename" tool
-to anyone, and don't reference this naming scheme externally** (e.g. when
-first reaching out to Rene Zandbergen) — a half-right naming convention
-handed to the field's own reference-site maintainer would be actively
-confusing, not helpful.
+1. **A source-specific rename/convert utility** (tentatively
+   `CatalogCli yalenames <dir>`) that takes a folder of 2004 torrent JPGs
+   (`001.jpg`–`213.jpg`) and renames/copies them to this project's own
+   existing folio naming (already worked out in
+   `data/voynich-page-index.json` — `127.jpg` → `70v_(part)_seq127.png`'s
+   naming pattern, extension aside), so a user who only has the torrent
+   set gets a catalog where `OverviewPanel.parseFolio` — and everything
+   downstream of it, Two-Page View and folio-order sort — works exactly
+   like it already does for the PNG working set. In-place rename vs.
+   copy-to-new-folder is an open implementation choice, not yet decided.
+   A first design attempt (an embedded runtime lookup inside `parseFolio`
+   itself, rather than a one-time rename step) was started and abandoned
+   mid-build — see `project_folio_naming_convention_mess.md` in project
+   memory for why; the one-time-rename shape is simpler and doesn't need
+   `parseFolio` itself to change at all.
+2. **Check the manuscript's own foliation for gaps/splits the renamer
+   needs to not choke on**, independent of any naming-authority question:
+   found while reading voynich.nu's gallery, split-page notation
+   (`f67r1`/`f67r2`/`f67v2`/`f67v1`, `f68r1`/`f68r2`/`f68r3`) that doesn't
+   correspond to anything currently in this project's own data — not yet
+   checked whether these are present, correctly represented, or silently
+   missing from the current 213-file PNG working set. Also: quire 2 skips
+   `f12` entirely; quire 8 jumps from `f57r`–`f58v` straight to
+   `f65r`–`f66v`. These are real gaps/irregularities in the manuscript's
+   own historical foliation, not a scan-quality problem, and a renaming
+   tool needs to handle them (or clearly skip them) rather than silently
+   mis-map a page.
+3. **If useful later**: a similar conversion utility for other source
+   naming schemes as they come up (e.g. if a user's TIFF set from Yale's
+   direct download uses `canvasId`-based filenames) — not needed yet,
+   nothing currently blocks on it.
 
 ## References
 
 - [Rene Zandbergen's voynich.nu](https://www.voynich.nu/) — the Voynich
-  research community's long-standing reference site; likely holds the
-  actual canonical naming answer, not yet fully located.
+  research community's long-standing reference site; its own folio
+  notation (`f70v1`, `f85v+f86r`, etc.) is where the split-page/foliation
+  facts above were found.
 - [Yale's Beinecke digital collection](https://collections.library.yale.edu/catalog/2002046) —
   the manuscript's official public scan viewer/download page.
 - [Yale's IIIF manifest](https://collections.library.yale.edu/manifests/2002046) —
