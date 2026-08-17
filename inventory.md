@@ -4,9 +4,10 @@ Two things live in this file: a **function matrix** (every user-facing
 function, where it's reachable, and exactly where it lives in the code —
 the gap-detection tool, re-derive by re-auditing the code rather than
 hand-editing when it goes stale) and a snapshot of non-code assets (data,
-`/usb1`, infra, research findings) that aren't tracked anywhere else. See
-`CLAUDE.md` for the actively-kept class rundown and `README.md` for
-current state/roadmap.
+`/usb1`, infra, research findings) that aren't tracked anywhere else. This
+is an internal engineering ledger, not user-facing documentation — see
+`CLAUDE.md` for the actively-kept class rundown and roadmap, and
+`MANUAL.md`/`INSTALL.md` for how to actually install and use the app.
 
 ## Function matrix
 
@@ -86,7 +87,7 @@ GUI+CLI symmetric as of 2026-08-14, listed for contrast):
 
 ## Data
 
-- **210 PNG scans**, 3.8GB, at `/home/walter/voynich_png` (this machine's
+- **213 PNG scans**, 3.8GB, at `/home/walter/voynich_png` (this machine's
   configured `scanPath`)
 - `data/voynich-page-index.json` — Yale Beinecke IIIF manifest mapping
   torrent-numbered JPGs (001–213) to canonical folio labels
@@ -150,8 +151,8 @@ app's own catalog. Six `voynich*` directories:
 ## Infrastructure
 
 - `replication/` — GTID master-slave + master-master MySQL topology,
-  live-tested mach1↔mach2; always `Catalog`-independent — see `README.md`'s
-  "Why plain files, not a DB"
+  live-tested mach1↔mach2; always `Catalog`-independent — see `CLAUDE.md`'s
+  "Catalog persistence" section
 - predator also runs a nightly NAS backup (feeding the now-frozen
   `voynich_mysql_backups/` above) and hosts an unrelated local-LLM
   experiment (gemma-4-e4b, served via `llama.cpp`'s `llama-server`
@@ -184,9 +185,15 @@ app's own catalog. Six `voynich*` directories:
 ## Documentation
 
 - `README.md` — project framing ("Lightroom for generic image
-  collections," Voynich as convenient dataset not subject), current-state/
-  roadmap
-- `CLAUDE.md` — build commands, architecture table, Java style rules
+  collections," Voynich as convenient dataset not subject), links out to
+  the rest
+- `CLAUDE.md` — build commands, architecture table, roadmap, Java style
+  rules
+- `MANUAL.md` — full user-facing walkthrough of the app itself
+- `INSTALL.md` — zero-to-running setup for someone without Java/Maven/git
+  or the scan corpus already in place
+- `inventory.md` — this file: internal function-matrix audit + non-code
+  asset inventory, not user-facing
 - `replication/README.md` — replication setup walkthrough
 
 ## Sibling project: infimg
@@ -269,14 +276,29 @@ manuscript's vellum radiocarbon-dates to the early 1400s) — see
 `memory/project_vision_confabulation_finding.md`'s 2026-08-14 addenda.
 
 **Now the standard "show the user an image" tool, not just a Voynich
-utility.** Currently released at **v1.2.0**: fit-to-window on load,
-mouse-wheel zoom, toolbar-toggle free-angle rotate, drag-pan, exact-view
-Save/Copy (zoom/rotation/pan/crop baked in), Load/Paste from file or
-clipboard, **10 remembered window-position slots** (`-0`..`-9`, launch
-flag), a **Menu** button holding Look & Feel (system default or FlatLaf
-Light/Dark/IntelliJ/Darcula), Lighter/Darker/More Contrast/Less Contrast
-(one-click CIELAB L* nudges), and an optional ImageMagick-backed Metadata
-viewer. Full changelog in the infimg repo's own `README.md`.
+utility.** Currently released at **v1.5.0**. Pre-Menu baseline: fit-to-window
+on load, mouse-wheel zoom, toolbar-toggle free-angle rotate, drag-pan,
+exact-view Save/Copy (zoom/rotation/pan/crop baked in), Load/Paste from file
+or clipboard. **v1.2.0** added the **Menu** button and everything under it:
+Load Slot/Save as Slot submenus with **10 remembered window-position slots**
+(`-0`..`-9`, launch flag), an optional ImageMagick-backed Metadata viewer
+(`identify -verbose`, config-gated), Look & Feel (system default or FlatLaf
+Light/Dark/IntelliJ/Darcula), and Lighter/Darker/More Contrast/Less Contrast
+(one-click CIELAB L* nudges). **v1.3** was the biggest bug-fix release, not a
+minor one: fixed EXIF orientation being double-applied (baked pixels +
+rotation state, causing a 180° error), fixed Fit-to-window ignoring rotation
+(clipped rotated images), fixed an `AffineTransform` composition-order bug
+that swapped Flip Horizontal/Vertical, added Menu → Rotate 90°/180°/270°
+(absolute) with a live rotation-degree toolbar label, added Menu → Flip
+Horizontal/Vertical, added an async "Loading" placeholder (`SwingWorker`)
+for slow sources like NAS/CIFS, made Metadata work for clipboard pastes too,
+added a one-click Detect ImageMagick probe, and changed the Look & Feel
+default to FlatLaf Darcula on fresh Linux installs (was System Default).
+**v1.4** added CLI flags (`--rotate DEG`, `--flip-hor`/`--flip-ver`,
+`--lighter`/`--darker`/`--more-contrast`/`--less-contrast`, `--slot`,
+`--config PATH`) and multi-file Prev/Next navigation. **v1.5** added a
+Menu → Pixel Microscope (per-pixel sRGB/YUV/CIELab/HSB zoom inspector).
+Full changelog in the infimg repo's own `README.md`.
 
 Voynich launches the standalone jar directly as a detached process
 (`Voynich.launchImageView(File)`, path from `Config.infimgJar` — a

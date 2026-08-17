@@ -68,6 +68,20 @@ On first launch the app creates `~/.infVoy/` if missing (fails fast if that path
 ```
 A custom config path can be passed as the first CLI argument.
 
+## Roadmap
+In order — each step assumes the ones above it are done, not just that they
+compile:
+1. **Sort-by-similarity / duplicate report**, using `ColorImage.distanceTo`
+   across the catalog — the original motivating feature, and the first item
+   here nothing has actually been built against yet.
+2. **Deferred, only if measured slow:** precomputed nearest-neighbour /
+   duplicate-cluster caching, if an O(n²) `distanceTo` pass over a real
+   collection turns out to actually be a bottleneck. Don't build this
+   speculatively.
+3. Editing operations (crop, exposure, white balance, etc.) — not scoped
+   yet at all; this project has stayed cataloging/comparison so far, not
+   editing.
+
 ## Architecture
 Single Maven module, Java 17, Swing UI with **FlatDarculaLaf** dark theme.
 
@@ -89,7 +103,11 @@ Single Maven module, Java 17, Swing UI with **FlatDarculaLaf** dark theme.
 | `DeltaEHeatmap` | Per-cell CIE76 ΔE from a `ColorImage`'s pixel-count-weighted mean Lab colour, rendered over `ColorImage.labThumbnail`'s 256×256 grid as a blue (near the mean) to red (most different) heat map — spatially exposes ink, staining, or pigment anomalies that a frequency count alone can't show where. When `ColorImage.thumbnailMask` is non-null (a region-scoped crop), cells it has clear (the crop's masked-out corners/letterbox padding) render as plain black and are excluded from the max-ΔE scale entirely, not just from the reference mean — otherwise those cells' now-enormous distance from a mean correctly anchored to real content would dominate the scale and crush every real in-region variation down near "matches the mean". |
 | `ContentAreaCanvas` | Interactive tracing surface for one `CatalogEntry.Region`'s polygon over its full-resolution image: click to place vertices tightly around the actual content — text, illustration, wash, not the physical page — click near the start to close, drag any handle to adjust afterward. Polygon-agnostic about *which* region it's tracing; that choice is made by its caller, `ContentAreaEditor`. The live segment to the cursor while tracing is drawn via `Graphics2D.setXORMode`, not a repaint — the same line drawn twice cancels out, so a mouse-move just erases-and-redraws that one segment directly instead of re-rendering the whole (often very large) image on every pixel of cursor travel. A tracking loupe pair (plain 4x + contrast-boosted 4x, anchored to whichever screen corner is diagonally opposite the cursor) shows native pixels regardless of on-screen scale — catches both imprecise edge placement on a heavily downscaled page and content dim enough to nearly miss. |
 | `ContentAreaEditor` | Just the polygon editor now: wraps `ContentAreaCanvas` with Clear/Commit/Cancel controls and opens it via `ViewFrame` (`maximizeInitially=true` — every pixel of screen matters for precise tracing). Which `CatalogEntry.Region` it's tracing — a brand new one (`kind`/`author` already decided, only appended to `entry.regions` on Commit, never before, so a Cancel leaves nothing half-formed) or an existing one being re-traced — is entirely `RegionManagerDialog`'s call, made before this opens. See its class doc for why a region's polygon is human-traced rather than auto-detected: no fold — however severe — is ever a true boundary, since content routinely runs right through them, and judging how faint a mark can be before it still counts as content is a call a human makes better than a tuned threshold. Just the canvas wrapper — region management UI lives in `RegionManagerDialog`, see "Catalog persistence" below. |
-| `RegionManagerDialog` | Lists `entry.regions` (index 0, the synthetic whole page, excluded — never user-editable) with View/Trace/Rename/Up/Down/Delete per row plus an Add button, opened by `CatalogEntryEditor`'s "Regions…" button. List layout mirrors `StorageDialog` (plain `GridBagLayout`, no `JTable`). "View" (via `BitSet2D.cropToPolygon` then `ImageDisplay.scaleToFit` to ~2/3 of the current screen) is the only way to actually see what a trace covers at a sane scale — `CatalogEntryEditor`'s "Region:" selector overlays the whole page at page scale, which alone makes a small region (a faint imprint mark, say) easy to miss entirely. Every action saves to the catalog immediately — no batched "Done," so no unsaved-state to track on top of `CatalogEntryEditor`'s own JSON-blob staleness guard. Exists because `regions`' index convention (`regions.get(1)` is always the main content area, no boolean flag) turns fragile the moment a UI can delete or reorder rows, not just append: Add always appends at the end so it can never change what's main; Up/Down swap adjacent rows one step at a time (never drag-and-drop) so promoting a region to main is always the visible, direct result of a click, not a side effect of deleting something else; Delete on the main row gets its own warning naming the consequence (the next region, if any, becomes the new main) rather than the generic wording. |
+| `RegionManagerDialog` | Lists `entry.regions` (index 0, the synthetic whole page, excluded — never user-editable) with View/Trace/Rename/Up/Down/Delete per row plus an Add button, opened by `CatalogEntryEditor`'s "Regions…" button. List layout mirrors `StorageDialog` (plain `GridBagLayout`, no `JTable`). "View" opens `RegionViewer` (see its own row) rather than a static crop — `CatalogEntryEditor`'s "Region:" selector overlays the whole page at page scale, which alone makes a small region (a faint imprint mark, say) easy to miss entirely. Every action saves to the catalog immediately — no batched "Done," so no unsaved-state to track on top of `CatalogEntryEditor`'s own JSON-blob staleness guard. Exists because `regions`' index convention (`regions.get(1)` is always the main content area, no boolean flag) turns fragile the moment a UI can delete or reorder rows, not just append: Add always appends at the end so it can never change what's main; Up/Down swap adjacent rows one step at a time (never drag-and-drop) so promoting a region to main is always the visible, direct result of a click, not a side effect of deleting something else; Delete on the main row gets its own warning naming the consequence (the next region, if any, becomes the new main) rather than the generic wording. |
+| `RegionViewer` | Opens one already-traced `CatalogEntry.Region` as its own full-window "main view" — the drill-down step `RegionManagerDialog`'s "View" now leads to, replacing what used to be a small static, unrotated crop. The whole cropped-and-masked region (`BitSet2D.cropToPolygon`) fills the window; the mouse wheel rotates it live and saves `Region.angle` immediately, same every-action-saves-immediately convention as every other `RegionManagerDialog` action. Export…/Copy to Clipboard/Save to /tmp & View all act on the rotated raster as currently shown, not the unrotated crop. "Add Child" opens `ContentAreaEditor` zoomed to this region's own bounding box, with this region's index becoming the new region's `Region.parentIndex` — so a many-figure diagram can be drilled into (view region → add child → view that child → add its own child) without returning to `RegionManagerDialog`'s list for each step. Kind/author for a new child (or a Rename) is collected via `KindAuthorPrompt` (see its row), not a bare `JOptionPane`. |
+| `KindAuthorPrompt` | Small modal `kind`/`author` prompt shared by `RegionManagerDialog`'s Add/Rename and `RegionViewer`'s Add Child. Exists because a `JOptionPane`-built version always handed initial keyboard focus to its default button rather than the message panel's first field, and — after extended live testing under this app's actual dialog stack (FlatDarculaLaf, launched from a nested action) — an editable `JComboBox` simply would not commit freshly typed text that wasn't already in its item list, no combination of `getSelectedItem()`/`getEditor().getItem()`/reading the editor's raw `JTextField` directly fixed it. The `kind` field is therefore a plain non-editable `JComboBox` of existing kinds (from `RegionManagerDialog.distinctKinds`) plus a separate "or new kind:" `JTextField` — non-blank always wins, since a bare `JTextField.getText()` has no commit-timing question to get wrong. |
+| `ColorVisualizationFactory` | One-method interface (`createPanel(ColorImage)`) building the panel `CatalogEntryEditor`'s "Color Frequency"/"ΔE Heatmap" buttons open — one implementation per chart type (`FrequencyBarChart`, `DeltaEHeatmap`). Purpose-named replacement for a generic `Function<ColorImage, JComponent>` — see the Java Style section's stance on lambdas/method references for why a named functional interface, not a generic one, is the standing convention here. |
+| `EntrySavedListener` | One-method interface (`onEntrySaved(CatalogEntry)`), notified after a `CatalogEntryEditor` Save/Done writes an entry to the catalog. Purpose-named replacement for a generic `Consumer<CatalogEntry>`, same rationale as `ColorVisualizationFactory`. |
 | `BitSet2D` | A bit-per-pixel 2D mask (`BitSet` under the hood — real word-level range operations, not one call per pixel) plus utilities: flood fill (`oilSpill`), grow/shrink, invert, image conversion. `createFromPolygon` rasterizes a `List<Point>` (e.g. a decoded `CatalogEntry.mainRegion()` polygon) via a real scanline fill straight into the bits — deliberately not through `java.awt.Shape#contains`, which is the trap `createFromShape`/`copy`/`setOrClear` (kept, `@Deprecated`) fall into: recomputing the winding number from every edge on every pixel query is fine once, ruinous over millions. First consumer: `CatalogEntryEditor`'s region overlay (`updateDisplayedRegion`). |
 | `TaskWindow` | Abstract `JFrame` + `SwingWorker` wrapper for a background task: progress bar, log, Cancel button. One window per task-type, reused (not recreated) on repeat runs via a static registry. |
 | `ScanTaskWindow` | `TaskWindow` that walks `config.scanPath`, decodes each image via `ColorImage`, and records it into the catalog with `Catalog.recordSighting`. |
@@ -110,6 +128,13 @@ parity before the MySQL code, `docker-compose.yml`/`docker-compose.nas.yml`/
 `.env.example`, and `scripts/mysql-backup.sh` were deleted. `FileCatalog`
 lazily migrates any leftover `<filename>.png` sidecar from before thumbnails
 moved inline (see `CatalogEntry.thumbnailPng`) into the JSON on first read.
+
+`replication/` is unrelated infrastructure exploration that predates the
+MySQL retirement above and remains in the repo as generic,
+`Catalog`-independent GTID MySQL replication work (master-slave and
+master-master, live-tested between two real machines) — see
+`replication/README.md` if that's ever useful for something else. Nothing
+in `Catalog`/`Config` consumes it.
 
 `CatalogEntry` is keyed by **filename, not path**: the same file often exists
 at more than one path (e.g. a NAS copy plus a local NVMe copy kept for read
@@ -155,6 +180,20 @@ primary user. `regions.size() <= 1` means no content area has been traced
 yet. Region polygons are set via `ContentAreaEditor`, never auto-detected
 (see its class doc); `RegionManagerDialog` is the list/add/rename/reorder/
 delete management UI around it.
+
+Two further per-region fields, both set from `RegionViewer` rather than
+`ContentAreaEditor`: `Region.angle` (a live-rotatable view offset, mouse
+wheel in `RegionViewer`, saved immediately on every wheel tick — the
+traced polygon itself never changes, only how the cropped region is
+displayed/exported/copied) and `Region.parentIndex` (set when a region is
+traced via `RegionViewer`'s "Add Child" rather than `RegionManagerDialog`'s
+top-level Add — the parent region's own index in `entry.regions`, letting
+a large diagram be drilled into figure-by-figure: view region → Add Child →
+view that child → Add its own child, and so on). A child region's own
+`kind`/`author` is prompted for fresh each time via `KindAuthorPrompt` and
+does **not** inherit the parent's `author`, even though the nesting implies
+the same person likely traced both — see [Known limitations in
+MANUAL.md](MANUAL.md#known-limitations) for the user-facing note on this.
 
 `CatalogEntry` fields are Jackson-bound by JSON property name — a bare
 Java field rename silently orphans every already-stored entry's data on

@@ -1,0 +1,1613 @@
+{
+  "description": "Per-folio content classification produced by a local vision model (gemma-4-e4b via mcp-service-catalog predator-catalog, look_at_image) in a single automated pass over 199 page-numbered scans (foldout excluded). NOT ground truth -- Voynich content is inherently debatable, and this pass has at least one confirmed systematic weakness (see notes below). Better than nothing: a full day of manual cataloging compressed into about 10 minutes, with zero pipeline errors, and validated at ~15/17 agreement against the existing hand-tagged Circular diagram pages.",
+  "generated": "2026-08-13",
+  "model": "gemma-4-e4b (local, via predator-catalog MCP HTTP transport)",
+  "run_seconds": 562,
+  "page_count": 199,
+  "known_limitations": [
+    "illustrated_process is actively unreliable, not just undercounted: human eye-check (2026-08-13) confirmed 7 misclassified pages, all sharing the same layout -- a small process figure/sketch in the margin of a text-dense page. Two (76v, 77r) were wrongly called only_voynese (the process content wasn't registered at all). Five (77v, 78r, 81r, 81v, 83v) were wrongly called circular_diagram=true -- these are NOT circular diagrams, they are illustrated_process pages the model misread as diagrams once it noticed something was there. Net effect: circular_diagram=true entries without an existing catalog tag should NOT be trusted as new-tag candidates without human review -- this run's untagged-candidate sample was 0/5 correct. illustrated_process's true count in this section is very likely several times the raw total below.",
+    "circular_diagram spot-checked against the 17 pre-existing catalog Circular diagram tags: 15/17 agreed; the 2 disagreements were both foldout-related (85v_and_86r foldout and a part-crop sibling that slipped past this run's exclusion filter), not model misses. This agreement rate does NOT extend to circular_diagram hits outside the pre-tagged set -- see the illustrated_process note above.",
+    "One page (11v.png) returned all four fields false despite notes describing an illustration -- likely a genuine miss, not yet corrected.",
+    "One page (72v_(part)_seq131.png) returned a self-contradictory combination (circular_diagram=true AND only_voynese=true) -- only_voynese is defined as no significant illustration, so this pairing is invalid as given; flagged, not corrected."
+  ],
+  "categories": {
+    "has_plants": "the page shows a botanical illustration (drawn plant, root, leaf, or flower), regardless of accompanying text",
+    "circular_diagram": "the page contains one or more circular/ring-shaped diagrams (concentric rings, radial diagram), not just any circle",
+    "illustrated_process": "the page shows small figures depicting an activity or procedure (containers, human figures interacting with objects, a bathing/pharmaceutical scene) -- not a static botanical specimen and not a circular diagram. KNOWN UNDERCOUNT, see known_limitations.",
+    "only_voynese": "the page is dominated by handwritten text in the unknown script, with no significant illustration. Star-shaped marginal marks are bullet-point list markers, not illustration."
+  },
+  "folios": [
+    {
+      "file": "1r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Handwritten text in an unknown script with minimal markings."
+    },
+    {
+      "file": "1v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with surrounding text"
+    },
+    {
+      "file": "2r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with accompanying text."
+    },
+    {
+      "file": "2v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Large central illustration of a plant"
+    },
+    {
+      "file": "3r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with root structure detail"
+    },
+    {
+      "file": "3v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with attached script text"
+    },
+    {
+      "file": "4r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with associated text"
+    },
+    {
+      "file": "4v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Includes a large illustration of plants and an animal"
+    },
+    {
+      "file": "5r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a large plant or leaf structure."
+    },
+    {
+      "file": "5v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of herbs and roots with surrounding text."
+    },
+    {
+      "file": "6r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with surrounding text in an old script."
+    },
+    {
+      "file": "6v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with root system diagram"
+    },
+    {
+      "file": "7r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Large central diagram with root system illustration"
+    },
+    {
+      "file": "7v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with accompanying text in an old script."
+    },
+    {
+      "file": "8r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Text appears to be in an unfamiliar script."
+    },
+    {
+      "file": "8v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical drawing with surrounding text in script"
+    },
+    {
+      "file": "9r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration of a rooted plant."
+    },
+    {
+      "file": "9v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with accompanying text"
+    },
+    {
+      "file": "10r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with surrounding text"
+    },
+    {
+      "file": "10v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant specimen with accompanying text"
+    },
+    {
+      "file": "11r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a tree with foliage and roots"
+    },
+    {
+      "file": "11v.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a pinecone-like structure with root drawing"
+    },
+    {
+      "file": "13r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant structure with accompanying text."
+    },
+    {
+      "file": "13v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Multiple botanical illustrations of various roots and leaves."
+    },
+    {
+      "file": "14r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a prominent plant specimen."
+    },
+    {
+      "file": "14v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Contains a large central illustration of foliage."
+    },
+    {
+      "file": "15r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Detailed illustration of a plant with associated text."
+    },
+    {
+      "file": "15v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with surrounding text."
+    },
+    {
+      "file": "16r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "A detailed illustration of a plant with roots"
+    },
+    {
+      "file": "16v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of medicinal plants and roots."
+    },
+    {
+      "file": "17r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "A detailed illustration of a plant specimen."
+    },
+    {
+      "file": "17v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Contains botanical elements and handwritten text."
+    },
+    {
+      "file": "18r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration of a plant with roots"
+    },
+    {
+      "file": "18v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical drawing with associated handwritten text"
+    },
+    {
+      "file": "19r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with roots and text annotations."
+    },
+    {
+      "file": "19v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with detailed root structure."
+    },
+    {
+      "file": "20r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration below handwritten text"
+    },
+    {
+      "file": "20v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration of flowering herbs"
+    },
+    {
+      "file": "21r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Text accompanies a detailed drawing of foliage."
+    },
+    {
+      "file": "21v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration of herbs and roots"
+    },
+    {
+      "file": "22r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with roots and text."
+    },
+    {
+      "file": "22v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with roots and text surrounding it."
+    },
+    {
+      "file": "23r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with accompanying text"
+    },
+    {
+      "file": "23v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with visible roots."
+    },
+    {
+      "file": "24r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with accompanying text"
+    },
+    {
+      "file": "24v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with roots and leaves."
+    },
+    {
+      "file": "25r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with associated text."
+    },
+    {
+      "file": "25v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Large central illustration of a plant specimen."
+    },
+    {
+      "file": "26r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant specimen with accompanying text"
+    },
+    {
+      "file": "26v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with roots and leaves."
+    },
+    {
+      "file": "27r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Contains botanical drawings with surrounding text."
+    },
+    {
+      "file": "27v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with accompanying text"
+    },
+    {
+      "file": "28r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Contains botanical illustration and some text."
+    },
+    {
+      "file": "28v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with roots and leaves."
+    },
+    {
+      "file": "29r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration of leaves and stems"
+    },
+    {
+      "file": "29v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Contains botanical illustration and accompanying text"
+    },
+    {
+      "file": "30r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with accompanying text."
+    },
+    {
+      "file": "30v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Text accompanies a central illustrated plant drawing."
+    },
+    {
+      "file": "31r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with text accompanying it."
+    },
+    {
+      "file": "31v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with surrounding text"
+    },
+    {
+      "file": "32r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with accompanying text."
+    },
+    {
+      "file": "32v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical drawing of a plant with roots"
+    },
+    {
+      "file": "33r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with surrounding text"
+    },
+    {
+      "file": "33v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with accompanying text"
+    },
+    {
+      "file": "34r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Contains detailed botanical drawings and accompanying text."
+    },
+    {
+      "file": "34v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with roots and foliage"
+    },
+    {
+      "file": "35r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "A large illustration of a plant or fungus."
+    },
+    {
+      "file": "35v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with roots and blue berries"
+    },
+    {
+      "file": "36r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with accompanying text in an old script."
+    },
+    {
+      "file": "36v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Contains botanical illustrations with accompanying text."
+    },
+    {
+      "file": "37r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with accompanying text in an older script."
+    },
+    {
+      "file": "37v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Detailed illustration of a plant with roots and text."
+    },
+    {
+      "file": "38r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "A drawing of a large green leaf or feather-like structure."
+    },
+    {
+      "file": "38v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with surrounding handwritten text."
+    },
+    {
+      "file": "39r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of plants with roots in a contained medium"
+    },
+    {
+      "file": "39v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustrations of leaves and roots"
+    },
+    {
+      "file": "40r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration showing roots and foliage"
+    },
+    {
+      "file": "40v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration showing roots and foliage"
+    },
+    {
+      "file": "41r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "A botanical illustration showing various parts of a plant."
+    },
+    {
+      "file": "41v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with associated text."
+    },
+    {
+      "file": "42r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration alongside handwritten text."
+    },
+    {
+      "file": "42v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Hand-drawn botanical illustration with surrounding text."
+    },
+    {
+      "file": "43r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Depiction of plants growing from a base."
+    },
+    {
+      "file": "43v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of roots and leafy plants with accompanying text."
+    },
+    {
+      "file": "44r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with accompanying text"
+    },
+    {
+      "file": "44v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a tree with foliage."
+    },
+    {
+      "file": "45r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with associated text"
+    },
+    {
+      "file": "45v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant specimen and its root system."
+    },
+    {
+      "file": "46r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with visible roots."
+    },
+    {
+      "file": "46v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration of leaves and root structure"
+    },
+    {
+      "file": "47r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a large leaf with some text surrounding it."
+    },
+    {
+      "file": "47v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration of a plant with roots"
+    },
+    {
+      "file": "48r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration of a plant with roots"
+    },
+    {
+      "file": "48v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration of a root and plant life."
+    },
+    {
+      "file": "49r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with surrounding text."
+    },
+    {
+      "file": "49v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of foliage with surrounding text"
+    },
+    {
+      "file": "50r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Detailed illustration of a plant with roots."
+    },
+    {
+      "file": "50v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with roots and leaves"
+    },
+    {
+      "file": "51r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Diagram showing a root structure with associated plant elements."
+    },
+    {
+      "file": "51v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Contains a detailed illustration of a plant/root structure"
+    },
+    {
+      "file": "52r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with accompanying text."
+    },
+    {
+      "file": "52v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with root system."
+    },
+    {
+      "file": "53r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with associated text."
+    },
+    {
+      "file": "53v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with accompanying text in unknown script."
+    },
+    {
+      "file": "54r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical drawings of various leaves and stems."
+    },
+    {
+      "file": "54v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with accompanying handwritten text"
+    },
+    {
+      "file": "55r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Detailed illustration of a plant with roots and leaves."
+    },
+    {
+      "file": "55v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with accompanying text in old script"
+    },
+    {
+      "file": "56r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Watercolor illustrations of plants and associated drawings"
+    },
+    {
+      "file": "56v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration of a plant with associated text."
+    },
+    {
+      "file": "57r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with accompanying text in unknown script."
+    },
+    {
+      "file": "57v.png",
+      "has_plants": true,
+      "circular_diagram": true,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Diagram showing cyclical arrangement of elements."
+    },
+    {
+      "file": "58r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Dense handwritten text in an unknown script."
+    },
+    {
+      "file": "58v.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Handwritten text in an unknown script format."
+    },
+    {
+      "file": "65r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical drawing of plants and roots"
+    },
+    {
+      "file": "65v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration of a plant with roots"
+    },
+    {
+      "file": "66r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Manuscript page with dense handwritten text and some marginal notes"
+    },
+    {
+      "file": "66v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with roots"
+    },
+    {
+      "file": "67r.png",
+      "has_plants": false,
+      "circular_diagram": true,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Astrological diagrams with surrounding text."
+    },
+    {
+      "file": "67v.png",
+      "has_plants": false,
+      "circular_diagram": true,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Diagrammatic representation of an astrological or cosmic model"
+    },
+    {
+      "file": "68r.png",
+      "has_plants": true,
+      "circular_diagram": true,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Contains text and several circular diagrams."
+    },
+    {
+      "file": "68v.png",
+      "has_plants": false,
+      "circular_diagram": true,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Multiple circular diagrams with star patterns"
+    },
+    {
+      "file": "69r.png",
+      "has_plants": false,
+      "circular_diagram": true,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Diagram of medicinal herbs or remedies"
+    },
+    {
+      "file": "69v_and_70r.png",
+      "has_plants": false,
+      "circular_diagram": true,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Three star/geometric diagrams with surrounding text"
+    },
+    {
+      "file": "70v_(part).png",
+      "has_plants": false,
+      "circular_diagram": true,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Circular diagram with drawn figures and text"
+    },
+    {
+      "file": "70v_(part)_seq127.png",
+      "has_plants": false,
+      "circular_diagram": true,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "A circular diagram with figures and text"
+    },
+    {
+      "file": "71r.png",
+      "has_plants": true,
+      "circular_diagram": true,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Diagram depicting various medicinal or natural elements around a center."
+    },
+    {
+      "file": "71v_and_72r.png",
+      "has_plants": false,
+      "circular_diagram": true,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Multiple circular diagrams with some colored markings."
+    },
+    {
+      "file": "72v_(part).png",
+      "has_plants": false,
+      "circular_diagram": true,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "A large circular diagram with text and markings."
+    },
+    {
+      "file": "72v_(part)_seq131.png",
+      "has_plants": false,
+      "circular_diagram": true,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Two faint circular diagrams drawn on the page."
+    },
+    {
+      "file": "73r.png",
+      "has_plants": false,
+      "circular_diagram": true,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Circular diagram with text and symbolic markings"
+    },
+    {
+      "file": "73v.png",
+      "has_plants": false,
+      "circular_diagram": true,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "A large circular diagram with text inscribed within."
+    },
+    {
+      "file": "75r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Manuscript page dominated by handwritten text."
+    },
+    {
+      "file": "75v.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Manuscript page dominated by text in an unknown script"
+    },
+    {
+      "file": "76r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Manuscript page dominated by dense handwritten text"
+    },
+    {
+      "file": "76v.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Text appears to be written in an unknown script."
+    },
+    {
+      "file": "77r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Manuscript page dominated by handwritten text in unknown script."
+    },
+    {
+      "file": "77v.png",
+      "has_plants": false,
+      "circular_diagram": true,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Contains a noticeable circular diagram structure."
+    },
+    {
+      "file": "78r.png",
+      "has_plants": false,
+      "circular_diagram": true,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "A page featuring text and a prominent circular diagram."
+    },
+    {
+      "file": "78v.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Dense script with some decorative elements at bottom"
+    },
+    {
+      "file": "79r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Dense block of handwritten text in an unknown script."
+    },
+    {
+      "file": "79v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration accompanying written text"
+    },
+    {
+      "file": "80r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Dense block of manuscript text"
+    },
+    {
+      "file": "80v.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Dense handwritten text across most of the page area."
+    },
+    {
+      "file": "81r.png",
+      "has_plants": false,
+      "circular_diagram": true,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Diagram of people arranged in a circle."
+    },
+    {
+      "file": "81v.png",
+      "has_plants": false,
+      "circular_diagram": true,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Contains a circular diagram and text."
+    },
+    {
+      "file": "82r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": true,
+      "only_voynese": false,
+      "notes": "Contains narrative text with some small figures."
+    },
+    {
+      "file": "82v.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": true,
+      "only_voynese": false,
+      "notes": "Illustration of a garden or landscape with people"
+    },
+    {
+      "file": "83r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Manuscript page dominated by handwritten text."
+    },
+    {
+      "file": "83v.png",
+      "has_plants": false,
+      "circular_diagram": true,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Diagrams appear to relate to a cyclical or anatomical subject"
+    },
+    {
+      "file": "84r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Handwritten text with some marginal markings."
+    },
+    {
+      "file": "84v.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Dense block of handwritten text in an unknown script."
+    },
+    {
+      "file": "87r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with roots and leaves"
+    },
+    {
+      "file": "87v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustrations of various plants and roots."
+    },
+    {
+      "file": "88r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Series of sketches depicting various plants and natural elements."
+    },
+    {
+      "file": "88v_and_89r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Collection of illustrated botanical and medicinal subjects."
+    },
+    {
+      "file": "89v_(part)_and_90r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustrations show plants and their root systems."
+    },
+    {
+      "file": "89v_(part).png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Multiple illustrations of roots and plants."
+    },
+    {
+      "file": "90r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with descriptive text beneath"
+    },
+    {
+      "file": "90v_(part).png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": true,
+      "only_voynese": false,
+      "notes": "A mix of text and detailed botanical/figural illustrations."
+    },
+    {
+      "file": "93r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of a plant with roots and leaves"
+    },
+    {
+      "file": "93v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration showing a plant specimen and roots"
+    },
+    {
+      "file": "94r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration of a plant with roots"
+    },
+    {
+      "file": "94v_and_95r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Three detailed botanical illustrations with root systems."
+    },
+    {
+      "file": "95v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustration of plants with a visible root structure."
+    },
+    {
+      "file": "95v_(part).png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration with root system detail"
+    },
+    {
+      "file": "96r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical drawing showing plants and roots"
+    },
+    {
+      "file": "96v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Botanical illustration of a plant with text surrounding it"
+    },
+    {
+      "file": "99r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Multiple vertical bands of text with associated drawings"
+    },
+    {
+      "file": "99v.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Multiple diagrams and detailed illustrations of plants/objects"
+    },
+    {
+      "file": "100r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Various sketches of plants and related diagrams."
+    },
+    {
+      "file": "100v_and_101r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Collection of various botanical illustrations and text."
+    },
+    {
+      "file": "101v_(part).png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Contains multiple botanical illustrations alongside text"
+    },
+    {
+      "file": "101v_(part)_and_102r.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Contains multiple botanical illustrations and text."
+    },
+    {
+      "file": "102v_(part)_seq181.png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "Illustrations of plants and related diagrams."
+    },
+    {
+      "file": "102v_(part).png",
+      "has_plants": true,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": false,
+      "notes": "A page with botanical sketches and text"
+    },
+    {
+      "file": "103r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Handwritten text filling most of the page."
+    },
+    {
+      "file": "103v.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Handwritten script text filling the majority of the page."
+    },
+    {
+      "file": "104r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Manuscript page with dense text in unknown script."
+    },
+    {
+      "file": "104v.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Script appears to be in an unknown or stylized historical hand."
+    },
+    {
+      "file": "105r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Manuscript page with dense script and some marginal markings"
+    },
+    {
+      "file": "105v.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Manuscript page dominated by handwritten text"
+    },
+    {
+      "file": "106r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Text appears to be written in an unknown script."
+    },
+    {
+      "file": "106v.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Manuscript page with text in unknown script and margin markers."
+    },
+    {
+      "file": "107r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Dense handwritten text in unknown script"
+    },
+    {
+      "file": "107v.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Manuscript page filled with dense handwritten text."
+    },
+    {
+      "file": "108r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Manuscript page dominated by densely written text"
+    },
+    {
+      "file": "108v.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Page dominated by handwritten text in an unknown script."
+    },
+    {
+      "file": "111r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Dense handwritten text with some marginal marks"
+    },
+    {
+      "file": "111v.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Manuscript page dominated by dense handwriting."
+    },
+    {
+      "file": "112r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Manuscript page dominated by handwritten text"
+    },
+    {
+      "file": "112v.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Manuscript page with dense handwritten text"
+    },
+    {
+      "file": "113r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Handwritten text in an unknown script format"
+    },
+    {
+      "file": "113v.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Page dominated by dense handwritten text."
+    },
+    {
+      "file": "114r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Manuscript page with dense script and marginal markers."
+    },
+    {
+      "file": "114v.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Manuscript page dominated by dense handwritten text"
+    },
+    {
+      "file": "115r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Manuscript page with dense script and marginal notations."
+    },
+    {
+      "file": "115v.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Manuscript page dominated by dense handwritten script."
+    },
+    {
+      "file": "116r.png",
+      "has_plants": false,
+      "circular_diagram": false,
+      "illustrated_process": false,
+      "only_voynese": true,
+      "notes": "Handwritten text in an unknown script"
+    }
+  ]
+}

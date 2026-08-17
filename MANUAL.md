@@ -4,6 +4,23 @@
 development — if something here doesn't match what's on screen, the code
 is the tie-breaker, not this document.*
 
+Reads fine as plain Markdown, or render it to a single self-contained
+HTML file (all images embedded, nothing else needed) with:
+
+```bash
+pandoc MANUAL.md -o MANUAL.html --standalone --self-contained \
+  --metadata title="Voynich Cataloging Tool — Manual" --variable=title:
+```
+
+The `--metadata title=` plus empty `--variable=title:` pair is
+deliberate: pandoc's default HTML template renders a `title` metadata
+value as an extra `<h1>` at the top of the body on top of the
+document's own heading, so this combination gives the page a correct
+browser-tab title without a duplicated heading underneath it. The
+rendered `MANUAL.html` isn't checked into the repo — regenerate it on
+demand from the command above whenever you want to hand the manual to
+someone as one file.
+
 **Contents:** [What this is](#what-this-is) ·
 [Install & first run](#install--first-run) ·
 [The main window](#the-main-window) ·
@@ -20,9 +37,10 @@ is the tie-breaker, not this document.*
 
 ![Main window: thumbnail overview grid, folio order](docs/screenshots/overview_folio_order.png)
 
-*The main window after an initial scan, sorted by folio number
-(View → Sort → Page number): 1r, 1v, 2r, 2v… in the manuscript's own
-page order.*
+*The main window after an initial scan — on first launch the grid is
+empty; this is what it looks like once File → Scan has populated it, sorted
+by folio number (View → Sort → Page number): 1r, 1v, 2r, 2v… in the
+manuscript's own page order.*
 
 ## What this is
 
@@ -46,7 +64,13 @@ replace the researcher's own judgment.
 
 ## Install & first run
 
-Requires Java 17 and Maven. From the repo root:
+*This section assumes Java 17, Maven, and the repo are already in place
+and builds/runs from a terminal are familiar territory. If any of that
+isn't true yet, see [INSTALL.md](INSTALL.md) first — it starts from
+"what is Java and how do I get it" and ends right where this section
+begins.*
+
+From the repo root:
 
 ```bash
 mvn package
@@ -293,23 +317,20 @@ against the actual scan, not a citation.
 ## Multi-page views
 
 Two selection-scoped composite views, both built at full resolution and
-opened through **infimg** (a separate companion image-viewer tool, must be
-installed and configured via `infimgJar` in `config.json`) rather than a
-one-off in-app dialog — so the result can be saved, copied, or discarded
-using infimg's own tools.
+opened through **infimg** (a separate companion image-viewer tool) rather
+than a one-off in-app dialog — so the result can be saved, copied, or
+discarded using infimg's own tools.
 
 **infimg doesn't come with this repo** — it's a sibling project you build
-separately. If `Selected → Open in infimg`, Two-Page View, or Thumbnail
-Matrix fail with a launch error, that's almost certainly why. To set it
-up: clone and `mvn package` the infimg repo, write a tiny wrapper script
-that runs its fat jar (e.g. `~/bin/infimg` containing `exec java -jar
-/path/to/infimg-*-jar-with-dependencies.jar "$@"`), then point
-`"infimgJar"` in `~/.infVoy/config.json` at that wrapper script's path —
-not the jar directly. The indirection through a wrapper script is
-deliberate: it means a future infimg version bump doesn't require editing
-this config again. Note that the app itself can install and build cleanly
-while `infimgJar` is still unset — every infimg-backed menu item then
-just has nothing to launch, with no error until you try one.
+separately, and despite being a separate download it's a required step
+for this app to be fully usable, not a nice-to-have: `Selected → Open in
+infimg`, Two-Page View, and Thumbnail Matrix all depend on it, and there's
+no in-app fallback viewer on any platform. If any of those fail with a
+launch error or silently do nothing, see
+[INSTALL.md](INSTALL.md#7-build-infimg-needed-for-viewing-full-size-images)
+for the build and `infimgJar` config steps. The app itself installs and
+builds cleanly while `infimgJar` is unset — every infimg-backed menu item
+just has nothing to launch until it's configured.
 
 ![Two-Page View spread](docs/screenshots/two_page_view.png)
 
@@ -467,9 +488,11 @@ in this manual plus a couple of things that only show up in practice:
   (covers, flyleaves) and irregular filenames (a multi-folio composite
   scan, say) have no inferable counterpart and can't use it, by design —
   see [Multi-page views](#multi-page-views).
-- **infimg is a separate install**, not bundled with this repo — Two-Page
-  View, Thumbnail Matrix, and Open in infimg all depend on it being built
-  and configured correctly first. See the note in [Multi-page
+- **infimg is a required companion build, not bundled with this repo.**
+  Not truly optional in practice — Two-Page View, Thumbnail Matrix, and
+  Open in infimg all depend on it, and there's no fallback viewer on any
+  platform, Linux especially. See [INSTALL.md](INSTALL.md#7-build-infimg-needed-for-viewing-full-size-images)
+  for the build/wrapper-script steps, or the note in [Multi-page
   views](#multi-page-views) if those menu items silently do nothing.
 - **Content-area tracing is entirely manual, on purpose** — there's no
   auto-detection, and no plan to add one. See [Content-area
