@@ -182,7 +182,7 @@ Beyond the main content area, any further region (index 2 and up) is an
 "other area" — damage, a second reviewer's opinion, an inset detail,
 whatever else turns up — distinguished only by a free-text `kind` and
 `author`, not a fixed category enum. That `author` field (blank means
-genuinely unattributed, never implicitly "you") is the one piece of the
+literally unattributed, never implicitly "you") is the one piece of the
 data model that already anticipates more than one person tracing regions
 — it's just not connected to anything yet: nothing in the UI filters,
 displays, or merges by it, and tags have no equivalent field at all. See
@@ -385,7 +385,7 @@ see everything: your tags, your traced regions, your notes.
 What doesn't exist yet is a **merge tool** — or even a settled design for
 one. If two people trace regions or add tags independently, there's
 currently no diff/merge path, only "wholesale replace one catalog with
-the other." That's not just an unimplemented feature; there's genuinely
+the other." That's not just an unimplemented feature; there's literally
 no community of co-editors yet to design it *against*. How region tracing
 is actually done is itself personal technique — order, precision, what
 counts as a boundary worth drawing — not a single documented procedure
