@@ -267,9 +267,9 @@ type, and shows the model's answer in a dialog.
 ![Ask Vision answer dialog](docs/screenshots/ask_vision.png)
 
 This runs entirely against a self-hosted model, not a cloud API — the
-image never leaves your own network. It's a genuinely useful first pass
-for a quick "what's roughly on this page" description, but it should be
-treated as a fast first-look tool, not a source of ground truth: this
+image never leaves your own network. It's a useful first pass for a quick
+"what's roughly on this page" description, but treat it as a fast
+first-look tool, not a source of ground truth: this
 project's own testing against the full 213-scan corpus found the model
 producing confident, detailed, and simply *wrong* justifications on close
 calls, and reliably missing small figures crowded into a text-heavy page's
@@ -307,9 +307,9 @@ that runs its fat jar (e.g. `~/bin/infimg` containing `exec java -jar
 `"infimgJar"` in `~/.infVoy/config.json` at that wrapper script's path —
 not the jar directly. The indirection through a wrapper script is
 deliberate: it means a future infimg version bump doesn't require editing
-this config again. We found this out the hard way setting up a second
-machine — the *app* installed and built cleanly, but every infimg-backed
-menu item silently had nothing to launch until this was in place.
+this config again. Note that the app itself can install and build cleanly
+while `infimgJar` is still unset — every infimg-backed menu item then
+just has nothing to launch, with no error until you try one.
 
 ![Two-Page View spread](docs/screenshots/two_page_view.png)
 
@@ -492,35 +492,14 @@ in this manual plus a couple of things that only show up in practice:
 
 ## Appendix: how this manual got made
 
-Worth a paragraph, since the process was slightly unusual: this document's
-screenshots were taken on a second, separate machine (a modest laptop,
-deliberately not the multi-4K-monitor desktop the app is normally driven
-from) so they'd actually be legible at normal reading size instead of
-tiny crops off a much larger display. The scan corpus and catalog were
-synced over from the main machine first — see
-[Sharing a catalog with someone else](#sharing-a-catalog-with-someone-else)
-above; this manual's own screenshot pass was, in effect, a live test of
-that exact workflow.
-
-The screenshot-taking itself was delegated to a second Claude Code
-instance running directly on that laptop, coordinated with the instance
-writing this manual over Anthropic's cross-session messaging — two
-independent AI sessions on two different machines, talking to each other
-directly (no human relaying messages by hand) once both sides had
-[Remote Control](https://code.claude.com/docs/en/remote-control) turned
-on. In practice that meant one session could hand the other a batched list
-of ten screenshots to take, and the other could report back the results,
-flag a stale/unannotated dataset it had noticed on its own, and — twice —
-decline to do something faintly risky (committing a rough placeholder
-polygon to real region data; overwriting a synced catalog without an
-explicit go-ahead) rather than just plowing ahead. The actual
-screen-driving was the slow part — moving a real mouse and clicking real
-menus via `xdotool` against a live desktop session is nothing like as fast
-as an API call — but the coordination itself worked cleanly once both
-sides were paired.
-
-If you're a fellow toolsmith rather than just a manuscript researcher: the
-mildly nerdy takeaway is that "one AI session per machine, talking to each
-other" is now a genuinely available way to work, not a hypothetical. It
-made this particular chore — get real screenshots at a sane resolution
-without physically walking to a different keyboard — nearly hands-off.
+Screenshots were taken on a second machine, with the scan corpus and
+catalog synced over per [Sharing a catalog with someone
+else](#sharing-a-catalog-with-someone-else) above. The screenshot-taking
+was delegated to a second Claude Code instance running on that machine,
+coordinated with the instance writing this document via Anthropic's
+[Remote Control](https://code.claude.com/docs/en/remote-control) /
+cross-session messaging — two Claude sessions on separate machines
+exchanging tasks and results directly, no human relaying messages by
+hand. Screen-driving via `xdotool` against a live desktop session was the
+slow part of the process; the messaging itself was reliable once both
+sides had Remote Control enabled.
