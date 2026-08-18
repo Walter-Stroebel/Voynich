@@ -19,6 +19,18 @@ public class Config {
     public String scanPath;
 
     /**
+     * Which naming scheme the files under {@link #scanPath} currently use —
+     * a column header from the bundled {@code data/scan-naming.tsv} lookup
+     * table (see {@link ScanRenamer}), e.g. {@code "torrent_jpg"} or
+     * {@code "project_png"}. Defaults to {@code "torrent_jpg"} since that's
+     * the only naming a freshly-downloaded scan set is likely to start in;
+     * updated by {@link ScanRenamer} after a successful rename so a later
+     * rename knows the true current state rather than guessing from file
+     * extensions (which don't change on a rename — see the class doc).
+     */
+    public String namingScheme = "torrent_jpg";
+
+    /**
      * Command to launch the standalone infimg viewer (see
      * {@code github.com/Walter-Stroebel/infimg}), invoked directly by
      * {@link Voynich#launchImageView} (not wrapped in {@code java -jar} —

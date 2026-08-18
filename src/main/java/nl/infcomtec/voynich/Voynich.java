@@ -207,6 +207,40 @@ public class Voynich {
                 }
             }
         }.withTooltip("Walk the configured scan folder and catalog anything new or changed")));
+        JMenu renameMenu = new JMenu("Rename to…");
+        renameMenu.addMenuListener(new MenuListener() {
+            @Override
+            public void menuSelected(MenuEvent e) {
+                renameMenu.removeAll();
+                ScanRenamer renamer;
+                try {
+                    renamer = ScanRenamer.load();
+                } catch (IOException ex) {
+                    renameMenu.add(new JMenuItem("(failed to load naming table: " + ex.getMessage() + ")")).setEnabled(false);
+                    return;
+                }
+                for (final String column : renamer.columns) {
+                    if (column.equals(config.namingScheme)) {
+                        continue;
+                    }
+                    renameMenu.add(new JMenuItem(new EzAction(column) {
+                        @Override
+                        public void actionPerformed(ActionEvent e) {
+                            renameScans(fr, catalog, overview, column);
+                        }
+                    }));
+                }
+            }
+
+            @Override
+            public void menuDeselected(MenuEvent e) {
+            }
+
+            @Override
+            public void menuCanceled(MenuEvent e) {
+            }
+        });
+        fileMenu.add(renameMenu);
         fileMenu.add(new JMenuItem(new EzAction("Storage…") {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -449,6 +483,95 @@ public class Voynich {
                 }
             }
         });
+    }
+
+    /**
+     * File → "Rename to…" &lt;column&gt; handler: plans the rename via
+     * {@link ScanRenamer#plan}, warns on known-oddity file counts (see
+     * below) and any planned skips before touching anything, then runs it
+     * via {@link RenameTaskWindow} and re-triggers a Scan afterward so
+     * {@link OverviewPanel} picks up the new filenames — a rename alone
+     * only touches the filesystem, not the catalog, which is still keyed by
+     * the old names until Scan reconciles it.
+     * <p>
+     * The file-count guardrail exists because {@link Config#scanPath}
+     * pointing at the wrong directory (an old export, a stray subfolder, a
+     * completely unrelated folder) is exactly the kind of mistake an
+     * in-place rename should catch before acting on it, not after: 213 is
+     * the known-correct manuscript page count (see {@code SCANS.md}), so a
+     * handful of files (e.g. ≤10) is almost certainly not a real scan set,
+     * and more than 213 means something unexpected is mixed in.
+     * </p>
+     */
+    private static void renameScans(final JFrame fr, final Catalog catalog, final OverviewPanel overview, String toColumn) {
+        ScanRenamer renamer;
+        try {
+            renamer = ScanRenamer.load();
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(fr, "Could not load naming table: " + ex.getMessage(),
+                    "Rename failed", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        File scanDir = new File(config.scanPath);
+        File[] listing = scanDir.listFiles();
+        int fileCount = null == listing ? 0 : listing.length;
+        if (fileCount <= 10) {
+            int choice = JOptionPane.showConfirmDialog(fr,
+                    "Only " + fileCount + " file(s) found in " + config.scanPath
+                    + " — this doesn't look like the 213-page manuscript set. Continue anyway?",
+                    "Unexpectedly few files", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (choice != JOptionPane.YES_OPTION) {
+                return;
+            }
+        } else if (fileCount > 213) {
+            int choice = JOptionPane.showConfirmDialog(fr,
+                    fileCount + " files found in " + config.scanPath
+                    + " — expected 213. Continue anyway?",
+                    "Unexpectedly many files", JOptionPane.WARNING_MESSAGE, JOptionPane.YES_NO_OPTION);
+            if (choice != JOptionPane.YES_OPTION) {
+                return;
+            }
+        }
+
+        List<ScanRenamer.Plan> plans = renamer.plan(scanDir, config.namingScheme, toColumn);
+        int skipCount = 0;
+        for (ScanRenamer.Plan p : plans) {
+            if (null != p.skipReason) {
+                skipCount++;
+            }
+        }
+        StringBuilder msg = new StringBuilder();
+        msg.append("Rename ").append(plans.size() - skipCount).append(" file(s) in ")
+                .append(config.scanPath).append(" from \"").append(config.namingScheme)
+                .append("\" to \"").append(toColumn).append("\" naming, in place.\n");
+        if (skipCount > 0) {
+            msg.append(skipCount).append(" file(s) will be skipped (no target name, or a collision).\n");
+        }
+        msg.append("\nIf this folder is watched by a backup or sync tool, an in-place rename may "
+                + "register as deletes+new-files rather than a rename.");
+        int choice = JOptionPane.showConfirmDialog(fr, msg.toString(), "Confirm rename",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE);
+        if (choice != JOptionPane.OK_OPTION) {
+            return;
+        }
+
+        Runnable rescan = new Runnable() {
+            @Override
+            public void run() {
+                TaskWindow existingScan = TaskWindow.getOrNull(ScanTaskWindow.TASK_TYPE);
+                if (null == existingScan) {
+                    new ScanTaskWindow(config, catalog, overview, fr).start();
+                } else {
+                    existingScan.start();
+                }
+            }
+        };
+        TaskWindow existing = TaskWindow.getOrNull(RenameTaskWindow.TASK_TYPE);
+        if (null != existing) {
+            existing.start();
+            return;
+        }
+        new RenameTaskWindow(config, plans, toColumn, fr, rescan).start();
     }
 
     /**

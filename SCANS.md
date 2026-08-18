@@ -90,17 +90,23 @@ believing one is a "better scan" than another.
 
 ## What's left to build
 
-1. **A source-specific rename/convert utility** (tentatively
-   `CatalogCli yalenames <dir>`) that takes a folder of 2004 torrent JPGs
-   (`001.jpg`–`213.jpg`) and renames/copies them to this project's own
-   existing folio naming (already worked out in
-   `data/voynich-page-index.json` — `127.jpg` → `70v_(part)_seq127.png`'s
-   naming pattern, extension aside), so a user who only has the torrent
-   set gets a catalog where `OverviewPanel.parseFolio` — and everything
-   downstream of it, Two-Page View and folio-order sort — works exactly
-   like it already does for the PNG working set. In-place rename vs.
-   copy-to-new-folder is an open implementation choice, not yet decided.
-   A first design attempt (an embedded runtime lookup inside `parseFolio`
+1. **Done (2026-08-18).** File → "Rename to…" (`Voynich.renameScans`,
+   backed by `ScanRenamer`/`RenameTaskWindow`) renames files under
+   `scanPath` in place between any two naming schemes — columns of the
+   bundled `data/scan-naming.tsv` lookup table (`torrent_jpg`,
+   `yale_label`, `project_png`, `rene_voynich_nu` so far; add more columns
+   to the TSV and they show up as new menu targets automatically, no code
+   change needed). `Config.namingScheme` tracks which column the files
+   currently match, updated after a successful rename. Real file extension
+   is always preserved, independent of naming scheme, since
+   `OverviewPanel.parseFolio` already treats png/jpg/jpeg
+   interchangeably. Pre-flight collision/blank-target detection refuses
+   individual files rather than choking mid-batch (e.g. the `70v (part)`/
+   `72v (part)`/`102v (part)` split-page pairs collide under
+   `yale_label`, since two distinct scans share one label — both are
+   skipped with a clear reason, not silently overwritten). A rename always
+   re-triggers Scan afterward so the catalog picks up the new names. A
+   first design attempt (an embedded runtime lookup inside `parseFolio`
    itself, rather than a one-time rename step) was started and abandoned
    mid-build — see `project_folio_naming_convention_mess.md` in project
    memory for why; the one-time-rename shape is simpler and doesn't need
