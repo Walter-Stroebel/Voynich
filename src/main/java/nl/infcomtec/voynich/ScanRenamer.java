@@ -25,7 +25,7 @@ import java.util.Set;
  * stable internal handle, never shown to the user) and is deliberately
  * excluded from {@link #columns}, since it's not a display naming scheme
  * itself, just the row key every scheme's value is looked up against. Every
- * other column (e.g. {@code Sequential}, {@code Yale}, {@code Rene}) is one
+ * other column (e.g. {@code Sequential}, {@code Yale}, {@code VoynichNu}) is one
  * naming scheme; a cell is blank where that scheme has no established name
  * for an irregular/non-foliated page (see {@code SCANS.md}).
  * <p>

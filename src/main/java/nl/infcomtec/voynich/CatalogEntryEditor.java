@@ -800,7 +800,7 @@ final class CatalogEntryEditor {
      * @return every naming scheme's known name for {@code entry.id} (see
      * {@link ScanRenamer#rowFor}), one "Scheme: name" pair per line, for
      * {@link #aliasesLabel} — e.g. someone reviewing a page under its
-     * Sequential torrent name can still see what Rene's site or Yale's own
+     * Sequential torrent name can still see what voynich.nu or Yale's own
      * label calls the same page. Blank if the naming table can't be
      * loaded, or has nothing for this id (id 0 — an entry that predates
      * the id system and hasn't been migrated).

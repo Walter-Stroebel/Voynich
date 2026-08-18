@@ -605,7 +605,7 @@ public class OverviewPanel extends JPanel {
      * the stable {@code "Yale"} column's value (the one scheme guaranteed
      * folio-shaped for every foliated page, e.g. {@code "3r.png"} — see
      * {@code SCANS.md}), not {@code entry.filename}, which is whatever
-     * display scheme is currently active and might be Rene's {@code "f3r"}
+     * display scheme is currently active and might be voynich.nu's {@code "f3r"}
      * or torrent's {@code "004.jpg"}, neither of which parses as a folio.
      * Falls back to parsing {@code entry.filename} directly only if the
      * naming table can't be loaded or has no row for this id (an entry
