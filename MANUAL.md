@@ -1,6 +1,6 @@
 # Voynich Cataloging Tool — Manual
 
-*Written 2026-08-17, against commit `09a4de1`. The app is under active
+*Written 2026-08-17, updated 2026-08-18, against commit `140965b`. The app is under active
 development — if something here doesn't match what's on screen, the code
 is the tie-breaker, not this document.*
 
@@ -122,7 +122,12 @@ The main window is a single scrollable grid of thumbnails — one per
 catalogued scan — with a menu bar across the top. There's no toolbar; every
 action lives in the menu bar, in a conventional CUA layout:
 
-- **File** — Scan (populate/refresh the catalog from `scanPath`), Storage…
+- **File** — Scan (populate/refresh the catalog from `scanPath`), Rename
+  to… (a submenu, one item per naming scheme in `scan-naming.tsv` other
+  than the one `scanPath`'s files currently match — physically renames the
+  files in place on disk, e.g. from torrent/Sequential naming to Yale's own
+  `<folio><r|v>` shape; confirms first, warns if too few or too many files
+  matched, then re-runs Scan), Storage…
   (checkpoints, see [Data & backups](#data--backups)), Exit.
 - **Edit** — Select All, Clear Selection.
 - **View** — Sort (by filename or folio/page number, ascending or
@@ -172,10 +177,12 @@ tags box. The editor is non-modal, so you can have several open at once
 alongside the main window — it doesn't try to limit how many tool windows
 you're allowed.
 
-Each catalog entry is keyed by **filename**, not by filesystem path — the
-same scan sometimes exists at more than one location (e.g. a network copy
-and a faster local copy), and both collapse into one entry rather than
-producing duplicates.
+Each catalog entry is keyed by a permanent internal **id**, not by
+filename or filesystem path — a filename is just whatever a page is
+currently called on disk (see File → "Rename to…" above, which changes
+it without creating a new entry), and the same scan sometimes exists at
+more than one location too (e.g. a network copy and a faster local copy),
+collapsing into one entry rather than producing duplicates either way.
 
 Two free-form fields exist per entry, deliberately unstructured rather
 than drawn from a fixed category list, since the kinds of observation
@@ -330,7 +337,7 @@ for this app to be fully usable, not a nice-to-have: `Selected → Open in
 infimg`, Two-Page View, and Thumbnail Matrix all depend on it, and there's
 no in-app fallback viewer on any platform. If any of those fail with a
 launch error or silently do nothing, see
-[INSTALL.md](INSTALL.md#7-build-infimg-needed-for-viewing-full-size-images)
+[INSTALL.md](INSTALL.md#4-get-infimg-needed-for-viewing-full-size-images)
 for the build and `infimgJar` config steps. The app itself installs and
 builds cleanly while `infimgJar` is unset — every infimg-backed menu item
 just has nothing to launch until it's configured.
@@ -401,10 +408,12 @@ you'd commit before a risky refactor.
 The catalog directory
 (`~/.infVoy/catalog/`) is just plain JSON files — genuinely portable, copy
 it anywhere, sync it with `rsync`, hand it to a collaborator on a USB
-stick. Point their `scanPath` at their own copy of the scans (filenames
-have to match — the catalog is keyed by filename, not by any shared ID)
-and their `~/.infVoy/catalog/` at your copied-over directory, and they'll
-see everything: your tags, your traced regions, your notes.
+stick. Point their `scanPath` at their own copy of the scans — sidecars
+are keyed by the bundled `scan-naming.tsv`'s permanent id, resolved via
+each scan's filename under whichever naming scheme their copy actually
+uses (not necessarily the same scheme as yours) — and their
+`~/.infVoy/catalog/` at your copied-over directory, and they'll see
+everything: your tags, your traced regions, your notes.
 
 What doesn't exist yet is a **merge tool** — or even a settled design for
 one. If two people trace regions or add tags independently, there's
@@ -440,6 +449,10 @@ Key commands:
   invertible text filter matches over an entry's whole JSON.
 - **`get <filename>`** / **`tag <filename> <tag>`** / **`save`** — inspect
   or edit a single entry's record.
+- **`alias <name>`** — "which file is this in my universe?" Resolves
+  `name` — any known naming scheme's value (torrent, Yale, voynich.nu), or
+  the entry's current on-disk filename — to its permanent id, then prints
+  every scheme's name for that page plus the live catalog filename.
 - **`extract`** — pull real decoded pixels. `--pixel x,y` and
   `--region x,y,w,h` (both repeatable) return RGB/Lab/hex colour values,
   the same colour math the GUI's analysis views use. `--content-area`
@@ -494,7 +507,7 @@ in this manual plus a couple of things that only show up in practice:
 - **infimg is a required companion build, not bundled with this repo.**
   Not truly optional in practice — Two-Page View, Thumbnail Matrix, and
   Open in infimg all depend on it, and there's no fallback viewer on any
-  platform, Linux especially. See [INSTALL.md](INSTALL.md#7-build-infimg-needed-for-viewing-full-size-images)
+  platform, Linux especially. See [INSTALL.md](INSTALL.md#4-get-infimg-needed-for-viewing-full-size-images)
   for the build/wrapper-script steps, or the note in [Multi-page
   views](#multi-page-views) if those menu items silently do nothing.
 - **Content-area tracing is entirely manual, on purpose** — there's no

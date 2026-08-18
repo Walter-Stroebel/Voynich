@@ -584,7 +584,7 @@ public class Voynich {
     /**
      * Sanity-checks {@link Config#namingScheme} against what's actually in
      * {@code scanDir} before trusting it as {@code fromColumn} for a
-     * rename — {@code namingScheme} defaults to {@code "torrent_jpg"} for
+     * rename — {@code namingScheme} defaults to {@code "Sequential"} for
      * every config, including ones (like an already-existing PNG working
      * set) that were never torrent-named to begin with, so a stale/wrong
      * default must be caught here rather than silently producing a

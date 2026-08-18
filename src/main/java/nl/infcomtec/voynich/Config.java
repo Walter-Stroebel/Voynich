@@ -28,7 +28,7 @@ public class Config {
      * rename knows the true current state rather than guessing from file
      * extensions (which don't change on a rename — see the class doc).
      */
-    public String namingScheme = "torrent_jpg";
+    public String namingScheme = "Sequential";
 
     /**
      * Command to launch the standalone infimg viewer (see

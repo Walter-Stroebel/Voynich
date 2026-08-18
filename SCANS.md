@@ -93,19 +93,22 @@ believing one is a "better scan" than another.
 1. **Done (2026-08-18).** File → "Rename to…" (`Voynich.renameScans`,
    backed by `ScanRenamer`/`RenameTaskWindow`) renames files under
    `scanPath` in place between any two naming schemes — columns of the
-   bundled `data/scan-naming.tsv` lookup table (`torrent_jpg`,
-   `yale_label`, `project_png`, `rene_voynich_nu` so far; add more columns
-   to the TSV and they show up as new menu targets automatically, no code
-   change needed). `Config.namingScheme` tracks which column the files
-   currently match, updated after a successful rename. Real file extension
-   is always preserved, independent of naming scheme, since
-   `OverviewPanel.parseFolio` already treats png/jpg/jpeg
-   interchangeably. Pre-flight collision/blank-target detection refuses
-   individual files rather than choking mid-batch (e.g. the `70v (part)`/
-   `72v (part)`/`102v (part)` split-page pairs collide under
-   `yale_label`, since two distinct scans share one label — both are
-   skipped with a clear reason, not silently overwritten). A rename always
-   re-triggers Scan afterward so the catalog picks up the new names. A
+   bundled `data/scan-naming.tsv` lookup table (`Sequential`, `Yale`,
+   `VoynichNu` so far, keyed by a permanent `Id` column that's never a
+   rename target itself; add more columns to the TSV and they show up as
+   new menu targets automatically, no code change needed). `Config.namingScheme`
+   tracks which column the files currently match, updated after a
+   successful rename. Real file extension is always preserved, independent
+   of naming scheme, since `OverviewPanel.parseFolio` already treats
+   png/jpg/jpeg interchangeably. Pre-flight collision/blank-target
+   detection refuses individual files rather than choking mid-batch —
+   an earlier four-column version of this table had a real collision here
+   (two distinct `70v (part)`/`72v (part)`/`102v (part)` split-page scans
+   sharing one label under a since-dropped `yale_label` column); the
+   current three columns have no such collision in the live table, but the
+   guard stays in place for whatever the next added column turns up. A
+   rename always re-triggers Scan afterward so the catalog picks up the
+   new names. A
    first design attempt (an embedded runtime lookup inside `parseFolio`
    itself, rather than a one-time rename step) was started and abandoned
    mid-build — see `project_folio_naming_convention_mess.md` in project
