@@ -41,25 +41,25 @@ multi-page Ask Vision). "GUI"/"CLI" are checkmarked when that path exists;
 | 21 | Delete a region | ✅ Delete | ❌ | `RegionManagerDialog` |
 | 22 | View a region at scale | ✅ View → RegionViewer | ❌ | `RegionManagerDialog` → `RegionViewer` |
 | 23 | Rotate a region's upright preview angle | ✅ mouse wheel | ❌ | `ContentAreaEditor`/`ContentAreaCanvas`, `RegionViewer` |
-| 24 | Export region cropped+rotated to PNG file | ✅ Export… button | ✅ `extract --content-area`/`--region-name` | `RegionViewer.exportToFile()` (added 2026-08-09) / `CatalogCli.extract()`; shared raster bake via `BitSet2D.rotateUpright()` |
-| 24b | Copy region cropped+rotated to system clipboard | ✅ Copy to Clipboard button | ❌ | `RegionViewer.copyToClipboard()` (added 2026-08-09) |
-| 24c | Save region cropped+rotated to `/tmp` and open in a detached viewer | ✅ Save to /tmp & View button | ✅ `extract --content-area`/`--region-name --view` | `RegionViewer.saveToTmpAndView()` / `CatalogCli.extract()`, both via `Voynich.launchImageView()` (added 2026-08-10) |
+| 24 | Export region cropped+rotated to PNG file | ✅ Export… button | ✅ `extract --content-area`/`--region-name` | `RegionViewer.exportToFile()` / `CatalogCli.extract()`; shared raster bake via `BitSet2D.rotateUpright()` |
+| 24b | Copy region cropped+rotated to system clipboard | ✅ Copy to Clipboard button | ❌ | `RegionViewer.copyToClipboard()` |
+| 24c | Save region cropped+rotated to `/tmp` and open in a detached viewer | ✅ Save to /tmp & View button | ✅ `extract --content-area`/`--region-name --view` | `RegionViewer.saveToTmpAndView()` / `CatalogCli.extract()`, both via `Voynich.launchImageView()` |
 | 25 | Take a whole-catalog checkpoint | ✅ Storage → Take Checkpoint Now | ✅ `checkpoint` | `StorageDialog` / `CatalogCli` |
 | 26 | Restore latest checkpoint | ✅ Storage → Restore Selected | ✅ `restore` | `StorageDialog` / `CatalogCli` |
 | 27 | Delete a checkpoint | ✅ Storage → Delete Selected | ❌ | `StorageDialog` |
 | 28 | List/browse available checkpoints | ✅ Storage dialog list | ❌ | `StorageDialog` |
 | 29 | Exit app | ✅ File → Exit | n/a (process just ends) | `Voynich` menu bar |
 | 30 | Smoke-test startup | ✅ verifies main JFrame builds+paints | ✅ `--smokeTest` flag (Voynich main, not CatalogCli) | `Voynich.main()` |
-| 31 | Override config file path | ✅ n/a — positional arg to `Voynich` jar launch | ✅ `--config`/`-c <path>` (added 2026-08-09) | `Voynich.main()` / `CatalogCli.main()` |
-| 32 | Ask the local vision model a free-text question about a page/region | ✅ `CatalogEntryEditor` View ▾ → "Ask Vision…" (single open entry) or menu bar Selected → "Ask Vision…" (any selection size — N=1 unchanged, N=2 offers a Combined/Separate choice, N≥3 confirms then fires sequential calls; see #37) | ✅ `vision <filename> [<filename>...] <question...> [--content-area \| --region-name <kind>] [--combine]` (single-file added 2026-08-14, multi-file/`--combine` added the same day) — each filename resolves as a catalog entry first, falling back to a literal on-disk file path if not (added 2026-08-14) so a `two-page`/`matrix` composite can be asked about directly, not just cataloged pages | `CatalogEntryEditor.askVision()` / `RegionView.askVision()`/`askVisionOnImage()` / `CatalogCli.vision()`, all via `VisionClient` |
+| 31 | Override config file path | ✅ n/a — positional arg to `Voynich` jar launch | ✅ `--config`/`-c <path>` | `Voynich.main()` / `CatalogCli.main()` |
+| 32 | Ask the local vision model a free-text question about a page/region | ✅ `CatalogEntryEditor` View ▾ → "Ask Vision…" (single open entry) or menu bar Selected → "Ask Vision…" (any selection size — N=1 unchanged, N=2 offers a Combined/Separate choice, N≥3 confirms then fires sequential calls; see #37) | ✅ `vision <filename> [<filename>...] <question...> [--content-area \| --region-name <kind>] [--combine]` — each filename resolves as a catalog entry first, falling back to a literal on-disk file path if not, so a `two-page`/`matrix` composite can be asked about directly, not just cataloged pages | `CatalogEntryEditor.askVision()` / `RegionView.askVision()`/`askVisionOnImage()` / `CatalogCli.vision()`, all via `VisionClient` |
 | 33 | Select/deselect thumbnails in the grid (click toggles/ranges, double-click opens) | ✅ click/ctrl-click/shift-click on grid | ❌ | `OverviewPanel` mouse listener (native `JList` selection) |
 | 34 | Select every thumbnail currently shown | ✅ Edit → Select All | ❌ | `OverviewPanel.selectAllEntries()` |
 | 35 | Clear the current selection | ✅ Edit → Clear Selection | ❌ | `OverviewPanel.clearEntrySelection()` |
 | 36 | Open one or more selected pages full-resolution in infimg | ✅ Selected → Open in infimg (nags above 12 selected) | ❌ | `Voynich` (multi-file branch) / `RegionView.openInInfimg()`, both via `Voynich.launchImageView(List<File>)` |
-| 37 | Compose a folio's recto+verso pair side by side and open in infimg | ✅ Selected → Two-Page View (2 selected entries, or 1 with an inferable r/v counterpart; disabled otherwise, including all non-foliated pages) | ✅ `two-page <filename> [<other-filename>] [--out path]` (added 2026-08-14) | `Voynich.openTwoPageView()` / `twoPagePair()` / `CatalogCli.twoPage()`, all via `ImageGrid` |
-| 38 | Compose selected pages' thumbnails into one grid image and open in infimg | ✅ Selected → Thumbnail Matrix (screen-fit warning above the current display's usable bounds) | ✅ `matrix <filename> [<filename>...] [--out path]` (added 2026-08-14, no screen-fit check — a CLI invocation has no "current screen" to fit against) | `Voynich.openThumbnailMatrix()` / `CatalogCli.matrix()`, both via `ImageGrid` |
-| 39 | Rename scan files in place between naming schemes (torrent/Yale/project/voynich.nu/etc., driven by `data/scan-naming.tsv`) | ✅ File → Rename to… (submenu lists every TSV column except the current `Config.namingScheme`; confirms first, warns on ≤10 or >213 files found, re-runs Scan on success) | ❌ | `Voynich.renameScans()` → `ScanRenamer` / `RenameTaskWindow` (added 2026-08-18) |
-| 40 | "Which file is X in my universe?" — resolve any naming scheme's name (or the current catalog filename) to every other scheme's name for the same page | ❌ (the editor's aliases label, see #17-ish above, needs the entry already open) | ✅ `alias <name>` (added 2026-08-18) | `CatalogCli.alias()` → `ScanRenamer.idForName`/`rowFor` |
+| 37 | Compose a folio's recto+verso pair side by side and open in infimg | ✅ Selected → Two-Page View (2 selected entries, or 1 with an inferable r/v counterpart; disabled otherwise, including all non-foliated pages) | ✅ `two-page <filename> [<other-filename>] [--out path]` | `Voynich.openTwoPageView()` / `twoPagePair()` / `CatalogCli.twoPage()`, all via `ImageGrid` |
+| 38 | Compose selected pages' thumbnails into one grid image and open in infimg | ✅ Selected → Thumbnail Matrix (screen-fit warning above the current display's usable bounds) | ✅ `matrix <filename> [<filename>...] [--out path]` | `Voynich.openThumbnailMatrix()` / `CatalogCli.matrix()`, both via `ImageGrid` |
+| 39 | Rename scan files in place between naming schemes (torrent/Yale/project/voynich.nu/etc., driven by `data/scan-naming.tsv`) | ✅ File → Rename to… (submenu lists every TSV column except the current `Config.namingScheme`; confirms first, warns on ≤10 or >213 files found, re-runs Scan on success) | ❌ | `Voynich.renameScans()` → `ScanRenamer` / `RenameTaskWindow` |
+| 40 | "Which file is X in my universe?" — resolve any naming scheme's name (or the current catalog filename) to every other scheme's name for the same page | ❌ (the editor's aliases label, see #17-ish above, needs the entry already open) | ✅ `alias <name>` | `CatalogCli.alias()` → `ScanRenamer.idForName`/`rowFor` |
 
 **Confirmed intentional asymmetries** (not gaps, checked 2026-08-09; #32/37/38 now
 GUI+CLI symmetric as of 2026-08-14, listed for contrast):
@@ -278,29 +278,14 @@ manuscript's vellum radiocarbon-dates to the early 1400s) — see
 `memory/project_vision_confabulation_finding.md`'s 2026-08-14 addenda.
 
 **Now the standard "show the user an image" tool, not just a Voynich
-utility.** Currently released at **v1.5.0**. Pre-Menu baseline: fit-to-window
-on load, mouse-wheel zoom, toolbar-toggle free-angle rotate, drag-pan,
-exact-view Save/Copy (zoom/rotation/pan/crop baked in), Load/Paste from file
-or clipboard. **v1.2.0** added the **Menu** button and everything under it:
-Load Slot/Save as Slot submenus with **10 remembered window-position slots**
-(`-0`..`-9`, launch flag), an optional ImageMagick-backed Metadata viewer
-(`identify -verbose`, config-gated), Look & Feel (system default or FlatLaf
-Light/Dark/IntelliJ/Darcula), and Lighter/Darker/More Contrast/Less Contrast
-(one-click CIELAB L* nudges). **v1.3** was the biggest bug-fix release, not a
-minor one: fixed EXIF orientation being double-applied (baked pixels +
-rotation state, causing a 180° error), fixed Fit-to-window ignoring rotation
-(clipped rotated images), fixed an `AffineTransform` composition-order bug
-that swapped Flip Horizontal/Vertical, added Menu → Rotate 90°/180°/270°
-(absolute) with a live rotation-degree toolbar label, added Menu → Flip
-Horizontal/Vertical, added an async "Loading" placeholder (`SwingWorker`)
-for slow sources like NAS/CIFS, made Metadata work for clipboard pastes too,
-added a one-click Detect ImageMagick probe, and changed the Look & Feel
-default to FlatLaf Darcula on fresh Linux installs (was System Default).
-**v1.4** added CLI flags (`--rotate DEG`, `--flip-hor`/`--flip-ver`,
-`--lighter`/`--darker`/`--more-contrast`/`--less-contrast`, `--slot`,
-`--config PATH`) and multi-file Prev/Next navigation. **v1.5** added a
-Menu → Pixel Microscope (per-pixel sRGB/YUV/CIELab/HSB zoom inspector).
-Full changelog in the infimg repo's own `README.md`.
+utility.** Currently released at **v1.5.0**: fit-to-window on load,
+mouse-wheel zoom, toolbar-toggle free-angle rotate, drag-pan, exact-view
+Save/Copy (zoom/rotation/pan/crop baked in), Load/Paste from file or
+clipboard, a Menu button (window-position slots, Metadata viewer, Look &
+Feel, Lighter/Darker/Contrast nudges, Rotate/Flip, Pixel Microscope), CLI
+flags for the same operations, and multi-file Prev/Next navigation. Full
+changelog (including the version each feature landed in) is in the infimg
+repo's own `README.md` — not duplicated here.
 
 Voynich launches the standalone jar directly as a detached process
 (`Voynich.launchImageView(File)`, path from `Config.infimgJar` — a
