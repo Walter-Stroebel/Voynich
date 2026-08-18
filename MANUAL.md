@@ -76,8 +76,12 @@ From the repo root:
 
 ```bash
 mvn package
-java -jar target/Voynich-1.3.0-jar-with-dependencies.jar
+java -jar target/Voynich-*-jar-with-dependencies.jar
 ```
+
+(The `*` picks up whatever version `pom.xml` currently declares. On
+Windows, `cmd`/PowerShell don't expand `*` the same way a Unix shell
+does — check `target/` after the build and use the exact filename.)
 
 On first launch the app creates `~/.infVoy/` if it doesn't exist yet. If
 `~/.infVoy/config.json` is missing, or missing its `scanPath` key, the app
@@ -500,7 +504,7 @@ equivalent, useful for scripting, batch extraction, or quick lookups
 without opening the app. Run via:
 
 ```bash
-java -cp target/Voynich-1.3.0-jar-with-dependencies.jar nl.infcomtec.voynich.CatalogCli <command>
+java -cp target/Voynich-*-jar-with-dependencies.jar nl.infcomtec.voynich.CatalogCli <command>
 ```
 
 Key commands:

@@ -20,7 +20,11 @@ app.)*
 ## 1. Install Java 17
 
 You need a **JDK** (Java Development Kit — includes the compiler, not just
-the runtime), version 17 or newer.
+the runtime), specifically **version 17**, an LTS (Long-Term Support)
+release with years of support life left. Don't grab "whatever's newest"
+even though a newer JDK would probably also run this app fine — this
+project is only ever built and tested against 17, so a newer major
+version is untested territory, not a verified one.
 
 **The confusing part, up front:** searching "download Java" mostly leads
 to Oracle's site, which pushes its own commercial JDK build and a login
@@ -33,6 +37,13 @@ of those instead.
 **Recommended: [Eclipse Temurin](https://adoptium.net/)** — pick your OS,
 download the **JDK 17 (LTS)** installer, run it.
 
+**Watch out:** Temurin's own site defaults to whatever its newest release
+is (25 at the time of writing), not 17 — both the homepage's "Download
+Temurin" button and the bare releases page land there. On the
+[releases page](https://adoptium.net/temurin/releases/), open the
+**Version** dropdown yourself and pick **"JDK 17 - LTS"** before
+downloading; don't just take whatever's offered by default.
+
 - **Windows:** download the `.msi`, run it, accept defaults (make sure
   "Set JAVA_HOME" and "Add to PATH" are checked in the installer options —
   they usually are by default).
@@ -41,7 +52,8 @@ download the **JDK 17 (LTS)** installer, run it.
 - **Linux:** your distro's package manager almost certainly has it —
   e.g. Debian/Ubuntu: `sudo apt install openjdk-17-jdk`; Fedora:
   `sudo dnf install java-17-openjdk-devel`. Otherwise use the Temurin
-  installer for your distro from the link above.
+  installer for your distro from the link above, making sure to pick the
+  17 build there too.
 
 **Verify it worked** — open a terminal (Windows: search "Command Prompt"
 or "PowerShell"; Mac: "Terminal" app; Linux: your terminal emulator) and
@@ -51,10 +63,13 @@ run:
 java -version
 ```
 
-You want to see `17` (or higher) in the output, e.g.
-`openjdk version "17.0.x"`. If you get "command not found", the installer
-didn't add Java to your PATH — reinstall and make sure that option is
-checked, or search "add Java to PATH \<your OS\>".
+You want to see `17` in the output, e.g. `openjdk version "17.0.x"` — if
+it shows some other major version, you likely have a different JDK
+installed or on PATH ahead of Temurin 17; sort that out before
+continuing rather than assuming it'll be fine. If you get "command not
+found" instead, the installer didn't add Java to your PATH — reinstall
+and make sure that option is checked, or search "add Java to PATH
+\<your OS\>".
 
 ## 2. Download the app itself
 
@@ -63,8 +78,10 @@ building or compiling needed:
 
 1. Go to
    [github.com/Walter-Stroebel/Voynich/releases/latest](https://github.com/Walter-Stroebel/Voynich/releases/latest)
-2. Download the one `.jar` file attached to that release (named something
-   like `Voynich-1.3.0-jar-with-dependencies.jar`).
+2. Download the one `.jar` file attached to that release (named
+   `Voynich-<version>-jar-with-dependencies.jar` — the exact version
+   changes with each release, so don't hardcode it anywhere below;
+   whatever you actually downloaded is what step 6 will point at).
 3. Put it somewhere permanent — e.g. a folder called `Voynich` in your
    Documents, or wherever you keep this kind of thing. You'll run it
    directly from there.
@@ -142,11 +159,12 @@ tested and released, not whatever happens to be on `main` at clone time:
 
 1. Go to
    [github.com/Walter-Stroebel/infimg/releases/latest](https://github.com/Walter-Stroebel/infimg/releases/latest)
-2. Download the one `.jar` file attached to that release (named something
-   like `infimg-1.5-jar-with-dependencies.jar` — the exact number changes
-   with each release, so don't hardcode a version anywhere below).
-3. Put it somewhere permanent, e.g. `~/bin/infimg-1.5-jar-with-dependencies.jar`
-   (or wherever you keep such things).
+2. Download the one `.jar` file attached to that release (named
+   `infimg-<version>-jar-with-dependencies.jar` — the exact version
+   changes with each release, so don't hardcode a version anywhere below).
+3. Put it somewhere permanent, e.g. `~/bin/infimg-<version>-jar-with-dependencies.jar`
+   (or wherever you keep such things — the wrapper script below reaches it
+   via a glob rather than repeating this number).
 
 The next part is the one genuinely hands-on step in this whole guide —
 everywhere else so far has been "download and click"; this is "paste a
@@ -204,13 +222,17 @@ on first run and tell you exactly this, then exit — it won't guess.)
 ## 6. Run it
 
 ```bash
-java -jar /full/path/to/Voynich-1.3.0-jar-with-dependencies.jar
+java -jar /full/path/to/Voynich-<version>-jar-with-dependencies.jar
 ```
 
-(Use the actual path where you put the jar in step 2. On Windows you can
-also usually just double-click the jar file, though running it from a
-terminal like this makes any error message easier to see if something
-goes wrong.)
+(Use the actual path and filename from step 2 — whatever version you
+downloaded. On Mac/Linux, since that folder should only ever hold one
+such jar, a wildcard also works and never needs editing on a later
+upgrade: `java -jar /full/path/to/Voynich-*-jar-with-dependencies.jar`.
+On Windows you can also usually just double-click the jar file, though
+running it from a terminal like this makes any error message easier to
+see if something goes wrong — and `cmd`/PowerShell don't expand `*` the
+way a Unix shell does, so there the exact filename is required.)
 
 The main window should open. From here, hand off to
 [MANUAL.md](MANUAL.md#the-main-window) for how to actually use the app —
@@ -256,8 +278,13 @@ Then, instead of step 2 above:
 git clone https://github.com/Walter-Stroebel/Voynich.git
 cd Voynich
 mvn package
-java -jar target/Voynich-1.3.0-jar-with-dependencies.jar
+java -jar target/Voynich-*-jar-with-dependencies.jar
 ```
+
+(The `*` picks up whatever version `pom.xml` currently declares — no
+edit needed here when that number changes. On Windows, `cmd`/PowerShell
+don't expand `*` the same way; check `target/` after the build and use
+the exact filename instead.)
 
 `mvn package` downloads the project's dependencies (needs an internet
 connection, first time only) and compiles everything into one runnable
