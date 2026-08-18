@@ -116,6 +116,12 @@ Whichever format you end up with — JPG straight from Yale, or a
 converted PNG/TIFF folder — point `scanPath` (next step) at that
 folder.
 
+If your files aren't already named `<folio><r|v>.ext` (e.g. `1r.png`),
+the thumbnail grid's page-number sort won't have anything to sort by
+until they are — the app can rename a whole folder in place between
+naming schemes (including its own, and Yale's) via **File → Rename
+to…**, covered in [MANUAL.md](MANUAL.md#the-main-window).
+
 ## 4. Get infimg (needed for viewing full-size images)
 
 Several core menu actions — **Open in infimg**, **Two-Page View**,
@@ -138,7 +144,13 @@ tested and released, not whatever happens to be on `main` at clone time:
 3. Put it somewhere permanent, e.g. `~/bin/infimg-1.5-jar-with-dependencies.jar`
    (or wherever you keep such things).
 
-Then write a tiny wrapper script so this app can launch it without you
+The next part is the one genuinely hands-on step in this whole guide —
+everywhere else so far has been "download and click"; this is "paste a
+few lines into a script file." It's short and you only do it once, but
+don't take it as a sign you've gone off the rails if it feels like a
+bigger step than everything before it.
+
+Write a tiny wrapper script so this app can launch it without you
 having to update its config every time you download a newer release. On
 Linux/Mac, create e.g. `~/bin/infimg` (make sure `~/bin` is on your PATH,
 or just pick any folder and use its full path in the config step below)
