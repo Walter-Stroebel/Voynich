@@ -44,8 +44,11 @@ public class ScanRenamer {
     /**
      * One row of the lookup table: {@link #id} is this page's permanent
      * {@link CatalogEntry#id}; {@code names.get(column)} is that row's
-     * filename basename (no extension) under {@code column}'s scheme, or
-     * {@code null} if that scheme has no name for this page.
+     * filename basename (no extension) under {@code column}'s scheme —
+     * always present, never {@code null}: a scheme's genuinely blank TSV
+     * cell (e.g. Rene's voynich.nu naming, which never named covers/
+     * flyleaves) is filled at load time with the zero-padded id itself (see
+     * {@link #load()}), so every column is complete for every row.
      */
     public static final class Row {
 
@@ -100,6 +103,10 @@ public class ScanRenamer {
             }
             List<Row> rows = new ArrayList<>();
             Set<Integer> seenIds = new HashSet<>();
+            Map<String, Set<String>> seenValuesByColumn = new HashMap<>();
+            for (String column : columns) {
+                seenValuesByColumn.put(column, new HashSet<>());
+            }
             String line;
             while (null != (line = reader.readLine())) {
                 if (line.isEmpty()) {
@@ -119,11 +126,33 @@ public class ScanRenamer {
                     throw new IOException(RESOURCE_PATH + " has a duplicate Id: " + id);
                 }
                 Map<String, String> names = new HashMap<>();
-                for (int i = 0; i < columns.size() && i + 1 < cells.length; i++) {
-                    String value = cells[i + 1];
-                    if (!value.isEmpty()) {
-                        names.put(columns.get(i), value);
+                for (int i = 0; i < columns.size(); i++) {
+                    String column = columns.get(i);
+                    String value = i + 1 < cells.length ? cells[i + 1] : "";
+                    if (value.isEmpty()) {
+                        // Every column must be complete — a scheme (e.g.
+                        // Rene's voynich.nu naming) that never named covers/
+                        // flyleaves at all shouldn't force the TSV author to
+                        // hand-fill every such row; the loader fills the gap
+                        // with the zero-padded id itself instead of leaving
+                        // this scheme silently blank for that page.
+                        value = String.format("%03d", id);
                     }
+                    // A value must map back to exactly one Id per column —
+                    // idForName/idForFolio both resolve a name to an id by
+                    // first match, so a silent duplicate here would make
+                    // that resolution wrong (and non-deterministic-looking)
+                    // rather than failing loudly. This is the identity
+                    // table every catalog entry's id is trusted against, so
+                    // a violation is a hard load failure, not a warning.
+                    // Runs after the blank-fill above so a real explicit
+                    // "046" elsewhere in the column still collides with a
+                    // synthesized default, exactly as it should.
+                    if (!seenValuesByColumn.get(column).add(value)) {
+                        throw new IOException(RESOURCE_PATH + " has a duplicate value in column \""
+                                + column + "\": \"" + value + "\" (every name must resolve to exactly one Id)");
+                    }
+                    names.put(column, value);
                 }
                 rows.add(new Row(id, names));
             }
@@ -144,6 +173,28 @@ public class ScanRenamer {
             }
         }
         return null;
+    }
+
+    /**
+     * @param id a page's permanent {@link CatalogEntry#id}
+     * @param column a naming scheme, e.g. {@link Config#namingScheme}
+     * @return that page's basename (no extension) under {@code column} —
+     * always resolvable (see {@link Row#names}' completeness guarantee) as
+     * long as {@code id}/{@code column} are both real, so this is the one
+     * place every UI/CLI display string should get a page's current name
+     * from, rather than caching one on {@link CatalogEntry} itself (see its
+     * class doc for why that field was removed). Falls back to the bare id
+     * itself (e.g. {@code "46"}) if {@code id} or {@code column} isn't
+     * actually in the table — a caller displaying a name shouldn't crash
+     * over it, just show something recognizable.
+     */
+    public String displayName(int id, String column) {
+        Row row = rowFor(id);
+        if (null == row) {
+            return String.valueOf(id);
+        }
+        String name = row.names.get(column);
+        return null != name ? name : String.valueOf(id);
     }
 
     /**
@@ -318,18 +369,11 @@ public class ScanRenamer {
 
         for (Row row : rows) {
             String fromName = row.names.get(fromColumn);
-            if (null == fromName) {
-                continue;
-            }
             File source = filesByBasename.get(stripExtension(fromName));
             if (null == source) {
                 continue;
             }
             String toValue = row.names.get(toColumn);
-            if (null == toValue) {
-                plans.add(new Plan(row.id, source, null, "no " + toColumn + " name for this page"));
-                continue;
-            }
             String toBasename = stripExtension(toValue);
             String ext = extensionOf(source.getName());
             String destName = toBasename + ext;

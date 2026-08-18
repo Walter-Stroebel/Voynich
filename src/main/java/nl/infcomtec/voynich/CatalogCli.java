@@ -59,6 +59,17 @@ public class CatalogCli {
             usage();
             return;
         }
+        // See Voynich.main's identical check: a malformed naming table makes
+        // id resolution untrustworthy for every command here, not just the
+        // ones that obviously touch it, so this is a hard stop up front.
+        try {
+            ScanRenamer.cached();
+        } catch (IOException ex) {
+            System.err.println("Cannot start: the bundled naming table (data/scan-naming.tsv) is malformed:");
+            System.err.println(ex.getMessage());
+            System.exit(2);
+            return;
+        }
         Config cfg = JSON.getMapper().readValue(configFile, Config.class);
         Catalog catalog = Catalog.open(cfg);
         // Voynich.launchImageView reads the static Voynich.config, not any config passed
@@ -117,6 +128,10 @@ public class CatalogCli {
                 requireArgs(args, 2, "alias <name>");
                 alias(catalog, args[1]);
                 break;
+            case "export":
+                requireArgs(args, 3, "export <exporterName> --all | --marked | <filename> [<filename>...] -- <outFile>");
+                export(catalog, args);
+                break;
             case "checkpoint":
                 catalog.checkpoint();
                 System.out.println("checkpointed");
@@ -133,6 +148,58 @@ public class CatalogCli {
             default:
                 usage();
         }
+    }
+
+    /**
+     * {@code export <exporterName> --all | --marked | <filename>
+     * [<filename>...] -- <outFile>} — CLI equivalent of the GUI's File →
+     * Export… submenu (see {@code Voynich.exportEntries}), same metadata-
+     * only contract as {@link CatalogExporter}. The trailing {@code --
+     * <outFile>} mirrors {@code vision}'s own separator convention for a
+     * variable-length filename list followed by one more positional
+     * argument.
+     */
+    private static void export(Catalog catalog, String[] args) throws IOException {
+        String exporterName = args[1];
+        List<String> rest = List.of(args).subList(2, args.length);
+        List<CatalogEntry> entries;
+        List<String> remaining;
+        if (rest.contains("--all")) {
+            entries = catalog.listAll();
+            remaining = new ArrayList<>(rest);
+            remaining.remove("--all");
+        } else if (rest.contains("--marked")) {
+            entries = CatalogExporter.marked(catalog);
+            remaining = new ArrayList<>(rest);
+            remaining.remove("--marked");
+        } else {
+            int sep = rest.indexOf("--");
+            if (sep < 0) {
+                System.err.println("Usage: export <exporterName> --all | --marked | <filename> [<filename>...] -- <outFile>");
+                System.exit(1);
+                return;
+            }
+            entries = new ArrayList<>();
+            for (String filename : rest.subList(0, sep)) {
+                CatalogEntry entry = catalog.loadEntryByFilename(filename);
+                if (null == entry) {
+                    System.err.println("No entry for " + filename);
+                    System.exit(1);
+                    return;
+                }
+                entries.add(entry);
+            }
+            remaining = new ArrayList<>(rest.subList(sep, rest.size()));
+        }
+        remaining.remove("--");
+        if (remaining.isEmpty()) {
+            System.err.println("Missing output file");
+            System.exit(1);
+            return;
+        }
+        File out = new File(remaining.get(0));
+        CatalogExporter.export(entries, exporterName, out);
+        System.out.println("Exported " + entries.size() + " entries to " + out);
     }
 
     private static void requireArgs(String[] args, int min, String usage) {
@@ -155,7 +222,7 @@ public class CatalogCli {
         for (CatalogEntry entry : catalog.listAll()) {
             boolean matches = null == needle || JSON.writeValueAsString(entry).toLowerCase().contains(needle);
             if (null == needle || matches != invert) {
-                System.out.println(entry.filename + "\t" + entry.width + "x" + entry.height
+                System.out.println(OverviewPanel.displayNameOf(entry) + "\t" + entry.width + "x" + entry.height
                         + "\ttags=" + entry.tags);
             }
         }
@@ -388,7 +455,7 @@ public class CatalogCli {
     private static void extractContentArea(CatalogEntry entry, CatalogEntry.Region main, File imgFile, String out,
             boolean view) throws IOException {
         if (null == main) {
-            System.err.println("No content area traced yet for " + entry.filename);
+            System.err.println("No content area traced yet for " + OverviewPanel.displayNameOf(entry));
             System.exit(1);
             return;
         }
@@ -403,7 +470,7 @@ public class CatalogCli {
         }
 
         if (view && null == out) {
-            out = File.createTempFile(entry.filename + "." + main.kind + ".", ".png").getAbsolutePath();
+            out = File.createTempFile(OverviewPanel.displayNameOf(entry) + "." + main.kind + ".", ".png").getAbsolutePath();
         }
         if (null == out) {
             ByteArrayOutputStream buf = new ByteArrayOutputStream();
@@ -414,8 +481,8 @@ public class CatalogCli {
             ImageIO.write(cropped, "png", new File(out));
         }
         System.err.println(String.format(
-                "{\"filename\":\"%s\",\"width\":%d,\"height\":%d,\"vertices\":%d%s}",
-                entry.filename, cropped.getWidth(), cropped.getHeight(), main.polygon.size(),
+                "{\"id\":%d,\"width\":%d,\"height\":%d,\"vertices\":%d%s}",
+                entry.id, cropped.getWidth(), cropped.getHeight(), main.polygon.size(),
                 null == out ? "" : ",\"path\":\"" + out + "\""));
         if (view) {
             Voynich.launchImageView(new File(out));
@@ -447,7 +514,7 @@ public class CatalogCli {
             }
         }
         if (matches.isEmpty()) {
-            System.err.println("No region with kind \"" + kind + "\" for " + entry.filename);
+            System.err.println("No region with kind \"" + kind + "\" for " + OverviewPanel.displayNameOf(entry));
             System.exit(1);
             return;
         }
@@ -654,11 +721,11 @@ public class CatalogCli {
         if (contentArea || null != regionName) {
             CatalogEntry.Region region = contentArea ? entry.mainRegion() : firstRegionNamed(entry, regionName);
             if (null == region) {
-                System.err.println("No matching region for " + entry.filename);
+                System.err.println("No matching region for " + OverviewPanel.displayNameOf(entry));
                 System.exit(1);
                 return null;
             }
-            tempCrop = File.createTempFile(entry.filename + ".", ".png");
+            tempCrop = File.createTempFile(OverviewPanel.displayNameOf(entry) + ".", ".png");
             extractContentArea(entry, region, imgFile, tempCrop.getAbsolutePath(), false);
             toUpload = tempCrop;
         }
@@ -782,7 +849,8 @@ public class CatalogCli {
         File versoFile = resolveExistingLocation(versoEntry);
         File rectoFile = resolveExistingLocation(rectoEntry);
         if (null == versoFile || null == rectoFile) {
-            System.err.println("No on-disk location found for " + versoEntry.filename + " or " + rectoEntry.filename);
+            System.err.println("No on-disk location found for " + OverviewPanel.displayNameOf(versoEntry)
+                    + " or " + OverviewPanel.displayNameOf(rectoEntry));
             System.exit(1);
             return;
         }
@@ -797,7 +865,8 @@ public class CatalogCli {
             ImageIO.write(composite, "png", new File(out));
             System.out.println(out);
         } else {
-            File target = File.createTempFile(versoEntry.filename + "+" + rectoEntry.filename + ".", ".png");
+            File target = File.createTempFile(
+                    OverviewPanel.displayNameOf(versoEntry) + "+" + OverviewPanel.displayNameOf(rectoEntry) + ".", ".png");
             ImageIO.write(composite, "png", target);
             Voynich.launchImageView(target);
         }
@@ -904,11 +973,7 @@ public class CatalogCli {
             String value = null == row ? null : row.names.get(column);
             System.out.println("  " + column + ": " + (null == value ? "(none)" : value));
         }
-        if (null == entry) {
-            System.out.println("  catalog: not cataloged yet");
-        } else {
-            System.out.println("  catalog filename: " + entry.filename);
-        }
+        System.out.println(null == entry ? "  catalog: not cataloged yet" : "  catalog: cataloged");
     }
 
     private static CatalogEntry.Region firstRegionNamed(CatalogEntry entry, String kind) {
@@ -1076,6 +1141,11 @@ public class CatalogCli {
         System.err.println("  alias <name>                \"which file is this in my universe?\" — resolves name");
         System.err.println("                              (any naming scheme's value, or the current catalog");
         System.err.println("                              filename) to its permanent id and every other scheme's name");
+        System.err.println("  export <exporterName> --all | --marked | <filename> [<filename>...] -- <outFile>");
+        System.err.println("                              write metadata only (tags/regions, never image bytes) as one");
+        System.err.println("                              JSON array; --marked = entries with a traced content area, other");
+        System.err.println("                              regions, or tags/torrentJpg beyond the synthetic whole page;");
+        System.err.println("                              exporterName fills any blank Region.author in the export only");
         System.err.println("  checkpoint                  clone the whole catalog's current state");
         System.err.println("  restore                     discard everything since the last checkpoint");
     }

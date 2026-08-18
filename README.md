@@ -52,6 +52,9 @@ motivated it.
 - **Architecture, class-by-class rundown, build details** → [CLAUDE.md](CLAUDE.md)
 - **Which scan source to use, and the still-open page-naming question**
   → [SCANS.md](SCANS.md)
+- **The id-canonical naming-scheme database — closing a real gap in tying
+  the manuscript's competing naming schemes to one shared identity** →
+  [DATABASE.md](DATABASE.md)
 
 ## Current state
 

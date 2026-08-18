@@ -1,6 +1,6 @@
 # Voynich Cataloging Tool — Manual
 
-*Written 2026-08-17, updated 2026-08-18, against commit `140965b`. The app is under active
+*Written 2026-08-17, updated 2026-08-18. The app is under active
 development — if something here doesn't match what's on screen, the code
 is the tie-breaker, not this document.*
 
@@ -127,11 +127,13 @@ action lives in the menu bar, in a conventional CUA layout:
   than the one `scanPath`'s files currently match — physically renames the
   files in place on disk, e.g. from torrent/Sequential naming to Yale's own
   `<folio><r|v>` shape; confirms first, warns if too few or too many files
-  matched, then re-runs Scan), Storage…
+  matched, then re-runs Scan), Export… (a submenu — All, Selected, Marked —
+  see [Exporting your notes](#exporting-your-notes) below), Storage…
   (checkpoints, see [Data & backups](#data--backups)), Exit.
 - **Edit** — Select All, Clear Selection.
-- **View** — Sort (by filename or folio/page number, ascending or
-  descending — see the note on first-run ordering above), Filter (prompts
+- **View** — Sort (by name under the current naming scheme, folio/page
+  number, ascending or descending — see the note on first-run ordering
+  above), Filter (prompts
   for free text and an optional "invert" checkbox, then narrows the grid
   to entries whose whole JSON record does — or, inverted, does *not* —
   contain that text case-insensitively; blank text clears the filter),
@@ -177,20 +179,22 @@ tags box. The editor is non-modal, so you can have several open at once
 alongside the main window — it doesn't try to limit how many tool windows
 you're allowed.
 
-Each catalog entry is keyed by a permanent internal **id**, not by
-filename or filesystem path — a filename is just whatever a page is
-currently called on disk (see File → "Rename to…" above, which changes
-it without creating a new entry), and the same scan sometimes exists at
-more than one location too (e.g. a network copy and a faster local copy),
-collapsing into one entry rather than producing duplicates either way.
+Each catalog entry is keyed *only* by a permanent internal **id** — no
+filename or filesystem path is ever stored on the entry itself. A
+displayed name (e.g. in the thumbnail grid, or a window title) is always
+resolved live from the bundled naming table under whichever scheme File →
+"Rename to…" last selected; renaming changes what that lookup returns, not
+the entry itself. The same scan sometimes exists at more than one location
+too (e.g. a network copy and a faster local copy), collapsing into one
+entry rather than producing duplicates either way. A file the naming table
+has no row for is outside this catalog's scope entirely — Scan skips and
+logs it rather than inventing an identity for it.
 
-Two free-form fields exist per entry, deliberately unstructured rather
-than drawn from a fixed category list, since the kinds of observation
-worth noting keep changing as the work goes:
+One free-form field exists per entry beyond its traced regions,
+deliberately unstructured rather than drawn from a fixed category list,
+since the kinds of observation worth noting keep changing as the work
+goes:
 
-- **`torrentJpg`** — a cross-reference to the original 2004 torrent
-  release's JPG numbering, for anyone correlating this catalog against
-  that older, differently-numbered distribution.
 - **Tags** — short free-text notes, one entry can carry several. Add one
   from the tags box in the entry editor.
 
@@ -415,23 +419,47 @@ uses (not necessarily the same scheme as yours) — and their
 `~/.infVoy/catalog/` at your copied-over directory, and they'll see
 everything: your tags, your traced regions, your notes.
 
-What doesn't exist yet is a **merge tool** — or even a settled design for
-one. If two people trace regions or add tags independently, there's
-currently no diff/merge path, only "wholesale replace one catalog with
-the other." That's not just an unimplemented feature; there's literally
-no community of co-editors yet to design it *against*. How region tracing
-is actually done is itself personal technique — order, precision, what
-counts as a boundary worth drawing — not a single documented procedure
-(see [Content-area regions](#content-area-regions)), so two people's
-traces of the same page are two independent judgments, not two attempts
-at the same measurement. A real merge tool would need to decide what
-"reconciling" even means for that kind of data — keep both as separate
-regions? Flag disagreement for a human to resolve? Something else? — and
-that's a question this project hasn't had reason to answer yet, because
-it's been one person's working catalog so far. If you're the second
-person to pick this catalog up: for now, coordinate who "owns" the
-working copy at any given moment rather than editing two copies in
-parallel and hoping to reconcile them later.
+What doesn't exist yet is a **merge/import tool** — or even a settled
+design for one (Export, below, is the one-directional half of this).
+If two people trace regions or add tags independently, there's currently
+no diff/merge path, only "wholesale replace one catalog with the other."
+That's not just an unimplemented feature; there's literally no community
+of co-editors yet to design it *against*. How region tracing is actually
+done is itself personal technique — order, precision, what counts as a
+boundary worth drawing — not a single documented procedure (see
+[Content-area regions](#content-area-regions)), so two people's traces of
+the same page are two independent judgments, not two attempts at the same
+measurement. A real merge tool would need to decide what "reconciling"
+even means for that kind of data — keep both as separate regions? Flag
+disagreement for a human to resolve? Something else? — and that's a
+question this project hasn't had reason to answer yet, because it's been
+one person's working catalog so far. If you're the second person to pick
+this catalog up: for now, coordinate who "owns" the working copy at any
+given moment rather than editing two copies in parallel and hoping to
+reconcile them later.
+
+### Exporting your notes
+
+**File → Export…** (submenu: All, Selected, Marked) writes a single JSON
+file containing just your judgment calls — tags and traced regions — for
+the chosen entries, never image bytes and never a display filename.
+"Marked" exports only entries where you've actually traced a real content
+area (beyond the automatic whole-page rectangle) or added a tag; that's
+usually the scope worth sharing, since most entries in a fresh catalog
+have neither yet. Every entry is prompted with an exporter name up front,
+used to attribute any traced region that doesn't already record who
+traced it — attribution for that export file only, never written back to
+your own catalog.
+
+Each exported entry is keyed by its permanent id, resolvable back to any
+naming scheme's name via `CatalogCli alias` on either side — this is
+deliberate: an id means the same physical page in every copy of this
+catalog, because both sides are checked against the same bundled
+`scan-naming.tsv`, whereas a filename means whatever naming scheme its
+owner's copy happens to use right now. This is what makes an export
+usable across two people's differently-named collections at all, even
+though there's no import/merge step yet to actually consume one (see
+above).
 
 ## CLI reference
 
@@ -450,9 +478,9 @@ Key commands:
 - **`get <filename>`** / **`tag <filename> <tag>`** / **`save`** — inspect
   or edit a single entry's record.
 - **`alias <name>`** — "which file is this in my universe?" Resolves
-  `name` — any known naming scheme's value (torrent, Yale, voynich.nu), or
-  the entry's current on-disk filename — to its permanent id, then prints
-  every scheme's name for that page plus the live catalog filename.
+  `name` — any known naming scheme's value (Sequential, Yale, VoynichNu),
+  or an entry's on-disk filename if it's not otherwise a TSV value — to its
+  permanent id, then prints every scheme's name for that page.
 - **`extract`** — pull real decoded pixels. `--pixel x,y` and
   `--region x,y,w,h` (both repeatable) return RGB/Lab/hex colour values,
   the same colour math the GUI's analysis views use. `--content-area`
@@ -468,6 +496,9 @@ Key commands:
   [<filename>...]`** — CLI equivalents of Two-Page View and Thumbnail
   Matrix; `--out <path>` writes the composite to a file instead of opening
   it via infimg.
+- **`export <exporterName> --all | --marked | <filename> [<filename>...] -- <outFile>`**
+  — CLI equivalent of File → Export…, see
+  [Exporting your notes](#exporting-your-notes) below.
 - **`checkpoint`** / **`restore`** — CLI equivalents of the Storage dialog's
   take/restore actions.
 
@@ -479,22 +510,25 @@ every command's argument shape.
 A single honest list, gathering what's mentioned individually elsewhere
 in this manual plus a couple of things that only show up in practice:
 
-- **No catalog merge tool, and no settled design for one either.** Two
-  people's independently-traced regions or tags can't be combined — see
-  [Sharing a catalog with someone else](#sharing-a-catalog-with-someone-else).
-  This isn't just unimplemented: there's no community of co-editors yet
-  to design a merge model against, and tracing is personal technique, not
-  a single documented procedure, so it isn't obvious what "reconciling"
-  two people's traces of the same page should even mean. Only one person
-  should be the working copy's "owner" at a time, for now. There is one
-  small seed already in the data model for this — each region carries a
-  free-text `author` field (see [Content-area regions](#content-area-regions))
-  — but it's not wired to anything: no UI shows it, filters by it, or uses
-  it to resolve a conflict, and tags have no equivalent field at all. Even
-  where `author` exists, it isn't propagated automatically — a child
-  region traced inside a parent's boundary via Add Child doesn't inherit
-  the parent's `author`, despite the nesting implying the same person
-  likely traced both.
+- **No catalog merge/import tool, and no settled design for one either.**
+  Two people's independently-traced regions or tags can't be combined —
+  see [Sharing a catalog with someone else](#sharing-a-catalog-with-someone-else).
+  Export (see [Exporting your notes](#exporting-your-notes)) covers the
+  one-directional half — handing your tags/regions to someone else as a
+  portable, id-keyed file — but there's no way to bring an export *back
+  in*, let alone reconcile it against changes made independently on both
+  sides. This isn't just unimplemented: there's no community of
+  co-editors yet to design a merge model against, and tracing is personal
+  technique, not a single documented procedure, so it isn't obvious what
+  "reconciling" two people's traces of the same page should even mean.
+  Only one person should be the working copy's "owner" at a time, for now.
+  Each region carries a free-text `author` field (see [Content-area
+  regions](#content-area-regions)) — Export fills it in for any region
+  that doesn't already have one, but nothing in the live app UI shows it,
+  filters by it, or uses it to resolve a conflict, and tags have no
+  equivalent field at all. A child region traced inside a parent's
+  boundary via Add Child doesn't inherit the parent's `author` either,
+  despite the nesting implying the same person likely traced both.
 - **Vision answers aren't ground truth.** The local vision model
   confabulates confidently-wrong justifications on close calls and misses
   small figures crowded into busy pages — see [Vision

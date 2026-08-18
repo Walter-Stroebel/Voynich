@@ -116,11 +116,15 @@ Whichever format you end up with — JPG straight from Yale, or a
 converted PNG/TIFF folder — point `scanPath` (next step) at that
 folder.
 
-If your files aren't already named `<folio><r|v>.ext` (e.g. `1r.png`),
-the thumbnail grid's page-number sort won't have anything to sort by
-until they are — the app can rename a whole folder in place between
-naming schemes (including its own, and Yale's) via **File → Rename
-to…**, covered in [MANUAL.md](MANUAL.md#the-main-window).
+Scan only catalogs files it can resolve to a page via the bundled
+`data/scan-naming.tsv` naming table — any of its known schemes' names
+works (Sequential, Yale, VoynichNu). A file whose name matches none of
+them is skipped, not catalogued under some improvised identity — so if
+your files use a naming scheme this table doesn't yet cover, either add a
+column for it (see [MANUAL.md](MANUAL.md#the-main-window)'s Rename to…
+coverage, or just extend `data/scan-naming.tsv` directly) or use **File →
+Rename to…** to rename the whole folder in place to a scheme it already
+knows.
 
 ## 4. Get infimg (needed for viewing full-size images)
 

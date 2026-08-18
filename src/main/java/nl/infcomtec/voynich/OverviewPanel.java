@@ -60,7 +60,7 @@ public class OverviewPanel extends JPanel {
     private final List<CatalogEntry> allEntries = new ArrayList<>();
     private final DefaultListModel<CatalogEntry> model = new DefaultListModel<>();
     private final JList<CatalogEntry> list = new JList<>(model);
-    private final Map<String, BufferedImage> thumbnails = new HashMap<>();
+    private final Map<Integer, BufferedImage> thumbnails = new HashMap<>();
     /**
      * When {@code true}, {@link EntryRenderer} dims every thumbnail pixel
      * outside its entry's {@link CatalogEntry#mainRegion()} instead of
@@ -72,13 +72,13 @@ public class OverviewPanel extends JPanel {
      */
     private boolean contentAreaOnly;
     /**
-     * Filenames currently passing {@link #filter()}'s search text, or
+     * Ids currently passing {@link #filter()}'s search text, or
      * {@code null} when no filter is active (show everything). In-memory
      * only, never persisted to the catalog — the "selected thumbnails"
      * this exposes is expected to grow other uses (bulk tagging, etc.)
      * beyond just driving {@link #applyFilter()}.
      */
-    private Set<String> selectedFilenames;
+    private Set<Integer> selectedIds;
 
     public OverviewPanel(Catalog catalog) {
         super(new BorderLayout());
@@ -231,15 +231,15 @@ public class OverviewPanel extends JPanel {
         }
         String query = queryField.getText().trim();
         if (query.isEmpty()) {
-            selectedFilenames = null;
+            selectedIds = null;
         } else {
             String needle = query.toLowerCase();
             boolean not = invert.isSelected();
-            selectedFilenames = new LinkedHashSet<>();
+            selectedIds = new LinkedHashSet<>();
             for (CatalogEntry entry : allEntries) {
                 boolean matches = JSON.writeValueAsString(entry).toLowerCase().contains(needle);
                 if (matches != not) {
-                    selectedFilenames.add(entry.filename);
+                    selectedIds.add(entry.id);
                 }
             }
         }
@@ -292,13 +292,13 @@ public class OverviewPanel extends JPanel {
 
     /**
      * Rebuilds {@link #model} from {@link #allEntries}, keeping only
-     * entries in {@link #selectedFilenames} ({@code null} meaning
-     * "keep all"). Call after any change to either.
+     * entries in {@link #selectedIds} ({@code null} meaning "keep all").
+     * Call after any change to either.
      */
     private void applyFilter() {
         model.clear();
         for (CatalogEntry entry : allEntries) {
-            if (null == selectedFilenames || selectedFilenames.contains(entry.filename)) {
+            if (null == selectedIds || selectedIds.contains(entry.id)) {
                 model.addElement(entry);
             }
         }
@@ -309,10 +309,10 @@ public class OverviewPanel extends JPanel {
      * itself the {@link Comparator} for that field.
      */
     private enum SortKey implements Comparator<CatalogEntry> {
-        FILENAME("Filename") {
+        NAME("Name (current scheme)") {
             @Override
             public int compare(CatalogEntry a, CatalogEntry b) {
-                return a.filename.compareToIgnoreCase(b.filename);
+                return displayNameOf(a).compareToIgnoreCase(displayNameOf(b));
             }
         },
         WIDTH("Width") {
@@ -337,7 +337,7 @@ public class OverviewPanel extends JPanel {
             @Override
             public int compare(CatalogEntry a, CatalogEntry b) {
                 int cmp = Integer.compare(pageNumberOf(a), pageNumberOf(b));
-                return cmp != 0 ? cmp : a.filename.compareToIgnoreCase(b.filename);
+                return cmp != 0 ? cmp : displayNameOf(a).compareToIgnoreCase(displayNameOf(b));
             }
         },
         CONTENT_AREA_SIZE("Content area size") {
@@ -352,18 +352,18 @@ public class OverviewPanel extends JPanel {
          * isn't a plain single-folio page. Resolved via {@link #parseFolio}
          * (the entry's actual Yale-labeled folio, independent of whatever
          * naming scheme is currently displayed) when that succeeds; falls
-         * back to a permissive leading-number match against {@code
-         * entry.filename} itself for shapes {@code parseFolio} deliberately
-         * excludes (e.g. {@code "100v_and_101r.png"}, a multi-folio
-         * composite — still worth a rough sort position, just not treated
-         * as a single foliated page).
+         * back to a permissive leading-number match against {@link
+         * #displayNameOf}'s current-scheme name for shapes {@code
+         * parseFolio} deliberately excludes (e.g. {@code
+         * "100v_and_101r.png"}, a multi-folio composite — still worth a
+         * rough sort position, just not treated as a single foliated page).
          */
         private static int pageNumberOf(CatalogEntry entry) {
             Folio folio = parseFolio(entry);
             if (null != folio) {
                 return folio.number;
             }
-            Matcher m = PAGE_NUMBER_PATTERN.matcher(entry.filename);
+            Matcher m = PAGE_NUMBER_PATTERN.matcher(displayNameOf(entry));
             if (!m.find()) {
                 return Integer.MAX_VALUE;
             }
@@ -417,16 +417,23 @@ public class OverviewPanel extends JPanel {
             addOrUpdate(entry);
         }
         if (null != Voynich.config.sortKey) {
-            applySort(SortKey.valueOf(Voynich.config.sortKey), Voynich.config.sortDescending);
+            try {
+                applySort(SortKey.valueOf(Voynich.config.sortKey), Voynich.config.sortDescending);
+            } catch (IllegalArgumentException ex) {
+                // A config saved under an older SortKey enum constant name
+                // (e.g. the pre-rename "FILENAME") — fall back to whatever
+                // order loadFromCatalog's own catalog.listAll() returned,
+                // rather than crashing startup over a stale config value.
+            }
         }
     }
 
     /**
      * Adds {@code entry} to the grid, or updates it in place if already
-     * present (matched by {@link CatalogEntry#filename}). Reads the
-     * thumbnail from the catalog — same I/O caveat as
-     * {@link #loadFromCatalog()}. The actual grid mutation is marshaled to
-     * the EDT, so this is safe to call from a scan's background thread.
+     * present (matched by {@link CatalogEntry#id}). Reads the thumbnail
+     * from the catalog — same I/O caveat as {@link #loadFromCatalog()}.
+     * The actual grid mutation is marshaled to the EDT, so this is safe to
+     * call from a scan's background thread.
      *
      * @param entry the entry to show
      */
@@ -452,8 +459,8 @@ public class OverviewPanel extends JPanel {
         Runnable apply = new Runnable() {
             @Override
             public void run() {
-                thumbnails.put(entry.filename, thumbnail);
-                int idx = indexOf(entry.filename);
+                thumbnails.put(entry.id, thumbnail);
+                int idx = indexOfId(entry.id);
                 if (idx >= 0) {
                     allEntries.set(idx, entry);
                 } else {
@@ -472,7 +479,7 @@ public class OverviewPanel extends JPanel {
     /**
      * Replaces the grid row for {@code renamedEntry.id} with
      * {@code renamedEntry} (same underlying image, now shown under a new
-     * display filename) — used after {@link Catalog#renameEntry}, which
+     * display name) — used after {@link Catalog#renameEntry}, which
      * updates the catalog's own storage but has no way to reach into this
      * grid's separate in-memory model. Updates in place at the row's
      * existing position rather than removing then re-adding, so the
@@ -480,12 +487,9 @@ public class OverviewPanel extends JPanel {
      * rename. No-op if {@code renamedEntry.id} isn't currently shown (e.g.
      * filtered out).
      *
-     * @param oldFilename the entry's display filename before the rename —
-     * only used to find its old thumbnail-cache entry, since {@link
-     * #thumbnails} is still keyed by filename for display purposes
      * @param renamedEntry the same entry, already updated
      */
-    public void renameEntry(String oldFilename, final CatalogEntry renamedEntry) {
+    public void renameEntry(final CatalogEntry renamedEntry) {
         final int idx = indexOfId(renamedEntry.id);
         if (idx < 0) {
             return;
@@ -493,8 +497,6 @@ public class OverviewPanel extends JPanel {
         Runnable apply = new Runnable() {
             @Override
             public void run() {
-                BufferedImage thumb = thumbnails.remove(oldFilename);
-                thumbnails.put(renamedEntry.filename, thumb);
                 allEntries.set(idx, renamedEntry);
                 applyFilter();
             }
@@ -504,15 +506,6 @@ public class OverviewPanel extends JPanel {
         } else {
             SwingUtilities.invokeLater(apply);
         }
-    }
-
-    private int indexOf(String filename) {
-        for (int i = 0; i < allEntries.size(); i++) {
-            if (allEntries.get(i).filename.equals(filename)) {
-                return i;
-            }
-        }
-        return -1;
     }
 
     private int indexOfId(int id) {
@@ -525,23 +518,9 @@ public class OverviewPanel extends JPanel {
     }
 
     /**
-     * @return the cataloged entry named {@code filename}, or {@code null} if
-     * none exists — a linear scan over {@link #allEntries}, same cost as
-     * {@link #indexOf}; not worth a {@code Map} for its one caller
-     * (Two-Page View's r/v counterpart lookup, see {@link Voynich}).
-     */
-    CatalogEntry findByFilename(String filename) {
-        int idx = indexOf(filename);
-        return idx < 0 ? null : allEntries.get(idx);
-    }
-
-    /**
      * @return the cataloged entry with permanent key {@code id}, or
-     * {@code null} if none exists — the id-based counterpart to {@link
-     * #findByFilename}, needed once a folio's recto/verso counterpart is
-     * resolved via {@link ScanRenamer#idForFolio} rather than by
-     * reconstructing a display filename string (which only works if the
-     * grid happens to be showing Yale-shaped names right now).
+     * {@code null} if none exists — used once a folio's recto/verso
+     * counterpart is resolved via {@link ScanRenamer#idForFolio}.
      */
     CatalogEntry findById(int id) {
         int idx = indexOfId(id);
@@ -575,7 +554,23 @@ public class OverviewPanel extends JPanel {
      * files from disk.
      */
     BufferedImage thumbnailOf(CatalogEntry entry) {
-        return thumbnails.get(entry.filename);
+        return thumbnails.get(entry.id);
+    }
+
+    /**
+     * @return {@code entry}'s basename under {@link Config#namingScheme},
+     * the currently active naming scheme — the live
+     * replacement for what used to be the stored {@code CatalogEntry
+     * .filename} (see its class doc for why that field was removed), used
+     * everywhere the grid needs to show or sort by "the name as the user
+     * currently knows it."
+     */
+    static String displayNameOf(CatalogEntry entry) {
+        try {
+            return ScanRenamer.cached().displayName(entry.id, Voynich.config.namingScheme);
+        } catch (IOException ex) {
+            return String.valueOf(entry.id);
+        }
     }
 
     /**
@@ -604,12 +599,12 @@ public class OverviewPanel extends JPanel {
      * {@code entry.id}'s bundled {@code data/scan-naming.tsv} row, parsing
      * the stable {@code "Yale"} column's value (the one scheme guaranteed
      * folio-shaped for every foliated page, e.g. {@code "3r.png"} — see
-     * {@code SCANS.md}), not {@code entry.filename}, which is whatever
-     * display scheme is currently active and might be voynich.nu's {@code "f3r"}
-     * or torrent's {@code "004.jpg"}, neither of which parses as a folio.
-     * Falls back to parsing {@code entry.filename} directly only if the
-     * naming table can't be loaded or has no row for this id (an entry
-     * that predates the id system, or one outside the known 213 pages).
+     * {@code SCANS.md}), not {@link #displayNameOf}'s current-scheme name,
+     * which might be voynich.nu's {@code "f3r"} or torrent's {@code
+     * "004.jpg"}, neither of which parses as a folio. Falls back to parsing
+     * the current-scheme display name directly only if the naming table
+     * can't be loaded or has no row for this id (an entry that predates the
+     * id system, or one outside the known 213 pages).
      *
      * @return the parsed folio, or {@code null} if this page isn't
      * foliated at all (a cover, flyleaf, or multi-folio composite scan —
@@ -630,10 +625,10 @@ public class OverviewPanel extends JPanel {
                     }
                 }
             } catch (IOException ignored) {
-                // Fall through to the filename-based fallback below.
+                // Fall through to the display-name-based fallback below.
             }
         }
-        return parseFolioText(entry.filename);
+        return parseFolioText(displayNameOf(entry));
     }
 
     /**
@@ -669,8 +664,8 @@ public class OverviewPanel extends JPanel {
         @Override
         public Component getListCellRendererComponent(JList<? extends CatalogEntry> list, CatalogEntry entry,
                 int index, boolean isSelected, boolean cellHasFocus) {
-            setText(entry.filename);
-            BufferedImage thumb = thumbnails.get(entry.filename);
+            setText(displayNameOf(entry));
+            BufferedImage thumb = thumbnails.get(entry.id);
             Icon icon = null;
             if (null != thumb) {
                 if (contentAreaOnly && null != entry.mainRegion()) {

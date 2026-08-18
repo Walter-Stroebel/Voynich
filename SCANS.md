@@ -7,21 +7,20 @@ torrent release, this project's own working set, and
 [Rene Zandbergen's voynich.nu](https://www.voynich.nu/), the most
 established reference site for the manuscript.
 
-**Scope decision (2026-08-18): this app is not going to pick a single
-"correct" canonical naming convention.** Whether Rene's `f70v1`-style
-notation, this project's own IIIF-derived naming, or Yale's raw manifest
-labels is "right" is a question for the Voynich research community to
-settle among themselves, not something this app has any business having
-an opinion on. Instead: small, source-specific conversion
-scripts/utilities that let *whatever scan set the user already has*
-become the consistent, working-catalog naming for their own copy — so a
-user who downloaded the 2004 torrent JPGs gets a catalog where those
-files behave like proper folios (Two-Page View, folio sort, etc. all
-work), without this project asserting that naming is "the" canonical one
-for the manuscript at large.
+**Scope decision: this app does not pick a single "correct" canonical
+*display* naming convention.** Whether Rene's `f70v1`-style notation,
+this project's own IIIF-derived naming, or Yale's raw manifest labels is
+"right" is a question for the Voynich research community to settle among
+themselves, not something this app has any business having an opinion
+on — any of them can be the active `namingScheme` a user renames their
+files to and works with.
 
-This is genuinely unfinished — see "What's left to build" below. Nothing
-here should be treated as settled until that section is empty.
+That said, the catalog's internal *identity* is canonical, closing a real
+gap this project ran into independently — no table ties the manuscript's
+various naming schemes to one shared identity — that echoes, without
+being identical to, gaps voynich.nu documents in its own transcription
+and description pages. See [DATABASE.md](DATABASE.md) for the full design
+and rationale.
 
 ## Why this matters
 
@@ -90,31 +89,20 @@ believing one is a "better scan" than another.
 
 ## What's left to build
 
-1. **Done (2026-08-18).** File → "Rename to…" (`Voynich.renameScans`,
-   backed by `ScanRenamer`/`RenameTaskWindow`) renames files under
-   `scanPath` in place between any two naming schemes — columns of the
-   bundled `data/scan-naming.tsv` lookup table (`Sequential`, `Yale`,
-   `VoynichNu` so far, keyed by a permanent `Id` column that's never a
-   rename target itself; add more columns to the TSV and they show up as
-   new menu targets automatically, no code change needed). `Config.namingScheme`
+1. **Done.** File → "Rename to…" (`Voynich.renameScans`, backed by
+   `ScanRenamer`/`RenameTaskWindow`) renames files under `scanPath` in
+   place between any two naming schemes — columns of the bundled
+   `data/scan-naming.tsv` lookup table (`Sequential`, `Yale`, `VoynichNu`
+   so far, keyed by a permanent `Id` column that's never a rename target
+   itself; add more columns to the TSV and they show up as new menu
+   targets automatically, no code change needed). `Config.namingScheme`
    tracks which column the files currently match, updated after a
-   successful rename. Real file extension is always preserved, independent
-   of naming scheme, since `OverviewPanel.parseFolio` already treats
-   png/jpg/jpeg interchangeably. Pre-flight collision/blank-target
-   detection refuses individual files rather than choking mid-batch —
-   an earlier four-column version of this table had a real collision here
-   (two distinct `70v (part)`/`72v (part)`/`102v (part)` split-page scans
-   sharing one label under a since-dropped `yale_label` column); the
-   current three columns have no such collision in the live table, but the
-   guard stays in place for whatever the next added column turns up. A
-   rename always re-triggers Scan afterward so the catalog picks up the
-   new names. A
-   first design attempt (an embedded runtime lookup inside `parseFolio`
-   itself, rather than a one-time rename step) was started and abandoned
-   mid-build — see `project_folio_naming_convention_mess.md` in project
-   memory for why; the one-time-rename shape is simpler and doesn't need
-   `parseFolio` itself to change at all.
-2. **Check the manuscript's own foliation for gaps/splits the renamer
+   successful rename. Real file extension is always preserved,
+   independent of naming scheme. Pre-flight collision/blank-target
+   detection refuses individual files rather than choking mid-batch.
+2. **Done.** The catalog's identity is fully id-canonical — see
+   [DATABASE.md](DATABASE.md) for the full design.
+3. **Check the manuscript's own foliation for gaps/splits the renamer
    needs to not choke on**, independent of any naming-authority question:
    found while reading voynich.nu's gallery, split-page notation
    (`f67r1`/`f67r2`/`f67v2`/`f67v1`, `f68r1`/`f68r2`/`f68r3`) that doesn't
@@ -126,13 +114,15 @@ believing one is a "better scan" than another.
    own historical foliation, not a scan-quality problem, and a renaming
    tool needs to handle them (or clearly skip them) rather than silently
    mis-map a page.
-3. **If useful later**: a similar conversion utility for other source
+4. **If useful later**: a similar conversion utility for other source
    naming schemes as they come up (e.g. if a user's TIFF set from Yale's
    direct download uses `canvasId`-based filenames) — not needed yet,
    nothing currently blocks on it.
 
 ## References
 
+- [DATABASE.md](DATABASE.md) — the id-canonical naming-scheme database
+  this project built, and the naming-identity gap it addresses.
 - [Rene Zandbergen's voynich.nu](https://www.voynich.nu/) — the Voynich
   research community's long-standing reference site; its own folio
   notation (`f70v1`, `f85v+f86r`, etc.) is where the split-page/foliation

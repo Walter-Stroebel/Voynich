@@ -80,7 +80,7 @@ final class RegionView {
                 BufferedImage full = ImageIO.read(file);
                 BufferedImage raster = crop(full, region);
                 File target = new File(System.getProperty("java.io.tmpdir"),
-                        entry.filename + kindSuffix + "." + System.currentTimeMillis() + ".png");
+                        OverviewPanel.displayNameOf(entry) + kindSuffix + "." + System.currentTimeMillis() + ".png");
                 ImageIO.write(raster, "png", target);
                 return target;
             }
@@ -123,7 +123,7 @@ final class RegionView {
             }
             return;
         }
-        askVisionOnImage(owner, entry.filename, file, region, question, onComplete);
+        askVisionOnImage(owner, OverviewPanel.displayNameOf(entry), file, region, question, onComplete);
     }
 
     /**
@@ -198,7 +198,7 @@ final class RegionView {
                 }
                 BufferedImage full = ImageIO.read(file);
                 BitSet2D.Crop crop = BitSet2D.cropAndMaskPolygon(full, vertices(region));
-                return new ColorImage(crop.image, entry.filename + " [" + region.kind + "]", crop.mask);
+                return new ColorImage(crop.image, OverviewPanel.displayNameOf(entry) + " [" + region.kind + "]", crop.mask);
             }
 
             @Override

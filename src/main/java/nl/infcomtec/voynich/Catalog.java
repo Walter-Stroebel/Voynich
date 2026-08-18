@@ -11,9 +11,9 @@ import java.util.List;
 /**
  * Persistence for the image catalog: one {@link CatalogEntry} (thumbnail
  * inlined as base64 in its JSON) per {@link CatalogEntry#id} — the app's
- * permanent internal key, not the display {@link CatalogEntry#filename},
- * which can and does change under a rename (see {@link #renameEntry}).
- * {@link FileCatalog} is the only backend — see {@link #open(Config)}.
+ * only identity for a page; see {@link CatalogEntry}'s class doc for why no
+ * display filename is stored. {@link FileCatalog} is the only backend —
+ * see {@link #open(Config)}.
  */
 public interface Catalog {
 
@@ -59,42 +59,37 @@ public interface Catalog {
     void deleteEntry(int id) throws IOException;
 
     /**
-     * Convenience lookup for callers that only have a display filename
-     * (CLI args, a click in the UI) — a linear scan over {@link #listAll()}
-     * matching {@link CatalogEntry#filename}, since filename is no longer
-     * the storage key and has no dedicated index. Fine at this catalog's
-     * scale (213 entries); not meant for a hot path.
+     * Convenience lookup for callers that only have a display filename (CLI
+     * args, a click in the UI) — resolves {@code filename} to a permanent
+     * id via {@link ScanRenamer#idForName} first (the normal case: any of
+     * the known naming schemes' names for one of the 213 manuscript pages),
+     * falling back to matching an existing entry's {@link
+     * CatalogEntry.Location#path} basename (a file already catalogued but
+     * outside the TSV's own coverage, e.g. a colour chart or test image).
+     * {@code null} for a name that resolves to neither — this catalog does
+     * not deal with files the naming table can't identify (see
+     * {@link CatalogEntry}'s class doc).
      *
      * @param filename the entry's current display filename
-     * @return the matching entry, or {@code null} if none has that filename
-     * @throws IOException if the underlying listing fails
+     * @return the matching entry, or {@code null} if {@code filename}
+     * doesn't resolve to any known id
+     * @throws IOException if the underlying listing, or the naming table
+     * load, fails
      */
     default CatalogEntry loadEntryByFilename(String filename) throws IOException {
+        Integer id = ScanRenamer.cached().idForName(filename);
+        if (null != id) {
+            return loadEntry(id);
+        }
+        String basename = new File(filename).getName();
         for (CatalogEntry entry : listAll()) {
-            if (entry.filename.equals(filename)) {
-                return entry;
+            for (CatalogEntry.Location loc : entry.locations) {
+                if (new File(loc.path).getName().equals(basename)) {
+                    return entry;
+                }
             }
         }
         return null;
-    }
-
-    /**
-     * @return one higher than the largest {@link CatalogEntry#id} currently
-     * stored (or {@code 1} for an empty catalog) — used to assign a fresh
-     * id to a file that doesn't match any {@link ScanRenamer} naming
-     * column (e.g. something outside the known 213-page manuscript dropped
-     * into {@code scanPath}), so it still gets a stable identity rather
-     * than being skipped or crashing the scan.
-     * @throws IOException if the underlying listing fails
-     */
-    default int nextUnusedId() throws IOException {
-        int max = 0;
-        for (CatalogEntry entry : listAll()) {
-            if (entry.id > max) {
-                max = entry.id;
-            }
-        }
-        return max + 1;
     }
 
     /**
@@ -206,11 +201,10 @@ public interface Catalog {
      * and {@link #save} rather than in {@link FileCatalog} itself.
      *
      * @param id the catalog key — resolved by the caller (see
-     * {@code ScanTaskWindow}) before this is called, since only the caller
-     * knows how to turn a filename into a stable id (via
-     * {@link ScanRenamer}, or an existing entry's own id if this file was
-     * already catalogued under a different display name)
-     * @param filename the file's current display name
+     * {@code ScanTaskWindow}) before this is called via
+     * {@link ScanRenamer#idForName}, since this catalog only deals with
+     * files the naming table can identify (see {@link CatalogEntry}'s
+     * class doc)
      * @param file the file this sighting came from; its path, size and
      * mtime are recorded as (or update) one {@link CatalogEntry.Location}
      * @param width image width, as decoded
@@ -223,14 +217,13 @@ public interface Catalog {
      * @return the merged, saved entry
      * @throws IOException if the underlying read/write fails
      */
-    default CatalogEntry recordSighting(int id, String filename, File file, int width, int height,
+    default CatalogEntry recordSighting(int id, File file, int width, int height,
             int uniqueColors, int thumbnailUniqueColors, BufferedImage thumbnail) throws IOException {
         CatalogEntry entry = loadEntry(id);
         if (null == entry) {
             entry = new CatalogEntry();
             entry.id = id;
         }
-        entry.filename = filename;
         entry.width = width;
         entry.height = height;
         entry.uniqueColors = uniqueColors;
@@ -256,10 +249,10 @@ public interface Catalog {
     }
 
     /**
-     * Renames an entry's {@link CatalogEntry#filename} and matching
-     * {@link CatalogEntry.Location#path} in place — the entry's {@link
-     * CatalogEntry#id} and everything else about it (thumbnail, regions,
-     * tags) is untouched, since {@code id}, not filename, is the storage
+     * Updates an entry's {@link CatalogEntry.Location#path} in place to
+     * match a rename that already happened on disk — the entry's
+     * {@link CatalogEntry#id} and everything else about it (thumbnail,
+     * regions, tags) is untouched, since {@code id} is the only storage
      * key. Used by {@link ScanRenamer}-driven renames (see {@code
      * RenameTaskWindow}): a filesystem rename alone doesn't touch the
      * catalog, so this is the catalog-side half of that operation —
@@ -267,27 +260,28 @@ public interface Catalog {
      * every renamed image from scratch.
      *
      * @param id the entry's permanent catalog key
-     * @param newFilename the entry's new display filename
+     * @param oldFile the file's on-disk location before the rename —
+     * matched by exact path against the entry's existing
+     * {@link CatalogEntry.Location}s, since there's no stored filename to
+     * match against instead
      * @param newFile the file's new on-disk location, so the matching
-     * {@link CatalogEntry.Location#path} can be updated too — otherwise a
-     * later Scan would see it as a fresh sighting under the old path,
-     * mismatched against the new filename
+     * {@link CatalogEntry.Location#path} can be updated — otherwise a
+     * later Scan would see it as a fresh sighting under the old path
      * @return the updated entry, or {@code null} if {@code id} had no entry
      * @throws IOException if the underlying read/write fails
      */
-    default CatalogEntry renameEntry(int id, String newFilename, File newFile) throws IOException {
+    default CatalogEntry renameEntry(int id, File oldFile, File newFile) throws IOException {
         CatalogEntry entry = loadEntry(id);
         if (null == entry) {
             return null;
         }
-        String oldFilename = entry.filename;
+        String oldPath = oldFile.getAbsolutePath();
         String newPath = newFile.getAbsolutePath();
         for (CatalogEntry.Location loc : entry.locations) {
-            if (new File(loc.path).getName().equals(oldFilename)) {
+            if (loc.path.equals(oldPath)) {
                 loc.path = newPath;
             }
         }
-        entry.filename = newFilename;
         save(entry, loadThumbnail(id));
         return entry;
     }

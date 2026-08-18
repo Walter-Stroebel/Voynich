@@ -127,49 +127,34 @@ public class ScanTaskWindow extends TaskWindow {
             return;
         }
         try {
-            int id = resolveId(file, renamer);
-            CatalogEntry existing = catalog.loadEntry(id);
-            if (unchanged(existing, file)) {
-                overview.addOrUpdate(existing);
-                publishLine(file.getName() + ": unchanged, skipped.");
+            Integer id = renamer.idForName(file.getName());
+            if (null == id) {
+                // This catalog only deals with files data/scan-naming.tsv
+                // can identify (see CatalogEntry's class doc) — an
+                // unrecognized file is reported and skipped, never given a
+                // freshly minted id.
+                publishLine(file.getName() + ": not in data/scan-naming.tsv, skipped.");
                 skipped.incrementAndGet();
             } else {
-                ColorImage ci = new ColorImage(file);
-                CatalogEntry entry = catalog.recordSighting(
-                        id, file.getName(), file, ci.w, ci.h, ci.labIndex.size(),
-                        ci.thumbnailUniqueColors, ci.thumbnail);
-                overview.addOrUpdate(entry, ci.thumbnail);
-                publishLine(file.getName() + ": " + ci.w + "x" + ci.h + ", "
-                        + ci.labIndex.size() + " colors.");
+                CatalogEntry existing = catalog.loadEntry(id);
+                if (unchanged(existing, file)) {
+                    overview.addOrUpdate(existing);
+                    publishLine(file.getName() + ": unchanged, skipped.");
+                    skipped.incrementAndGet();
+                } else {
+                    ColorImage ci = new ColorImage(file);
+                    CatalogEntry entry = catalog.recordSighting(
+                            id, file, ci.w, ci.h, ci.labIndex.size(),
+                            ci.thumbnailUniqueColors, ci.thumbnail);
+                    overview.addOrUpdate(entry, ci.thumbnail);
+                    publishLine(file.getName() + ": " + ci.w + "x" + ci.h + ", "
+                            + ci.labIndex.size() + " colors.");
+                }
             }
         } catch (Exception ex) {
             publishLine(file.getName() + ": FAILED - " + ex.getMessage());
         }
         setProgressPercent((int) (completed.incrementAndGet() * 100L / total));
-    }
-
-    /**
-     * Resolves {@code file}'s permanent {@link CatalogEntry#id}: first via
-     * {@link ScanRenamer#idForName}, which covers every file matching a
-     * known naming scheme (the normal case — all 213 manuscript pages,
-     * whatever scheme the folder currently uses); then by matching an
-     * already-catalogued entry's {@link CatalogEntry#filename} (a file that
-     * was previously scanned under this exact name but isn't in the
-     * manuscript's own 213, e.g. a colour chart or test image someone
-     * dropped into {@code scanPath}); and only if neither matches, a fresh
-     * id via {@link Catalog#nextUnusedId} — so an unrecognized file still
-     * gets catalogued with a stable identity rather than being skipped.
-     */
-    private int resolveId(File file, ScanRenamer renamer) throws IOException {
-        Integer known = renamer.idForName(file.getName());
-        if (null != known) {
-            return known;
-        }
-        CatalogEntry existing = catalog.loadEntryByFilename(file.getName());
-        if (null != existing) {
-            return existing.id;
-        }
-        return catalog.nextUnusedId();
     }
 
     /**

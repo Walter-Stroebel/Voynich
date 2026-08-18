@@ -11,10 +11,10 @@ is an internal engineering ledger, not user-facing documentation — see
 
 ## Function matrix
 
-Audited 2026-08-09, rows added through 2026-08-14 (toolbar → menu bar
+Audited 2026-08-09, rows added through 2026-08-18 (toolbar → menu bar
 migration, thumbnail-grid selection, Two-Page View, Thumbnail Matrix,
-multi-page Ask Vision). "GUI"/"CLI" are checkmarked when that path exists;
-"Location" is the class (and specific control) that implements it.
+multi-page Ask Vision, Export). "GUI"/"CLI" are checkmarked when that path
+exists; "Location" is the class (and specific control) that implements it.
 
 | # | Function | GUI | CLI | Location |
 |---|---|---|---|---|
@@ -59,7 +59,8 @@ multi-page Ask Vision). "GUI"/"CLI" are checkmarked when that path exists;
 | 37 | Compose a folio's recto+verso pair side by side and open in infimg | ✅ Selected → Two-Page View (2 selected entries, or 1 with an inferable r/v counterpart; disabled otherwise, including all non-foliated pages) | ✅ `two-page <filename> [<other-filename>] [--out path]` | `Voynich.openTwoPageView()` / `twoPagePair()` / `CatalogCli.twoPage()`, all via `ImageGrid` |
 | 38 | Compose selected pages' thumbnails into one grid image and open in infimg | ✅ Selected → Thumbnail Matrix (screen-fit warning above the current display's usable bounds) | ✅ `matrix <filename> [<filename>...] [--out path]` | `Voynich.openThumbnailMatrix()` / `CatalogCli.matrix()`, both via `ImageGrid` |
 | 39 | Rename scan files in place between naming schemes (torrent/Yale/project/voynich.nu/etc., driven by `data/scan-naming.tsv`) | ✅ File → Rename to… (submenu lists every TSV column except the current `Config.namingScheme`; confirms first, warns on ≤10 or >213 files found, re-runs Scan on success) | ❌ | `Voynich.renameScans()` → `ScanRenamer` / `RenameTaskWindow` |
-| 40 | "Which file is X in my universe?" — resolve any naming scheme's name (or the current catalog filename) to every other scheme's name for the same page | ❌ (the editor's aliases label, see #17-ish above, needs the entry already open) | ✅ `alias <name>` | `CatalogCli.alias()` → `ScanRenamer.idForName`/`rowFor` |
+| 40 | "Which file is X in my universe?" — resolve any naming scheme's name (or an on-disk filename) to every other scheme's name for the same page | ❌ (the editor's aliases label, see #17-ish above, needs the entry already open) | ✅ `alias <name>` | `CatalogCli.alias()` → `ScanRenamer.idForName`/`rowFor` |
+| 41 | Export tags/regions (metadata only, never image bytes) for All/Selected/Marked entries as one id-keyed JSON file | ✅ File → Export… (submenu: All/Selected/Marked, prompts for an exporter name) | ✅ `export <exporterName> --all \| --marked \| <filename> [<filename>...] -- <outFile>` | `Voynich.exportEntries()` / `CatalogCli.export()`, both via `CatalogExporter` |
 
 **Confirmed intentional asymmetries** (not gaps, checked 2026-08-09; #32/37/38 now
 GUI+CLI symmetric as of 2026-08-14, listed for contrast):
@@ -107,7 +108,7 @@ GUI+CLI symmetric as of 2026-08-14, listed for contrast):
   answer. See `memory/project_vision_salience_bias_finding.md` for how it
   was produced and validated.
 - `~/.infVoy/catalog` — the live catalog (213 entries); one
-  `<filename>.json` per entry, thumbnail inlined as base64
+  `<id>.json` per entry, thumbnail inlined as base64
 - `~/.infVoy/catalog-checkpoints/` — manual checkpoints, one
   `<epoch-millis>.zip` each, never auto-pruned
 - `src/main/resources/stolfi/` (gitignored — third-party sourced + one
@@ -191,6 +192,10 @@ app's own catalog. Six `voynich*` directories:
 - `MANUAL.md` — full user-facing walkthrough of the app itself
 - `INSTALL.md` — zero-to-running setup for someone without Java/Maven/git
   or the scan corpus already in place
+- `SCANS.md` — scan-source provenance research notes (where the pixels
+  came from, naming-scheme scope decision)
+- `DATABASE.md` — the id-canonical naming-scheme database this project
+  built (`data/scan-naming.tsv`) and the design rationale behind it
 - `inventory.md` — this file: internal function-matrix audit + non-code
   asset inventory, not user-facing
 - `replication/README.md` — replication setup walkthrough

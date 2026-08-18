@@ -21,6 +21,7 @@ import javax.imageio.ImageIO;
 import javax.swing.Box;
 import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JComponent;
+import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JMenu;
@@ -174,6 +175,23 @@ public class Voynich {
             System.exit(2);
         }
 
+        // The naming table is every catalog entry's identity ground truth
+        // (see CatalogEntry.id's doc) — a missing bundled resource just
+        // disables the "Rename to..." menu (see below), but a malformed one
+        // (e.g. ScanRenamer.load's duplicate-value check) means id
+        // resolution itself is untrustworthy app-wide, not just for
+        // renaming, so that case is a hard stop before anything else loads.
+        try {
+            ScanRenamer.cached();
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(null, "The bundled naming table (data/scan-naming.tsv) is malformed:\n"
+                    + ex.getMessage() + "\n\nFix the table before running this app.",
+                    "Cannot start", JOptionPane.ERROR_MESSAGE);
+            System.err.println("Cannot start: " + ex.getMessage());
+            System.exit(2);
+            return;
+        }
+
         Catalog catalog;
         try {
             catalog = Catalog.open(config);
@@ -211,7 +229,7 @@ public class Voynich {
         JMenu renameMenu = new JMenu("Rename to…");
         final Map<String, JMenuItem> renameItemsByColumn = new java.util.LinkedHashMap<>();
         try {
-            ScanRenamer renamer = ScanRenamer.load();
+            ScanRenamer renamer = ScanRenamer.cached();
             for (final String column : renamer.columns) {
                 JMenuItem item = new JMenuItem(new EzAction(column) {
                     @Override
@@ -250,6 +268,36 @@ public class Voynich {
             }
         });
         fileMenu.add(renameMenu);
+        JMenu exportMenu = new JMenu("Export…");
+        exportMenu.add(new JMenuItem(new EzAction("All") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                try {
+                    exportEntries(fr, catalog.listAll());
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(fr, "Could not read catalog:\n" + ex.getMessage(),
+                            "Export failed", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }.withTooltip("Export metadata (tags/regions) for every catalog entry")));
+        exportMenu.add(new JMenuItem(new EzAction("Selected") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                exportEntries(fr, overview.getSelectedEntries());
+            }
+        }.withTooltip("Export metadata (tags/regions) for the currently selected thumbnails")));
+        exportMenu.add(new JMenuItem(new EzAction("Marked") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                try {
+                    exportEntries(fr, CatalogExporter.marked(catalog));
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(fr, "Could not read catalog:\n" + ex.getMessage(),
+                            "Export failed", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }.withTooltip("Export metadata only for entries with real tags/regions beyond the whole page")));
+        fileMenu.add(exportMenu);
         fileMenu.add(new JMenuItem(new EzAction("Storage…") {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -634,6 +682,39 @@ public class Voynich {
     }
 
     /**
+     * File → Export…'s shared behavior for All/Selected/Marked: prompts for
+     * an exporter name (used to attribute any blank {@link
+     * CatalogEntry.Region#author} in the export only — never written back to
+     * the catalog, see {@link CatalogExporter#toExported}), then a save
+     * dialog for the output JSON. No-ops silently on an empty {@code
+     * entries} or a cancelled prompt/dialog.
+     */
+    private static void exportEntries(JFrame fr, List<CatalogEntry> entries) {
+        if (entries.isEmpty()) {
+            JOptionPane.showMessageDialog(fr, "Nothing to export.", "Export", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        String exporterName = JOptionPane.showInputDialog(fr,
+                "Exporter name (used to attribute unattributed regions in this export only):",
+                "Export", JOptionPane.QUESTION_MESSAGE);
+        if (null == exporterName) {
+            return;
+        }
+        JFileChooser chooser = new JFileChooser();
+        chooser.setSelectedFile(new File("voynich-export.json"));
+        if (JFileChooser.APPROVE_OPTION != chooser.showSaveDialog(fr)) {
+            return;
+        }
+        File target = chooser.getSelectedFile();
+        try {
+            CatalogExporter.export(entries, exporterName, target);
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(fr, "Export failed:\n" + ex.getMessage(),
+                    "Export failed", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    /**
      * Reloads {@link OverviewPanel} from the catalog, e.g. after a
      * {@link StorageDialog} restore replaces the live catalog wholesale
      * out from under it.
@@ -727,7 +808,8 @@ public class Voynich {
                     int cellH = Math.max(imgA.getHeight(), imgB.getHeight());
                     BufferedImage composite = ImageGrid.paint(List.of(imgA, imgB), 2, new Dimension(cellW, cellH));
                     File target = new File(System.getProperty("java.io.tmpdir"),
-                            a.filename + "+" + b.filename + ".combined." + System.currentTimeMillis() + ".png");
+                            OverviewPanel.displayNameOf(a) + "+" + OverviewPanel.displayNameOf(b)
+                                    + ".combined." + System.currentTimeMillis() + ".png");
                     ImageIO.write(composite, "png", target);
                     return target;
                 }
@@ -736,7 +818,8 @@ public class Voynich {
                 protected void done() {
                     RegionView.busy.exit();
                     try {
-                        RegionView.askVisionOnImage(fr, a.filename + "+" + b.filename + " combined",
+                        RegionView.askVisionOnImage(fr,
+                                OverviewPanel.displayNameOf(a) + "+" + OverviewPanel.displayNameOf(b) + " combined",
                                 get(), null, question, null);
                     } catch (Exception ex) {
                         JOptionPane.showMessageDialog(fr, "Could not compose combined image:\n" + ex.getMessage(),
@@ -793,7 +876,8 @@ public class Voynich {
                 int cellH = Math.max(a.getHeight(), b.getHeight());
                 BufferedImage composite = ImageGrid.paint(List.of(a, b), 2, new Dimension(cellW, cellH));
                 File target = new File(System.getProperty("java.io.tmpdir"),
-                        verso.filename + "+" + recto.filename + "." + System.currentTimeMillis() + ".png");
+                        OverviewPanel.displayNameOf(verso) + "+" + OverviewPanel.displayNameOf(recto)
+                                + "." + System.currentTimeMillis() + ".png");
                 ImageIO.write(composite, "png", target);
                 return target;
             }

@@ -159,7 +159,7 @@ final class RegionViewer {
             BufferedImage raster) {
         JFileChooser chooser = new JFileChooser(lastExportDir);
         chooser.setFileFilter(new FileNameExtensionFilter("PNG image", "png"));
-        chooser.setSelectedFile(new File(lastExportDir, entry.filename + "." + region.kind + ".png"));
+        chooser.setSelectedFile(new File(lastExportDir, OverviewPanel.displayNameOf(entry) + "." + region.kind + ".png"));
         if (JFileChooser.APPROVE_OPTION != chooser.showSaveDialog(owner)) {
             return;
         }
@@ -187,7 +187,7 @@ final class RegionViewer {
     private static void saveToTmpAndView(Window owner, CatalogEntry entry, CatalogEntry.Region region,
             BufferedImage raster) {
         File target = new File(System.getProperty("java.io.tmpdir"),
-                entry.filename + "." + region.kind + "." + System.currentTimeMillis() + ".png");
+                OverviewPanel.displayNameOf(entry) + "." + region.kind + "." + System.currentTimeMillis() + ".png");
         try {
             ImageIO.write(raster, "png", target);
         } catch (IOException ex) {

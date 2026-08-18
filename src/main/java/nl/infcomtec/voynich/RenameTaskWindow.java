@@ -57,10 +57,10 @@ public class RenameTaskWindow extends TaskWindow {
                 if (ok) {
                     renamed++;
                     publishLine(oldName + " -> " + plan.dest.getName());
-                    CatalogEntry renamedEntry = catalog.renameEntry(plan.id, plan.dest.getName(), plan.dest);
+                    CatalogEntry renamedEntry = catalog.renameEntry(plan.id, src, plan.dest);
                     if (null != renamedEntry) {
                         catalogUpdated++;
-                        overview.renameEntry(oldName, renamedEntry);
+                        overview.renameEntry(renamedEntry);
                     }
                 } else {
                     publishLine(oldName + ": FAILED to rename to " + plan.dest.getName());

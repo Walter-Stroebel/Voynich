@@ -8,14 +8,18 @@ import java.util.List;
 
 /**
  * One logical image's catalog record. Stored under the permanent
- * {@link #id}, not {@link #filename} — the physical file can be, and
- * routinely is, renamed on disk (see {@link ScanRenamer}/{@code
- * RenameTaskWindow}), and {@code id} is what survives that unchanged.
- * {@code filename} is a display concern: the file's actual current name on
- * disk, matching every {@link Location}'s path. The same file routinely
- * exists at more than one path too (e.g. a NAS copy plus a local NVMe copy
- * kept for read speed) — those are the same catalog entry with two
- * {@link #locations}, not two entries.
+ * {@link #id} — the catalog's only identity for a page. There is
+ * deliberately no stored display filename: every cataloged file's name is
+ * always a live lookup into {@code data/scan-naming.tsv} via
+ * {@link ScanRenamer} (see {@link ScanRenamer#displayName}), never data
+ * this class caches itself — the physical file is, and routinely is,
+ * renamed on disk (see {@code RenameTaskWindow}), and a cached name would
+ * just go stale. A file that can't be resolved to an id via that table
+ * (see {@link ScanRenamer#idForName}) is not something this catalog deals
+ * with at all — see {@code ScanTaskWindow.resolveId}. The same file
+ * routinely exists at more than one path too (e.g. a NAS copy plus a local
+ * NVMe copy kept for read speed) — those are the same catalog entry with
+ * two {@link #locations}, not two entries.
  * <p>
  * Serialized as-is through {@link JSON} as a standalone {@code <id>.json}
  * sidecar file by {@link FileCatalog}, thumbnail included (see
@@ -37,14 +41,6 @@ public class CatalogEntry {
     public int id;
 
     /**
-     * The file's current display name — matches the physical filename
-     * shared by every {@link Location}, not any single one of their paths.
-     * Changes whenever the file is renamed on disk (see
-     * {@link Catalog#renameEntry}); {@link #id} is what stays stable
-     * across that.
-     */
-    public String filename;
-    /**
      * Every known place this file has been seen, most recently updated by
      * {@link Catalog#recordSighting}.
      */
@@ -61,13 +57,6 @@ public class CatalogEntry {
      * the other.
      */
     public int thumbnailUniqueColors;
-    /**
-     * The filename this image is known by in the original 2004/torrent JPG
-     * numbering (e.g. {@code "127.jpg"}), when known — see
-     * {@code data/voynich-page-index.json} for the full cross-reference.
-     * {@code null} if not yet established for this entry.
-     */
-    public String torrentJpg;
     /**
      * Free-text short notes about this page (e.g. {@code "circular diagram"},
      * {@code "foldout"}) — a per-file notepad, not a fixed set of categories.

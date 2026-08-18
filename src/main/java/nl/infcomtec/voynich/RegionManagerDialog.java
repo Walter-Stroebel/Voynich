@@ -71,7 +71,7 @@ final class RegionManagerDialog {
         this.image = image;
         this.onChanged = onChanged;
 
-        dialog = new JDialog(owner, "Regions — " + entry.filename, JDialog.ModalityType.MODELESS);
+        dialog = new JDialog(owner, "Regions — " + OverviewPanel.displayNameOf(entry), JDialog.ModalityType.MODELESS);
         dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
         dialog.setLayout(new BorderLayout());
 

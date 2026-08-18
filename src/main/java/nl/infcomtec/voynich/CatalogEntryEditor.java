@@ -187,7 +187,7 @@ final class CatalogEntryEditor {
         this.action = action;
         this.onSaved = onSaved;
 
-        String title = null != action ? action.label() + " review" : queue.get(0).filename;
+        String title = null != action ? action.label() + " review" : OverviewPanel.displayNameOf(queue.get(0));
         dialog = new JDialog(owner, title, JDialog.ModalityType.MODELESS);
         dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
         dialog.setLayout(new BorderLayout());
@@ -865,15 +865,15 @@ final class CatalogEntryEditor {
         fullImage = null;
         plainIcon = null;
         imageLabel.setIcon(null);
-        imageLabel.setText("Loading " + entry.filename + "…");
+        imageLabel.setText("Loading " + OverviewPanel.displayNameOf(entry) + "…");
         viewButton.setEnabled(false);
         areaButton.setEnabled(false);
         refreshRegionSelector(false);
 
         statusLabel.setText(null != action
                 ? String.format("%d / %d — %s — click the image to add a \"%s\" tag",
-                        index + 1, queue.size(), entry.filename, action.label())
-                : entry.filename);
+                        index + 1, queue.size(), OverviewPanel.displayNameOf(entry), action.label())
+                : OverviewPanel.displayNameOf(entry));
         aliasesLabel.setText(aliasesText(entry));
 
         loadFullImage(entry);
@@ -917,7 +917,7 @@ final class CatalogEntryEditor {
                 if (null == fullImage) {
                     plainIcon = null;
                     imageLabel.setIcon(null);
-                    imageLabel.setText("No readable file for " + target.filename);
+                    imageLabel.setText("No readable file for " + OverviewPanel.displayNameOf(target));
                 } else {
                     imageLabel.setText(null);
                     plainIcon = new ImageIcon(ImageDisplay.scaleToFit(fullImage, imageMaxW, imageMaxH));
