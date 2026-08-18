@@ -65,9 +65,8 @@ the full state and roadmap.
 
 The catalog started on MySQL, on the reasoning that anyone running their
 own container already has the "which DB, where, why, how" answers a
-single-user desktop tool shouldn't pre-decide for them. Retired
-2026-08-06 once inlined base64 thumbnails and single-zip checkpoints made
-a second stateful service stop paying for itself — see
-[CLAUDE.md](CLAUDE.md) for the mechanics. `replication/` is unrelated,
-predates this decision, and remains as generic MySQL replication work
-unconnected to the catalog.
+single-user desktop tool shouldn't pre-decide for them. Retired once
+inlined base64 thumbnails and single-zip checkpoints made a second
+stateful service stop paying for itself — see [CLAUDE.md](CLAUDE.md) for
+the mechanics. `replication/` is unrelated and remains as generic MySQL
+replication work unconnected to the catalog.

@@ -167,14 +167,11 @@ app's own catalog. Six `voynich*` directories:
   (lives outside any repo, not tracked here — spans multiple sibling repos,
   agent convenience rather than a deliverable of this one specifically).
   Freely usable over `ssh`/`scp`/`rsync` for read or write. The sibling
-  `infimg` repo was mirrored here too for one day after extraction
-  (2026-08-10) but dropped from the script the same day once it had its
-  own GitHub remote and tagged releases — GitHub is that repo's backup
-  now, so `predator:~/workbak/github/infimg/` no longer exists (deleted
-  2026-08-10, see `reference_predator_machine.md`).
-- `scripts/test-catalog-cli.sh` (added 2026-08-14, tracked in this repo —
-  unlike `sync-legion.sh` above, this one only tests `CatalogCli` and
-  is a real deliverable of this project specifically) — a plain shell
+  `infimg` repo has its own GitHub remote and tagged releases — GitHub is
+  its backup, so it isn't mirrored here.
+- `scripts/test-catalog-cli.sh` (tracked in this repo — unlike
+  `sync-legion.sh` above, this one only tests `CatalogCli` and is a real
+  deliverable of this project specifically) — a plain shell
   regression script exercising `CatalogCli`'s actual argv contract end to
   end against the built jar and a real catalog (no test framework, same
   spirit as `--smokeTest`; see `CLAUDE.md`'s "Build and Run" and
@@ -262,8 +259,8 @@ on the same foldout page, with an accurate description returned. See
 `memory/project_vision_resolution_floor_finding.md` for the full writeup
 and sourcing.
 
-**This app now has its own direct vision access too (added 2026-08-14),
-not just Claude Code's MCP tool.** `VisionClient` is a plain
+**This app has its own direct vision access too, not just Claude Code's
+MCP tool.** `VisionClient` is a plain
 `java.net.http.HttpClient` wrapper — no MCP client library, since the two
 calls involved (`PUT :8765/files`, `POST :8764/mcp` JSON-RPC `tools/call`)
 don't need one; MCP stays the tool-definition contract, image bytes travel
