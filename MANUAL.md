@@ -76,7 +76,7 @@ From the repo root:
 
 ```bash
 mvn package
-java -jar target/Voynich-1.0-jar-with-dependencies.jar
+java -jar target/Voynich-1.3.0-jar-with-dependencies.jar
 ```
 
 On first launch the app creates `~/.infVoy/` if it doesn't exist yet. If
@@ -128,8 +128,9 @@ action lives in the menu bar, in a conventional CUA layout:
   files in place on disk, e.g. from torrent/Sequential naming to Yale's own
   `<folio><r|v>` shape; confirms first, warns if too few or too many files
   matched, then re-runs Scan), Export… (a submenu — All, Selected, Marked —
-  see [Exporting your notes](#exporting-your-notes) below), Storage…
-  (checkpoints, see [Data & backups](#data--backups)), Exit.
+  see [Exporting your notes](#exporting-your-notes) below), Import… (see
+  [Importing someone else's notes](#importing-someone-elses-notes) below),
+  Storage… (checkpoints, see [Data & backups](#data--backups)), Exit.
 - **Edit** — Select All, Clear Selection.
 - **View** — Sort (by name under the current naming scheme, folio/page
   number, ascending or descending — see the note on first-run ordering
@@ -419,29 +420,24 @@ uses (not necessarily the same scheme as yours) — and their
 `~/.infVoy/catalog/` at your copied-over directory, and they'll see
 everything: your tags, your traced regions, your notes.
 
-What doesn't exist yet is a **merge/import tool** — or even a settled
-design for one (Export, below, is the one-directional half of this).
-If two people trace regions or add tags independently, there's currently
-no diff/merge path, only "wholesale replace one catalog with the other."
-That's not just an unimplemented feature; there's literally no community
-of co-editors yet to design it *against*. How region tracing is actually
-done is itself personal technique — order, precision, what counts as a
-boundary worth drawing — not a single documented procedure (see
-[Content-area regions](#content-area-regions)), so two people's traces of
-the same page are two independent judgments, not two attempts at the same
-measurement. A real merge tool would need to decide what "reconciling"
-even means for that kind of data — keep both as separate regions? Flag
-disagreement for a human to resolve? Something else? — and that's a
-question this project hasn't had reason to answer yet, because it's been
-one person's working catalog so far. If you're the second person to pick
-this catalog up: for now, coordinate who "owns" the working copy at any
-given moment rather than editing two copies in parallel and hoping to
-reconcile them later.
+Two people can now genuinely exchange tags/regions without replacing
+either catalog wholesale — see [Exporting your
+notes](#exporting-your-notes) and [Importing someone else's
+notes](#importing-someone-elses-notes) below. Import is deliberately
+conservative rather than a real merge tool, though: it never overwrites
+anything you already have, only ever appends. How region tracing is
+actually done is itself personal technique — order, precision, what
+counts as a boundary worth drawing — not a single documented procedure
+(see [Content-area regions](#content-area-regions)), so two people's
+traces of the same page are two independent judgments, not two attempts
+at the same measurement; Import puts both of you in the room to look at
+that difference (a page image with the incoming region drawn on it) and
+decide by hand, region by region, rather than trying to auto-resolve it.
 
 ### Exporting your notes
 
-**File → Export…** (submenu: All, Selected, Marked) writes a single JSON
-file containing just your judgment calls — tags and traced regions — for
+**File → Export…** (submenu: All, Selected, Marked) writes a file
+containing just your judgment calls — tags and traced regions — for
 the chosen entries, never image bytes and never a display filename.
 "Marked" exports only entries where you've actually traced a real content
 area (beyond the automatic whole-page rectangle) or added a tag; that's
@@ -451,15 +447,51 @@ used to attribute any traced region that doesn't already record who
 traced it — attribution for that export file only, never written back to
 your own catalog.
 
+The save dialog offers **.zip** (default) or **.json** — this data
+compresses heavily (repeated JSON keys, whitespace, hand-traced vertex
+coordinates), so zip is usually the better choice unless you want to
+read the file directly in a text editor.
+
 Each exported entry is keyed by its permanent id, resolvable back to any
 naming scheme's name via `CatalogCli alias` on either side — this is
 deliberate: an id means the same physical page in every copy of this
 catalog, because both sides are checked against the same bundled
 `scan-naming.tsv`, whereas a filename means whatever naming scheme its
 owner's copy happens to use right now. This is what makes an export
-usable across two people's differently-named collections at all, even
-though there's no import/merge step yet to actually consume one (see
-above).
+usable across two people's differently-named collections at all.
+
+### Importing someone else's notes
+
+**File → Import…** opens a file chooser accepting either `.zip` or
+`.json`, then resolves every entry in the file against your own catalog
+by id. Anything that doesn't resolve — a page your `data/scan-naming.tsv`
+doesn't know about, or one it knows about but you haven't scanned locally
+yet — is reported in a warning dialog, listed by id and reason, never
+silently dropped. Before anything is written, a whole-catalog checkpoint
+is taken automatically (Storage… → Restore undoes an entire import in one
+click if you change your mind partway through).
+
+Review happens one incoming region at a time, in a non-modal window: the
+region is drawn as a magenta outline over the actual page image, next to
+its stats (kind, author, vertex count, area) — never a raw list of
+coordinates, which is unusable at hand-traced-polygon scale. Two actions,
+nothing more:
+
+- **Add** — appends the incoming region as a brand new one on your entry.
+  Always safe: it never touches, replaces, or reorders anything you
+  already have. If its `kind` label already matches one of yours (e.g.
+  you both have a `"content"` region), it's automatically renamed
+  `"content (2)"` so the two never collide — no prompt, it just works.
+- **Ignore** — skips it, nothing written.
+
+There is deliberately no "replace" action — if an imported region should
+become your page's main content area, add it first, then use
+`RegionManagerDialog`'s existing Up/Down promote/demote to move it into
+position yourself, the same tool you'd use for any other reordering.
+
+Once every region has been reviewed, each imported entry's tags (not
+already present locally) are offered once as a plain checklist — no
+overlay treatment needed there, tags are already plain text.
 
 ## CLI reference
 
@@ -468,7 +500,7 @@ equivalent, useful for scripting, batch extraction, or quick lookups
 without opening the app. Run via:
 
 ```bash
-java -cp target/Voynich-1.0-jar-with-dependencies.jar nl.infcomtec.voynich.CatalogCli <command>
+java -cp target/Voynich-1.3.0-jar-with-dependencies.jar nl.infcomtec.voynich.CatalogCli <command>
 ```
 
 Key commands:
@@ -498,7 +530,12 @@ Key commands:
   it via infimg.
 - **`export <exporterName> --all | --marked | <filename> [<filename>...] -- <outFile>`**
   — CLI equivalent of File → Export…, see
-  [Exporting your notes](#exporting-your-notes) below.
+  [Exporting your notes](#exporting-your-notes) below. `<outFile>` ending
+  in `.zip` writes a compressed archive; anything else writes plain JSON.
+  There is no CLI equivalent for Import — reviewing an incoming region
+  visually against the actual page image is the whole point (see
+  [Importing someone else's notes](#importing-someone-elses-notes)), so
+  it's GUI-only by design.
 - **`checkpoint`** / **`restore`** — CLI equivalents of the Storage dialog's
   take/restore actions.
 
@@ -510,25 +547,25 @@ every command's argument shape.
 A single honest list, gathering what's mentioned individually elsewhere
 in this manual plus a couple of things that only show up in practice:
 
-- **No catalog merge/import tool, and no settled design for one either.**
-  Two people's independently-traced regions or tags can't be combined —
-  see [Sharing a catalog with someone else](#sharing-a-catalog-with-someone-else).
-  Export (see [Exporting your notes](#exporting-your-notes)) covers the
-  one-directional half — handing your tags/regions to someone else as a
-  portable, id-keyed file — but there's no way to bring an export *back
-  in*, let alone reconcile it against changes made independently on both
-  sides. This isn't just unimplemented: there's no community of
-  co-editors yet to design a merge model against, and tracing is personal
-  technique, not a single documented procedure, so it isn't obvious what
-  "reconciling" two people's traces of the same page should even mean.
-  Only one person should be the working copy's "owner" at a time, for now.
+- **Import is conservative, not a real merge tool.** It only ever adds —
+  see [Importing someone else's notes](#importing-someone-elses-notes).
+  There's no "replace" or auto-reconcile: if you and someone else traced
+  the same content area independently, Import lets you Add theirs
+  alongside yours (auto-renamed to avoid a `kind` collision), but nothing
+  decides which one is "right," merges the two polygons, or removes
+  either — you'd end up with two `content`-ish regions on that page and
+  have to sort out which stays via `RegionManagerDialog` yourself. This is
+  deliberate: tracing is personal technique, not a single documented
+  procedure, so two people's traces of the same page are two independent
+  judgments, not two attempts at the same measurement, and this project
+  isn't trying to guess which one wins.
   Each region carries a free-text `author` field (see [Content-area
   regions](#content-area-regions)) — Export fills it in for any region
-  that doesn't already have one, but nothing in the live app UI shows it,
-  filters by it, or uses it to resolve a conflict, and tags have no
-  equivalent field at all. A child region traced inside a parent's
-  boundary via Add Child doesn't inherit the parent's `author` either,
-  despite the nesting implying the same person likely traced both.
+  that doesn't already have one, and Import's review screen shows it, but
+  nothing filters by it or uses it to auto-resolve anything. A child
+  region traced inside a parent's boundary via Add Child doesn't inherit
+  the parent's `author` either, despite the nesting implying the same
+  person likely traced both.
 - **Vision answers aren't ground truth.** The local vision model
   confabulates confidently-wrong justifications on close calls and misses
   small figures crowded into busy pages — see [Vision

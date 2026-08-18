@@ -379,17 +379,7 @@ public class OverviewPanel extends JPanel {
          */
         private static double mainRegionArea(CatalogEntry entry) {
             CatalogEntry.Region region = entry.mainRegion();
-            if (null == region) {
-                return -1;
-            }
-            List<CatalogEntry.Vertex> polygon = region.polygon;
-            double sum = 0;
-            for (int i = 0; i < polygon.size(); i++) {
-                CatalogEntry.Vertex p1 = polygon.get(i);
-                CatalogEntry.Vertex p2 = polygon.get((i + 1) % polygon.size());
-                sum += (double) p1.x * p2.y - (double) p2.x * p1.y;
-            }
-            return Math.abs(sum) / 2.0;
+            return null == region ? -1 : region.shoelaceArea();
         }
 
         private final String label;

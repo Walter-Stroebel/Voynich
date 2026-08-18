@@ -4,6 +4,7 @@
  */
 package nl.infcomtec.voynich;
 
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics;
@@ -709,6 +710,40 @@ public class BitSet2D extends BitSet implements Cloneable, Iterable<Point> {
         int g = ((rgb >> 8) & 0xFF) / 4;
         int b = (rgb & 0xFF) / 4;
         return (r << 16) | (g << 8) | b;
+    }
+
+    /**
+     * Draws {@code polygon}'s outline (closed, connecting the last vertex
+     * back to the first) over a copy of {@code image} in {@code color} —
+     * unlike {@link #darkenOutside}, which dims everything a region
+     * excludes for a "show me the content" view, this just traces the
+     * boundary itself, for comparing a polygon against the real image
+     * (or against another polygon, by calling this twice) without
+     * obscuring anything. Used by Import's per-region review screen to
+     * show an incoming region against the actual page.
+     *
+     * @param image the image to draw over; not mutated
+     * @param polygon vertices in {@code image}'s own pixel coordinates
+     * @param color the outline colour
+     * @param strokeWidth line thickness in pixels
+     * @return a new copy of {@code image} with the outline drawn on top
+     */
+    public static BufferedImage drawOutline(BufferedImage image, List<Point> polygon, Color color, float strokeWidth) {
+        BufferedImage out = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = out.createGraphics();
+        g.drawImage(image, 0, 0, null);
+        if (polygon.size() >= 2) {
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setColor(color);
+            g.setStroke(new BasicStroke(strokeWidth));
+            for (int i = 0; i < polygon.size(); i++) {
+                Point p1 = polygon.get(i);
+                Point p2 = polygon.get((i + 1) % polygon.size());
+                g.drawLine(p1.x, p1.y, p2.x, p2.y);
+            }
+        }
+        g.dispose();
+        return out;
     }
 
     /**

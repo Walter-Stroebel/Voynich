@@ -6,7 +6,10 @@ package nl.infcomtec.voynich;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Persistence for the image catalog: one {@link CatalogEntry} (thumbnail
@@ -305,6 +308,54 @@ public interface Catalog {
             entry.tags.add(tag);
             save(entry, loadThumbnail(id));
         }
+    }
+
+    /**
+     * Appends {@code region} as a brand new region on {@code id}'s entry —
+     * always safe, never touches any existing region. The sole write path
+     * behind Import's review UI (see {@code ImportReviewDialog}): Import
+     * deliberately has no overwrite/replace action at all, so every
+     * accepted incoming region lands here. If {@code region.kind} already
+     * matches an existing region's {@code kind} on this entry, it's
+     * auto-suffixed (" (2)", " (3)", ...) until unique first — two regions
+     * on one page must never share a label, and asking the user to
+     * resolve that by hand for every import would defeat the point of a
+     * quick Add action.
+     *
+     * @param id the catalog key; must already have an entry
+     * @param region the region to append; not stored by reference — its
+     * fields are copied into a fresh {@link CatalogEntry.Region}, and its
+     * {@code parentIndex} is reset to {@code -1} regardless of the
+     * incoming value, since a foreign index refers to the exporter's own
+     * region list, not this entry's
+     * @return the updated entry
+     * @throws IOException if the underlying read/write fails
+     * @throws IllegalArgumentException if no entry exists for {@code id}
+     */
+    default CatalogEntry addRegion(int id, CatalogEntry.Region region) throws IOException {
+        CatalogEntry entry = loadEntry(id);
+        if (null == entry) {
+            throw new IllegalArgumentException("No catalog entry for id " + id);
+        }
+        Set<String> existingKinds = new HashSet<>();
+        for (CatalogEntry.Region existing : entry.regions) {
+            existingKinds.add(existing.kind);
+        }
+        String kind = region.kind;
+        int suffix = 2;
+        while (existingKinds.contains(kind)) {
+            kind = region.kind + " (" + suffix + ")";
+            suffix++;
+        }
+        CatalogEntry.Region copy = new CatalogEntry.Region();
+        copy.kind = kind;
+        copy.author = region.author;
+        copy.polygon = new ArrayList<>(region.polygon);
+        copy.angle = region.angle;
+        copy.parentIndex = -1;
+        entry.regions.add(copy);
+        save(entry, loadThumbnail(id));
+        return entry;
     }
 
     /**

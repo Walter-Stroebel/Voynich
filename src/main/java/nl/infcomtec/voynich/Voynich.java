@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -35,6 +36,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.event.MenuEvent;
 import javax.swing.event.MenuListener;
+import javax.swing.filechooser.FileNameExtensionFilter;
 
 /**
  * Entry point. Loads config, validates {@code scanPath}, builds the main
@@ -298,6 +300,12 @@ public class Voynich {
             }
         }.withTooltip("Export metadata only for entries with real tags/regions beyond the whole page")));
         fileMenu.add(exportMenu);
+        fileMenu.add(new JMenuItem(new EzAction("Import…") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                importEntries(fr, catalog, overview);
+            }
+        }.withTooltip("Review and selectively add another researcher's exported tags/regions")));
         fileMenu.add(new JMenuItem(new EzAction("Storage…") {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -701,17 +709,85 @@ public class Voynich {
             return;
         }
         JFileChooser chooser = new JFileChooser();
-        chooser.setSelectedFile(new File("voynich-export.json"));
+        // .zip offered first/default: this data (repeated JSON keys, vertex
+        // coordinates) compresses heavily — see CatalogExporter.export's doc.
+        // Plain .json stays available as a filter choice for anyone who wants
+        // to read the export directly in a text editor.
+        FileNameExtensionFilter zipFilter = new FileNameExtensionFilter("Zip archive (.zip)", "zip");
+        FileNameExtensionFilter jsonFilter = new FileNameExtensionFilter("Plain JSON (.json)", "json");
+        chooser.addChoosableFileFilter(jsonFilter);
+        chooser.addChoosableFileFilter(zipFilter);
+        chooser.setFileFilter(zipFilter);
+        chooser.setSelectedFile(new File("voynich-export.zip"));
         if (JFileChooser.APPROVE_OPTION != chooser.showSaveDialog(fr)) {
             return;
         }
         File target = chooser.getSelectedFile();
+        String lower = target.getName().toLowerCase(Locale.ROOT);
+        if (!lower.endsWith(".zip") && !lower.endsWith(".json")) {
+            boolean wantsZip = chooser.getFileFilter() == zipFilter;
+            target = new File(target.getParentFile(), target.getName() + (wantsZip ? ".zip" : ".json"));
+        }
         try {
             CatalogExporter.export(entries, exporterName, target);
         } catch (IOException ex) {
             JOptionPane.showMessageDialog(fr, "Export failed:\n" + ex.getMessage(),
                     "Export failed", JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    /**
+     * File → Import…'s entry point: picks the exported file (plain JSON or
+     * zip, see {@link CatalogImporter#load}), loads and
+     * classifies it against the local catalog (see {@link
+     * CatalogImporter#classify}), reports any unresolvable records plainly
+     * rather than dropping them silently, takes a whole-catalog {@link
+     * Catalog#checkpoint()} as a one-click undo before anything is written
+     * (import is a review-and-accept flow, but a run of accidental clicks
+     * is still easiest undone via Storage… → Restore, same safety net every
+     * other bulk operation in this app gets), then opens {@link
+     * ImportReviewDialog}.
+     */
+    private static void importEntries(JFrame fr, Catalog catalog, OverviewPanel overview) {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setFileFilter(new FileNameExtensionFilter("Voynich export (.zip, .json)", "zip", "json"));
+        if (JFileChooser.APPROVE_OPTION != chooser.showOpenDialog(fr)) {
+            return;
+        }
+        List<CatalogExporter.Exported> records;
+        try {
+            records = CatalogImporter.load(chooser.getSelectedFile());
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(fr, "Could not read import file:\n" + ex.getMessage(),
+                    "Import failed", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        CatalogImporter.Classified classified;
+        try {
+            classified = CatalogImporter.classify(catalog, records);
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(fr, "Could not read catalog:\n" + ex.getMessage(),
+                    "Import failed", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        if (!classified.unresolvable.isEmpty()) {
+            JOptionPane.showMessageDialog(fr,
+                    "Not importable:\n" + String.join("\n", classified.unresolvable),
+                    "Some records could not be resolved", JOptionPane.WARNING_MESSAGE);
+        }
+        if (classified.resolvable.isEmpty()) {
+            JOptionPane.showMessageDialog(fr, "Nothing importable in this file.",
+                    "Import", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        try {
+            catalog.checkpoint();
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(fr, "Could not take a safety checkpoint before import:\n"
+                    + ex.getMessage() + "\n\nImport cancelled.", "Import failed", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        ImportReviewDialog.open(fr, catalog, overview, classified.resolvable);
     }
 
     /**

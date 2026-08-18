@@ -203,5 +203,22 @@ public class CatalogEntry {
          * nest.
          */
         public int parentIndex = -1;
+
+        /**
+         * @return the shoelace-formula area of {@link #polygon}, in this
+         * image's own pixel units squared — used both for sorting (see
+         * {@code OverviewPanel.SortKey.CONTENT_AREA_SIZE}) and as a cheap
+         * sanity signal in Import's per-region review screen, where two
+         * overlapping outlines are otherwise hard to compare by eye alone
+         */
+        public double shoelaceArea() {
+            double sum = 0;
+            for (int i = 0; i < polygon.size(); i++) {
+                Vertex p1 = polygon.get(i);
+                Vertex p2 = polygon.get((i + 1) % polygon.size());
+                sum += (double) p1.x * p2.y - (double) p2.x * p1.y;
+            }
+            return Math.abs(sum) / 2.0;
+        }
     }
 }

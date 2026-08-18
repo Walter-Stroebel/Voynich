@@ -3,10 +3,15 @@
  */
 package nl.infcomtec.voynich;
 
+import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 /**
  * Metadata-only export: never touches image bytes, on the reasoning laid
@@ -93,15 +98,42 @@ public final class CatalogExporter {
     }
 
     /**
-     * Writes {@code entries} to {@code target} as one pretty-printed JSON
-     * array of {@link Exported} records, each attributed via
-     * {@link #toExported}.
+     * The single JSON entry's name inside a zip export — a fixed name
+     * rather than deriving one from {@code target}, since the JSON content
+     * itself (not the outer zip's filename) is what {@link
+     * CatalogImporter#load} actually parses; the entry name is never shown
+     * to a user.
+     */
+    private static final String ZIP_ENTRY_NAME = "export.json";
+
+    /**
+     * Writes {@code entries} to {@code target} as one JSON array of
+     * {@link Exported} records, each attributed via {@link #toExported} —
+     * either pretty-printed JSON directly, or, if {@code target}'s name
+     * ends in {@code .zip} (case-insensitive), that same JSON deflated
+     * inside a one-entry zip archive. This data compresses heavily (a
+     * hand-traced polygon's repeated {@code "x"}/{@code "y"} keys and
+     * indentation whitespace are exactly what deflate is good at), and
+     * this project already has zip-writing precedent in {@code
+     * FileCatalog.checkpoint} — same {@code java.util.zip}, no new
+     * dependency.
      */
     public static void export(List<CatalogEntry> entries, String exporterName, File target) throws IOException {
         List<Exported> out = new ArrayList<>();
         for (CatalogEntry entry : entries) {
             out.add(toExported(entry, exporterName));
         }
-        JSON.getMapper().writerWithDefaultPrettyPrinter().writeValue(target, out);
+        byte[] json = JSON.getMapper().writerWithDefaultPrettyPrinter().writeValueAsBytes(out);
+        if (target.getName().toLowerCase(Locale.ROOT).endsWith(".zip")) {
+            try (ZipOutputStream zip = new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(target)))) {
+                zip.putNextEntry(new ZipEntry(ZIP_ENTRY_NAME));
+                zip.write(json);
+                zip.closeEntry();
+            }
+        } else {
+            try (FileOutputStream fos = new FileOutputStream(target)) {
+                fos.write(json);
+            }
+        }
     }
 }

@@ -64,7 +64,7 @@ building or compiling needed:
 1. Go to
    [github.com/Walter-Stroebel/Voynich/releases/latest](https://github.com/Walter-Stroebel/Voynich/releases/latest)
 2. Download the one `.jar` file attached to that release (named something
-   like `Voynich-1.0-jar-with-dependencies.jar`).
+   like `Voynich-1.3.0-jar-with-dependencies.jar`).
 3. Put it somewhere permanent — e.g. a folder called `Voynich` in your
    Documents, or wherever you keep this kind of thing. You'll run it
    directly from there.
@@ -204,7 +204,7 @@ on first run and tell you exactly this, then exit — it won't guess.)
 ## 6. Run it
 
 ```bash
-java -jar /full/path/to/Voynich-1.0-jar-with-dependencies.jar
+java -jar /full/path/to/Voynich-1.3.0-jar-with-dependencies.jar
 ```
 
 (Use the actual path where you put the jar in step 2. On Windows you can
@@ -256,7 +256,7 @@ Then, instead of step 2 above:
 git clone https://github.com/Walter-Stroebel/Voynich.git
 cd Voynich
 mvn package
-java -jar target/Voynich-1.0-jar-with-dependencies.jar
+java -jar target/Voynich-1.3.0-jar-with-dependencies.jar
 ```
 
 `mvn package` downloads the project's dependencies (needs an internet

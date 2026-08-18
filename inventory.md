@@ -13,8 +13,9 @@ is an internal engineering ledger, not user-facing documentation — see
 
 Audited 2026-08-09, rows added through 2026-08-18 (toolbar → menu bar
 migration, thumbnail-grid selection, Two-Page View, Thumbnail Matrix,
-multi-page Ask Vision, Export). "GUI"/"CLI" are checkmarked when that path
-exists; "Location" is the class (and specific control) that implements it.
+multi-page Ask Vision, Export, Import). "GUI"/"CLI" are checkmarked when
+that path exists; "Location" is the class (and specific control) that
+implements it.
 
 | # | Function | GUI | CLI | Location |
 |---|---|---|---|---|
@@ -60,7 +61,8 @@ exists; "Location" is the class (and specific control) that implements it.
 | 38 | Compose selected pages' thumbnails into one grid image and open in infimg | ✅ Selected → Thumbnail Matrix (screen-fit warning above the current display's usable bounds) | ✅ `matrix <filename> [<filename>...] [--out path]` | `Voynich.openThumbnailMatrix()` / `CatalogCli.matrix()`, both via `ImageGrid` |
 | 39 | Rename scan files in place between naming schemes (torrent/Yale/project/voynich.nu/etc., driven by `data/scan-naming.tsv`) | ✅ File → Rename to… (submenu lists every TSV column except the current `Config.namingScheme`; confirms first, warns on ≤10 or >213 files found, re-runs Scan on success) | ❌ | `Voynich.renameScans()` → `ScanRenamer` / `RenameTaskWindow` |
 | 40 | "Which file is X in my universe?" — resolve any naming scheme's name (or an on-disk filename) to every other scheme's name for the same page | ❌ (the editor's aliases label, see #17-ish above, needs the entry already open) | ✅ `alias <name>` | `CatalogCli.alias()` → `ScanRenamer.idForName`/`rowFor` |
-| 41 | Export tags/regions (metadata only, never image bytes) for All/Selected/Marked entries as one id-keyed JSON file | ✅ File → Export… (submenu: All/Selected/Marked, prompts for an exporter name) | ✅ `export <exporterName> --all \| --marked \| <filename> [<filename>...] -- <outFile>` | `Voynich.exportEntries()` / `CatalogCli.export()`, both via `CatalogExporter` |
+| 41 | Export tags/regions (metadata only, never image bytes) for All/Selected/Marked entries as one id-keyed file (.zip default/compressed or plain .json) | ✅ File → Export… (submenu: All/Selected/Marked, prompts for an exporter name, save dialog offers .zip/.json) | ✅ `export <exporterName> --all \| --marked \| <filename> [<filename>...] -- <outFile>` (zip iff `<outFile>` ends `.zip`) | `Voynich.exportEntries()` / `CatalogCli.export()`, both via `CatalogExporter` |
+| 42 | Import another catalog's exported tags/regions, reviewed visually one region at a time against the actual page image, Add/Ignore only (never overwrites) | ✅ File → Import… (safety checkpoint taken first; unresolvable ids reported, never dropped) | ❌ (deliberately GUI-only — visual review against the real page image is the whole point) | `Voynich.importEntries()` → `CatalogImporter` (load/classify) → `ImportReviewDialog` (review UI) → `Catalog.addRegion()`/`addTag()` (writes) |
 
 **Confirmed intentional asymmetries** (not gaps, checked 2026-08-09; #32/37/38 now
 GUI+CLI symmetric as of 2026-08-14, listed for contrast):
@@ -82,6 +84,10 @@ GUI+CLI symmetric as of 2026-08-14, listed for contrast):
   table above) once a real scripting need was identified — the two
   composite-building actions, unlike raw selection, are genuinely useful
   outside the GUI.
+- #42 (Import) is GUI-only by explicit design decision, not a scripting gap
+  yet to fill — the reviewer visually comparing an incoming region's
+  outline against the real page image is the entire point of the feature,
+  so a CLI bypass would defeat it, not just lack an equivalent.
 - A full audit (2026-08-09) of `CatalogEntry`/`Config` fields and every
   constructed `JButton`/`EzAction` in the source tree found no functionality
   that exists in code but has zero user-facing access path — everything
