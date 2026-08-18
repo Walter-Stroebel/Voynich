@@ -113,6 +113,10 @@ public class CatalogCli {
                 requireArgs(args, 2, "matrix <filename> [<filename>...] [--out <path>]");
                 matrix(catalog, args);
                 break;
+            case "alias":
+                requireArgs(args, 2, "alias <name>");
+                alias(catalog, args[1]);
+                break;
             case "checkpoint":
                 catalog.checkpoint();
                 System.out.println("checkpointed");
@@ -850,6 +854,63 @@ public class CatalogCli {
         }
     }
 
+    /**
+     * {@code alias <name>}: resolves {@code name} — under any naming scheme,
+     * or the current display filename, extension-agnostic — to its
+     * permanent {@link CatalogEntry#id}, then prints every known scheme's
+     * name for that id plus the live catalog filename and whether it's
+     * actually cataloged. Exists purely to answer "which file is X in my
+     * universe?" — the naming-scheme confusion this whole id migration
+     * (see {@code CLAUDE.md}'s "Catalog persistence" section) was built to
+     * fix in the first place, but the GUI's own answer to that question
+     * ({@link CatalogEntryEditor}'s aliases label) needs the entry already
+     * open; this is the same lookup from a bare name, no GUI needed.
+     */
+    private static void alias(Catalog catalog, String name) throws IOException {
+        ScanRenamer renamer;
+        try {
+            renamer = ScanRenamer.cached();
+        } catch (IOException ex) {
+            System.err.println("Could not load scan-naming.tsv: " + ex.getMessage());
+            System.exit(1);
+            return;
+        }
+        Integer id = renamer.idForName(name);
+        CatalogEntry entry = null;
+        if (null == id) {
+            // Not a known naming-column value — try it as a live catalog
+            // filename directly, so "alias <current filename>" also works.
+            entry = catalog.loadEntryByFilename(name);
+            if (null != entry) {
+                id = entry.id;
+            }
+        }
+        if (null == id) {
+            System.err.println("No known naming-scheme name or catalog filename matches \"" + name + "\"");
+            System.exit(1);
+            return;
+        }
+        if (null == entry) {
+            for (CatalogEntry e : catalog.listAll()) {
+                if (e.id == id) {
+                    entry = e;
+                    break;
+                }
+            }
+        }
+        System.out.println("id: " + id);
+        ScanRenamer.Row row = renamer.rowFor(id);
+        for (String column : renamer.columns) {
+            String value = null == row ? null : row.names.get(column);
+            System.out.println("  " + column + ": " + (null == value ? "(none)" : value));
+        }
+        if (null == entry) {
+            System.out.println("  catalog: not cataloged yet");
+        } else {
+            System.out.println("  catalog filename: " + entry.filename);
+        }
+    }
+
     private static CatalogEntry.Region firstRegionNamed(CatalogEntry entry, String kind) {
         for (int i = 1; i < entry.regions.size(); i++) {
             CatalogEntry.Region r = entry.regions.get(i);
@@ -1012,6 +1073,9 @@ public class CatalogCli {
         System.err.println("  matrix <filename> [<filename>...] [--out path]");
         System.err.println("                              compose the given pages' cached thumbnails into one grid");
         System.err.println("                              image; opens in infimg, or writes to --out instead");
+        System.err.println("  alias <name>                \"which file is this in my universe?\" — resolves name");
+        System.err.println("                              (any naming scheme's value, or the current catalog");
+        System.err.println("                              filename) to its permanent id and every other scheme's name");
         System.err.println("  checkpoint                  clone the whole catalog's current state");
         System.err.println("  restore                     discard everything since the last checkpoint");
     }
