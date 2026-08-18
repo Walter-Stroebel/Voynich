@@ -6,7 +6,7 @@ Project memory: `/home/walter/.claude/projects/-home-walter-github-Voynich/memor
 Check it before grepping the repo for "how do we already do X" questions
 (mirror/sync commands, established scripts).
 
-`~/bin/sync-predator.sh` (outside any repo — spans Voynich plus sibling
+`~/bin/sync-legion.sh` (outside any repo — spans Voynich plus sibling
 repos infimg and mcp-service-catalog) mirrors this memory directory to
 predator alongside the repo, catalog, and checkpoints.
 

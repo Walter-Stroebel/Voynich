@@ -158,21 +158,21 @@ app's own catalog. Six `voynich*` directories:
   `voynich_mysql_backups/` above) and hosts an unrelated local-LLM
   experiment (gemma-4-e4b, served via `llama.cpp`'s `llama-server`
   directly as of 2026-08-14 — see the vision pipeline section below)
-- **`predator:~/github/Voynich/`** — full rsync mirror of this project
+- **`predator:~/workbak/github/Voynich/`** — full rsync mirror of this project
   directory (code + gitignored `stolfi/` research data), kept on
   predator's own NVMe. Deliberate second-machine, second-disk backup for a
   repo with no GitHub remote yet. Update it,
-  plus memory/catalog/checkpoints, in one call via `~/bin/sync-predator.sh`
+  plus memory/catalog/checkpoints, in one call via `~/bin/sync-legion.sh`
   (lives outside any repo, not tracked here — spans multiple sibling repos,
   agent convenience rather than a deliverable of this one specifically).
   Freely usable over `ssh`/`scp`/`rsync` for read or write. The sibling
   `infimg` repo was mirrored here too for one day after extraction
   (2026-08-10) but dropped from the script the same day once it had its
   own GitHub remote and tagged releases — GitHub is that repo's backup
-  now, so `predator:~/github/infimg/` no longer exists (deleted
+  now, so `predator:~/workbak/github/infimg/` no longer exists (deleted
   2026-08-10, see `reference_predator_machine.md`).
 - `scripts/test-catalog-cli.sh` (added 2026-08-14, tracked in this repo —
-  unlike `sync-predator.sh` above, this one only tests `CatalogCli` and
+  unlike `sync-legion.sh` above, this one only tests `CatalogCli` and
   is a real deliverable of this project specifically) — a plain shell
   regression script exercising `CatalogCli`'s actual argv contract end to
   end against the built jar and a real catalog (no test framework, same
