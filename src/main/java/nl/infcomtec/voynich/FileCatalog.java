@@ -24,8 +24,8 @@ import javax.imageio.ImageIO;
 
 /**
  * File-backed {@link Catalog}: each {@link CatalogEntry} is a standalone,
- * human-readable {@code <filename>.json} sidecar under one catalog
- * directory, with its thumbnail inlined into that same JSON as
+ * human-readable {@code <id>.json} sidecar under one catalog directory,
+ * with its thumbnail inlined into that same JSON as
  * {@link CatalogEntry#thumbnailPng} — no separate BLOB store or sidecar
  * image file to keep in sync with the entry.
  * <p>
@@ -34,6 +34,14 @@ import javax.imageio.ImageIO;
  * {@link #loadEntry} migrates one in transparently on first read (loading it
  * into {@link CatalogEntry#thumbnailPng} and deleting the sidecar) so old
  * catalogs don't need a separate one-off migration pass.
+ * </p>
+ * <p>
+ * 2026-08-18's id-keying change (sidecars renamed from {@code
+ * <filename>.json} to {@code <id>.json}, {@link CatalogEntry#id} added) was
+ * migrated by hand for this project's one real catalog directly, not via
+ * any in-app migration path — there is exactly one such catalog and it will
+ * never need to happen again for a fresh one, since a catalog created from
+ * here on is id-keyed from the start.
  * </p>
  */
 public class FileCatalog implements Catalog {
@@ -66,19 +74,19 @@ public class FileCatalog implements Catalog {
             ImageIO.write(thumbnail, "png", out);
             entry.thumbnailPng = out.toByteArray();
         }
-        File jsonFile = new File(dir, entry.filename + ".json");
+        File jsonFile = new File(dir, entry.id + ".json");
         Files.writeString(jsonFile.toPath(), JSON.writeValueAsPretty(entry));
     }
 
     @Override
-    public CatalogEntry loadEntry(String filename) throws IOException {
-        File jsonFile = new File(dir, filename + ".json");
+    public CatalogEntry loadEntry(int id) throws IOException {
+        File jsonFile = new File(dir, id + ".json");
         if (!jsonFile.exists()) {
             return null;
         }
         CatalogEntry entry = JSON.readValue(null, jsonFile, CatalogEntry.class);
         if (null == entry.thumbnailPng) {
-            File legacyPng = new File(dir, filename + ".png");
+            File legacyPng = new File(dir, id + ".png");
             if (legacyPng.exists()) {
                 entry.thumbnailPng = Files.readAllBytes(legacyPng.toPath());
                 Files.writeString(jsonFile.toPath(), JSON.writeValueAsPretty(entry));
@@ -86,6 +94,14 @@ public class FileCatalog implements Catalog {
             }
         }
         return entry;
+    }
+
+    @Override
+    public void deleteEntry(int id) throws IOException {
+        File jsonFile = new File(dir, id + ".json");
+        if (jsonFile.exists()) {
+            Files.delete(jsonFile.toPath());
+        }
     }
 
     @Override
@@ -106,8 +122,8 @@ public class FileCatalog implements Catalog {
     }
 
     @Override
-    public BufferedImage loadThumbnail(String filename) throws IOException {
-        CatalogEntry entry = loadEntry(filename);
+    public BufferedImage loadThumbnail(int id) throws IOException {
+        CatalogEntry entry = loadEntry(id);
         if (null == entry || null == entry.thumbnailPng) {
             return null;
         }

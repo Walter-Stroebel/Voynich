@@ -6,6 +6,7 @@ package nl.infcomtec.voynich;
 import java.awt.Window;
 import java.io.File;
 import java.io.FilenameFilter;
+import java.io.IOException;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -85,6 +86,7 @@ public class ScanTaskWindow extends TaskWindow {
         int cores = Runtime.getRuntime().availableProcessors();
         publishLine("Found " + files.length + " image files, scanning with " + cores + " threads.");
 
+        final ScanRenamer renamer = ScanRenamer.load();
         AtomicInteger completed = new AtomicInteger();
         AtomicInteger skipped = new AtomicInteger();
         ExecutorService pool = Executors.newFixedThreadPool(cores);
@@ -92,7 +94,7 @@ public class ScanTaskWindow extends TaskWindow {
             pool.submit(new Runnable() {
                 @Override
                 public void run() {
-                    scanOne(file, files.length, completed, skipped);
+                    scanOne(file, files.length, completed, skipped, renamer);
                 }
             });
         }
@@ -117,13 +119,16 @@ public class ScanTaskWindow extends TaskWindow {
      * @param total total file count, for the progress percentage
      * @param completed shared counter, incremented once this file is done
      * @param skipped shared counter, incremented if this file was unchanged
+     * @param renamer resolves {@code file}'s display name to its permanent
+     * {@link CatalogEntry#id} — see {@link #resolveId}
      */
-    private void scanOne(File file, int total, AtomicInteger completed, AtomicInteger skipped) {
+    private void scanOne(File file, int total, AtomicInteger completed, AtomicInteger skipped, ScanRenamer renamer) {
         if (isCancelRequested()) {
             return;
         }
         try {
-            CatalogEntry existing = catalog.loadEntry(file.getName());
+            int id = resolveId(file, renamer);
+            CatalogEntry existing = catalog.loadEntry(id);
             if (unchanged(existing, file)) {
                 overview.addOrUpdate(existing);
                 publishLine(file.getName() + ": unchanged, skipped.");
@@ -131,7 +136,7 @@ public class ScanTaskWindow extends TaskWindow {
             } else {
                 ColorImage ci = new ColorImage(file);
                 CatalogEntry entry = catalog.recordSighting(
-                        file.getName(), file, ci.w, ci.h, ci.labIndex.size(),
+                        id, file.getName(), file, ci.w, ci.h, ci.labIndex.size(),
                         ci.thumbnailUniqueColors, ci.thumbnail);
                 overview.addOrUpdate(entry, ci.thumbnail);
                 publishLine(file.getName() + ": " + ci.w + "x" + ci.h + ", "
@@ -141,6 +146,30 @@ public class ScanTaskWindow extends TaskWindow {
             publishLine(file.getName() + ": FAILED - " + ex.getMessage());
         }
         setProgressPercent((int) (completed.incrementAndGet() * 100L / total));
+    }
+
+    /**
+     * Resolves {@code file}'s permanent {@link CatalogEntry#id}: first via
+     * {@link ScanRenamer#idForName}, which covers every file matching a
+     * known naming scheme (the normal case — all 213 manuscript pages,
+     * whatever scheme the folder currently uses); then by matching an
+     * already-catalogued entry's {@link CatalogEntry#filename} (a file that
+     * was previously scanned under this exact name but isn't in the
+     * manuscript's own 213, e.g. a colour chart or test image someone
+     * dropped into {@code scanPath}); and only if neither matches, a fresh
+     * id via {@link Catalog#nextUnusedId} — so an unrecognized file still
+     * gets catalogued with a stable identity rather than being skipped.
+     */
+    private int resolveId(File file, ScanRenamer renamer) throws IOException {
+        Integer known = renamer.idForName(file.getName());
+        if (null != known) {
+            return known;
+        }
+        CatalogEntry existing = catalog.loadEntryByFilename(file.getName());
+        if (null != existing) {
+            return existing.id;
+        }
+        return catalog.nextUnusedId();
     }
 
     /**

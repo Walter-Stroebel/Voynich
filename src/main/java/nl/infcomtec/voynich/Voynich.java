@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.imageio.ImageIO;
@@ -208,27 +209,35 @@ public class Voynich {
             }
         }.withTooltip("Walk the configured scan folder and catalog anything new or changed")));
         JMenu renameMenu = new JMenu("Rename to…");
+        final Map<String, JMenuItem> renameItemsByColumn = new java.util.LinkedHashMap<>();
+        try {
+            ScanRenamer renamer = ScanRenamer.load();
+            for (final String column : renamer.columns) {
+                JMenuItem item = new JMenuItem(new EzAction(column) {
+                    @Override
+                    public void actionPerformed(ActionEvent e) {
+                        renameScans(fr, catalog, overview, column);
+                    }
+                });
+                renameItemsByColumn.put(column, item);
+                renameMenu.add(item);
+            }
+        } catch (IOException ex) {
+            JMenuItem failed = new JMenuItem("(failed to load naming table: " + ex.getMessage() + ")");
+            failed.setEnabled(false);
+            renameMenu.add(failed);
+        }
+        // Built once, items never rebuilt — only the current scheme's item
+        // is disabled/re-enabled here on each menu open. Rebuilding the
+        // list from config.namingScheme on every open was the earlier bug:
+        // a stale config value (not yet corrected by renameScans' own
+        // detection) could leave the *actual* current scheme still
+        // clickable, letting a user "rename" a scheme to itself.
         renameMenu.addMenuListener(new MenuListener() {
             @Override
             public void menuSelected(MenuEvent e) {
-                renameMenu.removeAll();
-                ScanRenamer renamer;
-                try {
-                    renamer = ScanRenamer.load();
-                } catch (IOException ex) {
-                    renameMenu.add(new JMenuItem("(failed to load naming table: " + ex.getMessage() + ")")).setEnabled(false);
-                    return;
-                }
-                for (final String column : renamer.columns) {
-                    if (column.equals(config.namingScheme)) {
-                        continue;
-                    }
-                    renameMenu.add(new JMenuItem(new EzAction(column) {
-                        @Override
-                        public void actionPerformed(ActionEvent e) {
-                            renameScans(fr, catalog, overview, column);
-                        }
-                    }));
+                for (Map.Entry<String, JMenuItem> entry : renameItemsByColumn.entrySet()) {
+                    entry.getValue().setEnabled(!entry.getKey().equals(config.namingScheme));
                 }
             }
 
@@ -533,7 +542,12 @@ public class Voynich {
             }
         }
 
-        List<ScanRenamer.Plan> plans = renamer.plan(scanDir, config.namingScheme, toColumn);
+        String fromColumn = confirmCurrentNamingScheme(fr, renamer, scanDir, fileCount);
+        if (null == fromColumn) {
+            return;
+        }
+
+        List<ScanRenamer.Plan> plans = renamer.plan(scanDir, fromColumn, toColumn);
         int skipCount = 0;
         for (ScanRenamer.Plan p : plans) {
             if (null != p.skipReason) {
@@ -542,7 +556,7 @@ public class Voynich {
         }
         StringBuilder msg = new StringBuilder();
         msg.append("Rename ").append(plans.size() - skipCount).append(" file(s) in ")
-                .append(config.scanPath).append(" from \"").append(config.namingScheme)
+                .append(config.scanPath).append(" from \"").append(fromColumn)
                 .append("\" to \"").append(toColumn).append("\" naming, in place.\n");
         if (skipCount > 0) {
             msg.append(skipCount).append(" file(s) will be skipped (no target name, or a collision).\n");
@@ -555,23 +569,68 @@ public class Voynich {
             return;
         }
 
-        Runnable rescan = new Runnable() {
-            @Override
-            public void run() {
-                TaskWindow existingScan = TaskWindow.getOrNull(ScanTaskWindow.TASK_TYPE);
-                if (null == existingScan) {
-                    new ScanTaskWindow(config, catalog, overview, fr).start();
-                } else {
-                    existingScan.start();
-                }
-            }
-        };
-        TaskWindow existing = TaskWindow.getOrNull(RenameTaskWindow.TASK_TYPE);
-        if (null != existing) {
-            existing.start();
-            return;
+        // Deliberately never reused via TaskWindow.getOrNull, unlike Scan:
+        // each rename carries its own plans/toColumn baked in at
+        // construction, and TaskWindow.start() on an existing instance
+        // re-runs its ORIGINAL runTask() closure, not a fresh one — reusing
+        // the window here would silently replay a stale rename plan
+        // against whatever the new target scheme was clicked, not the
+        // scheme actually requested. A prior rename's window, if still
+        // open, is simply left alone; this one always opens as a new
+        // window.
+        new RenameTaskWindow(config, catalog, overview, plans, toColumn, fr).start();
+    }
+
+    /**
+     * Sanity-checks {@link Config#namingScheme} against what's actually in
+     * {@code scanDir} before trusting it as {@code fromColumn} for a
+     * rename — {@code namingScheme} defaults to {@code "torrent_jpg"} for
+     * every config, including ones (like an already-existing PNG working
+     * set) that were never torrent-named to begin with, so a stale/wrong
+     * default must be caught here rather than silently producing a
+     * zero-file rename plan. Scores every naming column via
+     * {@link ScanRenamer#detectScheme} and only asks the user when the
+     * configured scheme's match count looks wrong (fewer than half the
+     * files present) and some other column fits meaningfully better;
+     * otherwise trusts the configured value without bothering the user.
+     *
+     * @return the naming scheme to actually use as {@code fromColumn}, or
+     * {@code null} if the user cancelled out of a correction prompt
+     */
+    private static String confirmCurrentNamingScheme(JFrame fr, ScanRenamer renamer, File scanDir, int fileCount) {
+        Map<String, Integer> counts = renamer.detectScheme(scanDir);
+        Integer configuredCount = counts.get(config.namingScheme);
+        int configured = null == configuredCount ? 0 : configuredCount;
+        if (fileCount > 0 && configured * 2 >= fileCount) {
+            // Configured scheme accounts for at least half the files present — trust it.
+            return config.namingScheme;
         }
-        new RenameTaskWindow(config, plans, toColumn, fr, rescan).start();
+        String bestColumn = config.namingScheme;
+        int bestCount = configured;
+        for (Map.Entry<String, Integer> e : counts.entrySet()) {
+            if (e.getValue() > bestCount) {
+                bestColumn = e.getKey();
+                bestCount = e.getValue();
+            }
+        }
+        if (bestColumn.equals(config.namingScheme) || bestCount == 0) {
+            // No better fit found — proceed with what's configured and let
+            // the rename plan itself report zero matches, rather than
+            // guessing at a scheme that fits just as poorly.
+            return config.namingScheme;
+        }
+        int choice = JOptionPane.showConfirmDialog(fr,
+                "Configured naming scheme is \"" + config.namingScheme + "\", but only " + configured
+                + " of " + fileCount + " file(s) in " + scanDir + " match it.\n"
+                + "\"" + bestColumn + "\" matches " + bestCount + " of them instead — use that as the "
+                + "current naming and update the saved setting?",
+                "Naming scheme looks wrong", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        if (choice != JOptionPane.YES_OPTION) {
+            return config.namingScheme;
+        }
+        config.namingScheme = bestColumn;
+        saveConfig();
+        return bestColumn;
     }
 
     /**
@@ -605,8 +664,8 @@ public class Voynich {
     private static List<CatalogEntry> twoPagePair(OverviewPanel overview) {
         List<CatalogEntry> selected = overview.getSelectedEntries();
         if (2 == selected.size()) {
-            OverviewPanel.Folio a = OverviewPanel.parseFolio(selected.get(0).filename);
-            OverviewPanel.Folio b = OverviewPanel.parseFolio(selected.get(1).filename);
+            OverviewPanel.Folio a = OverviewPanel.parseFolio(selected.get(0));
+            OverviewPanel.Folio b = OverviewPanel.parseFolio(selected.get(1));
             if (null == a || null == b) {
                 return null;
             }
@@ -615,12 +674,12 @@ public class Voynich {
         }
         if (1 == selected.size()) {
             CatalogEntry entry = selected.get(0);
-            OverviewPanel.Folio folio = OverviewPanel.parseFolio(entry.filename);
+            OverviewPanel.Folio folio = OverviewPanel.parseFolio(entry);
             if (null == folio) {
                 return null;
             }
             char otherSide = 'r' == folio.side ? 'v' : 'r';
-            CatalogEntry other = overview.findByFilename(folio.number + String.valueOf(otherSide) + ".png");
+            CatalogEntry other = overview.findFolioCounterpart(folio.number, otherSide);
             if (null == other) {
                 return null;
             }

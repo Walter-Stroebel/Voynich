@@ -336,7 +336,7 @@ public class OverviewPanel extends JPanel {
         PAGE_NUMBER("Page number") {
             @Override
             public int compare(CatalogEntry a, CatalogEntry b) {
-                int cmp = Integer.compare(pageNumberOf(a.filename), pageNumberOf(b.filename));
+                int cmp = Integer.compare(pageNumberOf(a), pageNumberOf(b));
                 return cmp != 0 ? cmp : a.filename.compareToIgnoreCase(b.filename);
             }
         },
@@ -348,13 +348,22 @@ public class OverviewPanel extends JPanel {
         };
 
         /**
-         * Leading numeric folio number of {@code filename} (e.g. 3 for
-         * "3r.png", 100 for "100v_and_101r.png"), or {@link Integer#MAX_VALUE}
-         * if it doesn't start with {@code digit+[rv]} — numeric, not lexical,
-         * so "3r" sorts before "20r" rather than after it.
+         * Folio number of {@code entry}, or {@link Integer#MAX_VALUE} if it
+         * isn't a plain single-folio page. Resolved via {@link #parseFolio}
+         * (the entry's actual Yale-labeled folio, independent of whatever
+         * naming scheme is currently displayed) when that succeeds; falls
+         * back to a permissive leading-number match against {@code
+         * entry.filename} itself for shapes {@code parseFolio} deliberately
+         * excludes (e.g. {@code "100v_and_101r.png"}, a multi-folio
+         * composite — still worth a rough sort position, just not treated
+         * as a single foliated page).
          */
-        private static int pageNumberOf(String filename) {
-            Matcher m = PAGE_NUMBER_PATTERN.matcher(filename);
+        private static int pageNumberOf(CatalogEntry entry) {
+            Folio folio = parseFolio(entry);
+            if (null != folio) {
+                return folio.number;
+            }
+            Matcher m = PAGE_NUMBER_PATTERN.matcher(entry.filename);
             if (!m.find()) {
                 return Integer.MAX_VALUE;
             }
@@ -424,7 +433,7 @@ public class OverviewPanel extends JPanel {
     public void addOrUpdate(final CatalogEntry entry) {
         BufferedImage thumb;
         try {
-            thumb = catalog.loadThumbnail(entry.filename);
+            thumb = catalog.loadThumbnail(entry.id);
         } catch (IOException ex) {
             thumb = null;
         }
@@ -460,9 +469,55 @@ public class OverviewPanel extends JPanel {
         }
     }
 
+    /**
+     * Replaces the grid row for {@code renamedEntry.id} with
+     * {@code renamedEntry} (same underlying image, now shown under a new
+     * display filename) — used after {@link Catalog#renameEntry}, which
+     * updates the catalog's own storage but has no way to reach into this
+     * grid's separate in-memory model. Updates in place at the row's
+     * existing position rather than removing then re-adding, so the
+     * user's current sort/scroll position isn't disturbed by a bulk
+     * rename. No-op if {@code renamedEntry.id} isn't currently shown (e.g.
+     * filtered out).
+     *
+     * @param oldFilename the entry's display filename before the rename —
+     * only used to find its old thumbnail-cache entry, since {@link
+     * #thumbnails} is still keyed by filename for display purposes
+     * @param renamedEntry the same entry, already updated
+     */
+    public void renameEntry(String oldFilename, final CatalogEntry renamedEntry) {
+        final int idx = indexOfId(renamedEntry.id);
+        if (idx < 0) {
+            return;
+        }
+        Runnable apply = new Runnable() {
+            @Override
+            public void run() {
+                BufferedImage thumb = thumbnails.remove(oldFilename);
+                thumbnails.put(renamedEntry.filename, thumb);
+                allEntries.set(idx, renamedEntry);
+                applyFilter();
+            }
+        };
+        if (SwingUtilities.isEventDispatchThread()) {
+            apply.run();
+        } else {
+            SwingUtilities.invokeLater(apply);
+        }
+    }
+
     private int indexOf(String filename) {
         for (int i = 0; i < allEntries.size(); i++) {
             if (allEntries.get(i).filename.equals(filename)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private int indexOfId(int id) {
+        for (int i = 0; i < allEntries.size(); i++) {
+            if (allEntries.get(i).id == id) {
                 return i;
             }
         }
@@ -478,6 +533,46 @@ public class OverviewPanel extends JPanel {
     CatalogEntry findByFilename(String filename) {
         int idx = indexOf(filename);
         return idx < 0 ? null : allEntries.get(idx);
+    }
+
+    /**
+     * @return the cataloged entry with permanent key {@code id}, or
+     * {@code null} if none exists — the id-based counterpart to {@link
+     * #findByFilename}, needed once a folio's recto/verso counterpart is
+     * resolved via {@link #parseFolio}/{@link ScanRenamer} rather than by
+     * reconstructing a display filename string (which only works if the
+     * grid happens to be showing Yale-shaped names right now).
+     */
+    CatalogEntry findById(int id) {
+        int idx = indexOfId(id);
+        return idx < 0 ? null : allEntries.get(idx);
+    }
+
+    /**
+     * @return the cataloged entry for folio {@code number}{@code side} (a
+     * recto/verso counterpart lookup, e.g. Two-Page View's single-selection
+     * case in {@link Voynich}), resolved via the bundled naming table's
+     * Yale column — not by reconstructing a Yale-shaped filename string and
+     * hoping it matches, which only works when the grid happens to be
+     * showing Yale naming right now. {@code null} if the naming table
+     * can't be loaded, has no row for that folio, or that row's id isn't
+     * currently in this catalog.
+     */
+    CatalogEntry findFolioCounterpart(int number, char side) {
+        ScanRenamer renamer;
+        try {
+            renamer = cachedRenamer();
+        } catch (IOException ex) {
+            return null;
+        }
+        String target = number + String.valueOf(side) + ".png";
+        for (ScanRenamer.Row row : renamer.rows) {
+            String yale = row.names.get("Yale");
+            if (target.equals(yale)) {
+                return findById(row.id);
+            }
+        }
+        return null;
     }
 
     /**
@@ -511,21 +606,84 @@ public class OverviewPanel extends JPanel {
             "^(\\d+)([rv])\\.(?:png|jpg|jpeg)$", Pattern.CASE_INSENSITIVE);
 
     /**
-     * Parses {@code filename} as an exact {@code <digits><r|v>.<ext>} folio
+     * The bundled naming table never changes mid-session, so it's loaded
+     * once and reused across every {@link #parseFolio} call rather than
+     * re-parsed on every sort comparison or folio lookup. {@code null}
+     * after a failed load attempt is also cached, so a broken/missing
+     * resource is only ever reported once (see {@link #cachedRenamer}),
+     * not on every single call.
+     */
+    private static ScanRenamer cachedScanRenamer;
+    private static boolean scanRenamerLoadFailed;
+
+    private static ScanRenamer cachedRenamer() throws IOException {
+        if (null == cachedScanRenamer && !scanRenamerLoadFailed) {
+            try {
+                cachedScanRenamer = ScanRenamer.load();
+            } catch (IOException ex) {
+                scanRenamerLoadFailed = true;
+                throw ex;
+            }
+        }
+        if (null == cachedScanRenamer) {
+            throw new IOException("scan-naming.tsv failed to load earlier; not retrying");
+        }
+        return cachedScanRenamer;
+    }
+
+    /**
+     * A page's folio number/side is manuscript metadata — a fact about the
+     * physical page — not something re-derivable from whatever naming
+     * scheme happens to be on screen right now. This resolves it via
+     * {@code entry.id}'s bundled {@code data/scan-naming.tsv} row, parsing
+     * the stable {@code "Yale"} column's value (the one scheme guaranteed
+     * folio-shaped for every foliated page, e.g. {@code "3r.png"} — see
+     * {@code SCANS.md}), not {@code entry.filename}, which is whatever
+     * display scheme is currently active and might be Rene's {@code "f3r"}
+     * or torrent's {@code "004.jpg"}, neither of which parses as a folio.
+     * Falls back to parsing {@code entry.filename} directly only if the
+     * naming table can't be loaded or has no row for this id (an entry
+     * that predates the id system, or one outside the known 213 pages).
+     *
+     * @return the parsed folio, or {@code null} if this page isn't
+     * foliated at all (a cover, flyleaf, or multi-folio composite scan —
+     * see {@link #FOLIO_PATTERN}'s doc for why those are excluded)
+     */
+    static Folio parseFolio(CatalogEntry entry) {
+        if (entry.id != 0) {
+            try {
+                ScanRenamer renamer = cachedRenamer();
+                ScanRenamer.Row row = renamer.rowFor(entry.id);
+                if (null != row) {
+                    String yale = row.names.get("Yale");
+                    if (null != yale) {
+                        Folio parsed = parseFolioText(yale);
+                        if (null != parsed) {
+                            return parsed;
+                        }
+                    }
+                }
+            } catch (IOException ignored) {
+                // Fall through to the filename-based fallback below.
+            }
+        }
+        return parseFolioText(entry.filename);
+    }
+
+    /**
+     * Parses {@code text} as an exact {@code <digits><r|v>.<ext>} folio
      * reference (e.g. "3r.png" → number 3, side 'r'; "3r.jpg" the same), or
      * returns {@code null} if it doesn't match that exact shape —
      * deliberately strict (anchored, no trailing text allowed) so irregular
-     * filenames like "100v_and_101r.png" (a multi-folio composite scan) or
+     * names like "100v_and_101r.png" (a multi-folio composite scan) or
      * "Front_cover.png" (non-foliated) never get treated as a folio with an
      * inferable recto/verso counterpart. The accepted extensions mirror
-     * {@link ScanTaskWindow#SCANNABLE_EXTENSIONS} — a folio must be
-     * recognized regardless of which scannable format it was catalogued in.
-     * Used by Two-Page View (see {@link Voynich}) — distinct from
+     * {@link ScanTaskWindow#SCANNABLE_EXTENSIONS}. Distinct from
      * {@link SortKey#pageNumberOf}, which only needs the leading number for
      * sorting and tolerates any suffix.
      */
-    static Folio parseFolio(String filename) {
-        Matcher m = FOLIO_PATTERN.matcher(filename);
+    private static Folio parseFolioText(String text) {
+        Matcher m = FOLIO_PATTERN.matcher(text);
         if (!m.matches()) {
             return null;
         }

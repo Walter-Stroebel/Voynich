@@ -10,14 +10,16 @@ import java.util.List;
 
 /**
  * Persistence for the image catalog: one {@link CatalogEntry} (thumbnail
- * inlined as base64 in its JSON) per filename. {@link FileCatalog} is the
- * only backend — see {@link #open(Config)}.
+ * inlined as base64 in its JSON) per {@link CatalogEntry#id} — the app's
+ * permanent internal key, not the display {@link CatalogEntry#filename},
+ * which can and does change under a rename (see {@link #renameEntry}).
+ * {@link FileCatalog} is the only backend — see {@link #open(Config)}.
  */
 public interface Catalog {
 
     /**
      * Upserts {@code entry} and its thumbnail, keyed by
-     * {@link CatalogEntry#filename}.
+     * {@link CatalogEntry#id}.
      *
      * @param entry the record to store
      * @param thumbnail the thumbnail to store alongside it; may be
@@ -27,18 +29,18 @@ public interface Catalog {
     void save(CatalogEntry entry, BufferedImage thumbnail) throws IOException;
 
     /**
-     * @param filename the catalog key
+     * @param id the catalog key
      * @return the stored entry, or {@code null} if none exists
      * @throws IOException if the read fails
      */
-    CatalogEntry loadEntry(String filename) throws IOException;
+    CatalogEntry loadEntry(int id) throws IOException;
 
     /**
-     * @param filename the catalog key
+     * @param id the catalog key
      * @return the stored thumbnail, or {@code null} if none exists
      * @throws IOException if the read fails
      */
-    BufferedImage loadThumbnail(String filename) throws IOException;
+    BufferedImage loadThumbnail(int id) throws IOException;
 
     /**
      * @return every {@link CatalogEntry} currently stored, in
@@ -46,6 +48,54 @@ public interface Catalog {
      * @throws IOException if the read fails
      */
     List<CatalogEntry> listAll() throws IOException;
+
+    /**
+     * Permanently removes the entry stored under {@code id}, if any. No-op
+     * if none exists.
+     *
+     * @param id the catalog key to remove
+     * @throws IOException if the delete fails
+     */
+    void deleteEntry(int id) throws IOException;
+
+    /**
+     * Convenience lookup for callers that only have a display filename
+     * (CLI args, a click in the UI) — a linear scan over {@link #listAll()}
+     * matching {@link CatalogEntry#filename}, since filename is no longer
+     * the storage key and has no dedicated index. Fine at this catalog's
+     * scale (213 entries); not meant for a hot path.
+     *
+     * @param filename the entry's current display filename
+     * @return the matching entry, or {@code null} if none has that filename
+     * @throws IOException if the underlying listing fails
+     */
+    default CatalogEntry loadEntryByFilename(String filename) throws IOException {
+        for (CatalogEntry entry : listAll()) {
+            if (entry.filename.equals(filename)) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * @return one higher than the largest {@link CatalogEntry#id} currently
+     * stored (or {@code 1} for an empty catalog) — used to assign a fresh
+     * id to a file that doesn't match any {@link ScanRenamer} naming
+     * column (e.g. something outside the known 213-page manuscript dropped
+     * into {@code scanPath}), so it still gets a stable identity rather
+     * than being skipped or crashing the scan.
+     * @throws IOException if the underlying listing fails
+     */
+    default int nextUnusedId() throws IOException {
+        int max = 0;
+        for (CatalogEntry entry : listAll()) {
+            if (entry.id > max) {
+                max = entry.id;
+            }
+        }
+        return max + 1;
+    }
 
     /**
      * Clones the entire catalog's current state under a new, timestamped
@@ -147,15 +197,20 @@ public interface Catalog {
     StorageInfo liveStorageInfo() throws IOException;
 
     /**
-     * Records that {@code filename} was seen at {@code file}'s path, merging
-     * into any existing entry rather than replacing it — the mechanism that
-     * makes a NAS copy and a local copy of the same file collapse into one
-     * {@link CatalogEntry} with two {@link CatalogEntry.Location} rather than
-     * two competing entries. Backend-agnostic: implemented once here on top
-     * of {@link #loadEntry} and {@link #save} rather than in {@link FileCatalog}
-     * itself.
+     * Records that {@code id}'s page was seen at {@code file}'s path (as
+     * {@code filename}), merging into any existing entry rather than
+     * replacing it — the mechanism that makes a NAS copy and a local copy
+     * of the same file collapse into one {@link CatalogEntry} with two
+     * {@link CatalogEntry.Location} rather than two competing entries.
+     * Backend-agnostic: implemented once here on top of {@link #loadEntry}
+     * and {@link #save} rather than in {@link FileCatalog} itself.
      *
-     * @param filename the catalog key
+     * @param id the catalog key — resolved by the caller (see
+     * {@code ScanTaskWindow}) before this is called, since only the caller
+     * knows how to turn a filename into a stable id (via
+     * {@link ScanRenamer}, or an existing entry's own id if this file was
+     * already catalogued under a different display name)
+     * @param filename the file's current display name
      * @param file the file this sighting came from; its path, size and
      * mtime are recorded as (or update) one {@link CatalogEntry.Location}
      * @param width image width, as decoded
@@ -168,13 +223,14 @@ public interface Catalog {
      * @return the merged, saved entry
      * @throws IOException if the underlying read/write fails
      */
-    default CatalogEntry recordSighting(String filename, File file, int width, int height,
+    default CatalogEntry recordSighting(int id, String filename, File file, int width, int height,
             int uniqueColors, int thumbnailUniqueColors, BufferedImage thumbnail) throws IOException {
-        CatalogEntry entry = loadEntry(filename);
+        CatalogEntry entry = loadEntry(id);
         if (null == entry) {
             entry = new CatalogEntry();
-            entry.filename = filename;
+            entry.id = id;
         }
+        entry.filename = filename;
         entry.width = width;
         entry.height = height;
         entry.uniqueColors = uniqueColors;
@@ -200,23 +256,60 @@ public interface Catalog {
     }
 
     /**
-     * Adds {@code tag} to {@code filename}'s {@link CatalogEntry#tags} if not
+     * Renames an entry's {@link CatalogEntry#filename} and matching
+     * {@link CatalogEntry.Location#path} in place — the entry's {@link
+     * CatalogEntry#id} and everything else about it (thumbnail, regions,
+     * tags) is untouched, since {@code id}, not filename, is the storage
+     * key. Used by {@link ScanRenamer}-driven renames (see {@code
+     * RenameTaskWindow}): a filesystem rename alone doesn't touch the
+     * catalog, so this is the catalog-side half of that operation —
+     * deliberately not a full re-Scan, which would needlessly re-decode
+     * every renamed image from scratch.
+     *
+     * @param id the entry's permanent catalog key
+     * @param newFilename the entry's new display filename
+     * @param newFile the file's new on-disk location, so the matching
+     * {@link CatalogEntry.Location#path} can be updated too — otherwise a
+     * later Scan would see it as a fresh sighting under the old path,
+     * mismatched against the new filename
+     * @return the updated entry, or {@code null} if {@code id} had no entry
+     * @throws IOException if the underlying read/write fails
+     */
+    default CatalogEntry renameEntry(int id, String newFilename, File newFile) throws IOException {
+        CatalogEntry entry = loadEntry(id);
+        if (null == entry) {
+            return null;
+        }
+        String oldFilename = entry.filename;
+        String newPath = newFile.getAbsolutePath();
+        for (CatalogEntry.Location loc : entry.locations) {
+            if (new File(loc.path).getName().equals(oldFilename)) {
+                loc.path = newPath;
+            }
+        }
+        entry.filename = newFilename;
+        save(entry, loadThumbnail(id));
+        return entry;
+    }
+
+    /**
+     * Adds {@code tag} to {@code id}'s {@link CatalogEntry#tags} if not
      * already present, leaving everything else about the entry (including
      * its stored thumbnail) untouched. No-op if the tag is already there.
      *
-     * @param filename the catalog key; must already have an entry
+     * @param id the catalog key; must already have an entry
      * @param tag the free-text note to add
      * @throws IOException if the underlying read/write fails
-     * @throws IllegalArgumentException if no entry exists for {@code filename}
+     * @throws IllegalArgumentException if no entry exists for {@code id}
      */
-    default void addTag(String filename, String tag) throws IOException {
-        CatalogEntry entry = loadEntry(filename);
+    default void addTag(int id, String tag) throws IOException {
+        CatalogEntry entry = loadEntry(id);
         if (null == entry) {
-            throw new IllegalArgumentException("No catalog entry for " + filename);
+            throw new IllegalArgumentException("No catalog entry for id " + id);
         }
         if (!entry.tags.contains(tag)) {
             entry.tags.add(tag);
-            save(entry, loadThumbnail(filename));
+            save(entry, loadThumbnail(id));
         }
     }
 

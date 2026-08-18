@@ -363,7 +363,7 @@ final class RegionManagerDialog {
 
     private void save() {
         try {
-            catalog.save(entry, catalog.loadThumbnail(entry.filename));
+            catalog.save(entry, catalog.loadThumbnail(entry.id));
         } catch (IOException ex) {
             JOptionPane.showMessageDialog(dialog, "Save failed:\n" + ex.getMessage(),
                     "Save failed", JOptionPane.ERROR_MESSAGE);

@@ -108,6 +108,7 @@ final class CatalogEntryEditor {
 
     private final JDialog dialog;
     private final JLabel statusLabel = new JLabel(" ", SwingConstants.CENTER);
+    private final JLabel aliasesLabel = new JLabel(" ");
     private final JLabel imageLabel = new JLabel("", SwingConstants.CENTER);
     private final JTextArea jsonText = new JTextArea();
     private final JTextArea tagsText = new JTextArea();
@@ -253,8 +254,15 @@ final class CatalogEntryEditor {
         vizButtons.add(viewButton);
         vizButtons.add(areaButton);
 
+        aliasesLabel.setBorder(BorderFactory.createEmptyBorder(2, 4, 4, 4));
+        aliasesLabel.setFont(aliasesLabel.getFont().deriveFont(Font.PLAIN, 11f));
+
+        JPanel north = new JPanel(new BorderLayout());
+        north.add(vizButtons, BorderLayout.NORTH);
+        north.add(aliasesLabel, BorderLayout.SOUTH);
+
         JPanel south = new JPanel(new BorderLayout());
-        south.add(vizButtons, BorderLayout.NORTH);
+        south.add(north, BorderLayout.NORTH);
         south.add(tagsScroll, BorderLayout.CENTER);
         south.add(buttons, BorderLayout.SOUTH);
 
@@ -745,9 +753,9 @@ final class CatalogEntryEditor {
                     "Invalid JSON", JOptionPane.ERROR_MESSAGE);
             return;
         }
-        if (null == parsed.filename || !parsed.filename.equals(entry.filename)) {
+        if (parsed.id != entry.id) {
             JOptionPane.showMessageDialog(dialog,
-                    "filename must stay \"" + entry.filename + "\" — it's the catalog key.",
+                    "id must stay " + entry.id + " — it's the catalog key.",
                     "Required field changed", JOptionPane.ERROR_MESSAGE);
             return;
         }
@@ -771,7 +779,7 @@ final class CatalogEntryEditor {
         // trusted as the source of truth for this field, same as tags.
         parsed.regions = entry.regions;
         try {
-            catalog.save(parsed, catalog.loadThumbnail(entry.filename));
+            catalog.save(parsed, catalog.loadThumbnail(entry.id));
         } catch (IOException ex) {
             JOptionPane.showMessageDialog(dialog, "Save failed:\n" + ex.getMessage(),
                     "Save failed", JOptionPane.ERROR_MESSAGE);
@@ -788,6 +796,58 @@ final class CatalogEntryEditor {
      * it's exhausted. Also the initial load, called once from the
      * constructor.
      */
+    /**
+     * Cached across every {@link #advance()} call in this dialog's
+     * lifetime, since the bundled {@code scan-naming.tsv} never changes
+     * mid-session — avoids re-parsing it on every entry shown during a
+     * MarkUp review pass over the whole catalog. {@code null} once tried
+     * and failed, so a load failure is only ever surfaced (and retried)
+     * once, not on every entry.
+     */
+    private ScanRenamer renamer;
+    private boolean renamerLoadFailed;
+
+    /**
+     * @return every naming scheme's known name for {@code entry.id} (see
+     * {@link ScanRenamer#rowFor}), one "Scheme: name" pair per line, for
+     * {@link #aliasesLabel} — e.g. someone reviewing a page under its
+     * Sequential torrent name can still see what Rene's site or Yale's own
+     * label calls the same page. Blank if the naming table can't be
+     * loaded, or has nothing for this id (id 0 — an entry that predates
+     * the id system and hasn't been migrated).
+     */
+    private String aliasesText(CatalogEntry entry) {
+        if (entry.id == 0) {
+            return " ";
+        }
+        if (null == renamer && !renamerLoadFailed) {
+            try {
+                renamer = ScanRenamer.load();
+            } catch (IOException ex) {
+                renamerLoadFailed = true;
+            }
+        }
+        if (null == renamer) {
+            return " ";
+        }
+        ScanRenamer.Row row = renamer.rowFor(entry.id);
+        if (null == row) {
+            return " ";
+        }
+        StringBuilder html = new StringBuilder("<html>");
+        for (String column : renamer.columns) {
+            String value = row.names.get(column);
+            if (null != value) {
+                if (html.length() > 6) {
+                    html.append(" &nbsp; ");
+                }
+                html.append("<b>").append(column).append(":</b> ").append(value);
+            }
+        }
+        html.append("</html>");
+        return html.toString();
+    }
+
     private void advance() {
         index++;
         if (index >= queue.size()) {
@@ -829,6 +889,7 @@ final class CatalogEntryEditor {
                 ? String.format("%d / %d — %s — click the image to add a \"%s\" tag",
                         index + 1, queue.size(), entry.filename, action.label())
                 : entry.filename);
+        aliasesLabel.setText(aliasesText(entry));
 
         loadFullImage(entry);
     }

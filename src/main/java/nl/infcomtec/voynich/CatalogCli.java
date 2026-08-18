@@ -158,7 +158,7 @@ public class CatalogCli {
     }
 
     private static void get(Catalog catalog, String filename) throws IOException {
-        CatalogEntry entry = catalog.loadEntry(filename);
+        CatalogEntry entry = catalog.loadEntryByFilename(filename);
         if (null == entry) {
             System.err.println("No entry for " + filename);
             System.exit(1);
@@ -167,27 +167,30 @@ public class CatalogCli {
     }
 
     private static void tag(Catalog catalog, String filename, String text) throws IOException {
-        if (null == catalog.loadEntry(filename)) {
+        CatalogEntry entry = catalog.loadEntryByFilename(filename);
+        if (null == entry) {
             System.err.println("No entry for " + filename);
             System.exit(1);
+            return;
         }
-        catalog.addTag(filename, text);
-        System.out.println("tagged: " + filename + " -> " + catalog.loadEntry(filename).tags);
+        catalog.addTag(entry.id, text);
+        System.out.println("tagged: " + filename + " -> " + catalog.loadEntry(entry.id).tags);
     }
 
     /**
      * Same two sanity checks as {@code OverviewPanel.showJsonEditor}'s Save
      * button: this is the app's own database with no external attacker, so
      * only honest mistakes are guarded against — the JSON must parse,
-     * {@link CatalogEntry#filename} must match {@code filename} (it's the
+     * {@link CatalogEntry#id} must match the existing entry's (it's the
      * catalog key), and {@link CatalogEntry#locations} must not have been
      * emptied out.
      */
     private static void save(Catalog catalog, String filename, String jsonFile) throws IOException {
-        CatalogEntry existing = catalog.loadEntry(filename);
+        CatalogEntry existing = catalog.loadEntryByFilename(filename);
         if (null == existing) {
             System.err.println("No entry for " + filename + " — CatalogCli only edits existing entries.");
             System.exit(1);
+            return;
         }
         String json = null == jsonFile
                 ? new String(System.in.readAllBytes(), StandardCharsets.UTF_8)
@@ -200,15 +203,15 @@ public class CatalogCli {
             System.exit(1);
             return;
         }
-        if (null == parsed.filename || !parsed.filename.equals(filename)) {
-            System.err.println("filename must stay \"" + filename + "\" — it's the catalog key.");
+        if (parsed.id != existing.id) {
+            System.err.println("id must stay " + existing.id + " — it's the catalog key.");
             System.exit(1);
         }
         if (!existing.locations.isEmpty() && parsed.locations.isEmpty()) {
             System.err.println("locations went from " + existing.locations.size() + " entries to 0 — refusing to save.");
             System.exit(1);
         }
-        catalog.save(parsed, catalog.loadThumbnail(filename));
+        catalog.save(parsed, catalog.loadThumbnail(existing.id));
         System.out.println("saved: " + filename);
     }
 
@@ -240,7 +243,7 @@ public class CatalogCli {
      */
     private static void extract(Catalog catalog, String[] args) throws IOException {
         String filename = args[1];
-        CatalogEntry entry = catalog.loadEntry(filename);
+        CatalogEntry entry = catalog.loadEntryByFilename(filename);
         if (null == entry) {
             System.err.println("No entry for " + filename);
             System.exit(1);
@@ -526,7 +529,7 @@ public class CatalogCli {
             // A forgotten -- before a second filename would otherwise silently fold that
             // filename into the question text — catch the common case (the very next word
             // itself names a real catalog entry) and fail loudly instead.
-            if (args.length > 2 && args[2].endsWith(".png") && null != catalog.loadEntry(args[2])) {
+            if (args.length > 2 && args[2].endsWith(".png") && null != catalog.loadEntryByFilename(args[2])) {
                 System.err.println("More than one filename requires -- before the question");
                 System.exit(1);
                 return;
@@ -603,7 +606,7 @@ public class CatalogCli {
         List<File> files = new ArrayList<>();
         boolean anyRawPath = false;
         for (String filename : filenames) {
-            CatalogEntry entry = catalog.loadEntry(filename);
+            CatalogEntry entry = catalog.loadEntryByFilename(filename);
             File imgFile;
             if (null != entry) {
                 imgFile = resolveExistingLocation(entry);
@@ -727,44 +730,55 @@ public class CatalogCli {
             return;
         }
 
-        String versoName;
-        String rectoName;
+        CatalogEntry versoEntry;
+        CatalogEntry rectoEntry;
         if (2 == filenames.size()) {
-            OverviewPanel.Folio a = OverviewPanel.parseFolio(filenames.get(0));
-            OverviewPanel.Folio b = OverviewPanel.parseFolio(filenames.get(1));
+            CatalogEntry entryA = catalog.loadEntryByFilename(filenames.get(0));
+            CatalogEntry entryB = catalog.loadEntryByFilename(filenames.get(1));
+            if (null == entryA || null == entryB) {
+                System.err.println("No entry for " + (null == entryA ? filenames.get(0) : filenames.get(1)));
+                System.exit(1);
+                return;
+            }
+            OverviewPanel.Folio a = OverviewPanel.parseFolio(entryA);
+            OverviewPanel.Folio b = OverviewPanel.parseFolio(entryB);
             if (null == a || null == b) {
-                System.err.println("Both filenames must be plain <number><r|v>.png folio pages");
+                System.err.println("Both filenames must be plain <number><r|v> folio pages");
                 System.exit(1);
                 return;
             }
             boolean firstIsVerso = 'v' == a.side;
-            versoName = firstIsVerso ? filenames.get(0) : filenames.get(1);
-            rectoName = firstIsVerso ? filenames.get(1) : filenames.get(0);
+            versoEntry = firstIsVerso ? entryA : entryB;
+            rectoEntry = firstIsVerso ? entryB : entryA;
         } else {
             String filename = filenames.get(0);
-            OverviewPanel.Folio folio = OverviewPanel.parseFolio(filename);
+            CatalogEntry entry = catalog.loadEntryByFilename(filename);
+            if (null == entry) {
+                System.err.println("No entry for " + filename);
+                System.exit(1);
+                return;
+            }
+            OverviewPanel.Folio folio = OverviewPanel.parseFolio(entry);
             if (null == folio) {
-                System.err.println(filename + " is not a plain <number><r|v>.png folio page");
+                System.err.println(filename + " is not a plain <number><r|v> folio page");
                 System.exit(1);
                 return;
             }
             char otherSide = 'r' == folio.side ? 'v' : 'r';
-            String otherName = folio.number + String.valueOf(otherSide) + ".png";
-            if (null == catalog.loadEntry(otherName)) {
-                System.err.println("No counterpart " + otherName + " for " + filename + " in the catalog");
+            CatalogEntry other = findFolioCounterpart(catalog, folio.number, otherSide);
+            if (null == other) {
+                System.err.println("No counterpart " + folio.number + otherSide + " for " + filename + " in the catalog");
                 System.exit(1);
                 return;
             }
-            versoName = 'v' == folio.side ? filename : otherName;
-            rectoName = 'v' == folio.side ? otherName : filename;
+            versoEntry = 'v' == folio.side ? entry : other;
+            rectoEntry = 'v' == folio.side ? other : entry;
         }
 
-        CatalogEntry versoEntry = catalog.loadEntry(versoName);
-        CatalogEntry rectoEntry = catalog.loadEntry(rectoName);
         File versoFile = resolveExistingLocation(versoEntry);
         File rectoFile = resolveExistingLocation(rectoEntry);
         if (null == versoFile || null == rectoFile) {
-            System.err.println("No on-disk location found for " + versoName + " or " + rectoName);
+            System.err.println("No on-disk location found for " + versoEntry.filename + " or " + rectoEntry.filename);
             System.exit(1);
             return;
         }
@@ -779,7 +793,7 @@ public class CatalogCli {
             ImageIO.write(composite, "png", new File(out));
             System.out.println(out);
         } else {
-            File target = File.createTempFile(versoName + "+" + rectoName + ".", ".png");
+            File target = File.createTempFile(versoEntry.filename + "+" + rectoEntry.filename + ".", ".png");
             ImageIO.write(composite, "png", target);
             Voynich.launchImageView(target);
         }
@@ -814,12 +828,13 @@ public class CatalogCli {
 
         List<BufferedImage> thumbnails = new ArrayList<>();
         for (String filename : filenames) {
-            if (null == catalog.loadEntry(filename)) {
+            CatalogEntry entry = catalog.loadEntryByFilename(filename);
+            if (null == entry) {
                 System.err.println("No entry for " + filename);
                 System.exit(1);
                 return;
             }
-            thumbnails.add(catalog.loadThumbnail(filename));
+            thumbnails.add(catalog.loadThumbnail(entry.id));
         }
         int columns = ImageGrid.squareColumns(filenames.size());
         BufferedImage composite = ImageGrid.paint(thumbnails, columns,
@@ -840,6 +855,30 @@ public class CatalogCli {
             CatalogEntry.Region r = entry.regions.get(i);
             if (r.kind.equalsIgnoreCase(kind)) {
                 return r;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * @return the cataloged entry for folio {@code number}{@code side},
+     * resolved via the bundled naming table's Yale column — same logic as
+     * {@code OverviewPanel.findFolioCounterpart}, duplicated here rather
+     * than shared since {@code OverviewPanel}'s version resolves against
+     * its own in-memory grid list, while this one goes straight through
+     * {@link Catalog#loadEntryByFilename}.
+     */
+    private static CatalogEntry findFolioCounterpart(Catalog catalog, int number, char side) throws IOException {
+        ScanRenamer renamer = ScanRenamer.load();
+        String target = number + String.valueOf(side) + ".png";
+        for (ScanRenamer.Row row : renamer.rows) {
+            if (target.equals(row.names.get("Yale"))) {
+                for (CatalogEntry entry : catalog.listAll()) {
+                    if (entry.id == row.id) {
+                        return entry;
+                    }
+                }
+                return null;
             }
         }
         return null;

@@ -123,7 +123,7 @@ final class ContentAreaEditor {
                 region.polygon = canvas.resultVertices();
                 region.angle = canvas.angleResult();
                 try {
-                    catalog.save(entry, catalog.loadThumbnail(entry.filename));
+                    catalog.save(entry, catalog.loadThumbnail(entry.id));
                 } catch (IOException ex) {
                     JOptionPane.showMessageDialog(canvas, "Save failed:\n" + ex.getMessage(),
                             "Save failed", JOptionPane.ERROR_MESSAGE);

@@ -7,20 +7,41 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * One logical image's catalog record, identified by {@link #filename} —
- * deliberately not by path. The same file routinely exists at more than one
- * path (e.g. a NAS copy plus a local NVMe copy kept for read speed); those
- * are the same catalog entry with two {@link #locations}, not two entries.
+ * One logical image's catalog record. Stored under the permanent
+ * {@link #id}, not {@link #filename} — the physical file can be, and
+ * routinely is, renamed on disk (see {@link ScanRenamer}/{@code
+ * RenameTaskWindow}), and {@code id} is what survives that unchanged.
+ * {@code filename} is a display concern: the file's actual current name on
+ * disk, matching every {@link Location}'s path. The same file routinely
+ * exists at more than one path too (e.g. a NAS copy plus a local NVMe copy
+ * kept for read speed) — those are the same catalog entry with two
+ * {@link #locations}, not two entries.
  * <p>
- * Serialized as-is through {@link JSON} as a standalone
- * {@code <filename>.json} sidecar file by {@link FileCatalog}, thumbnail
- * included (see {@link #thumbnailPng}).
+ * Serialized as-is through {@link JSON} as a standalone {@code <id>.json}
+ * sidecar file by {@link FileCatalog}, thumbnail included (see
+ * {@link #thumbnailPng}).
  */
 public class CatalogEntry {
 
     /**
-     * The catalog key. Matches the physical filename shared by every
-     * {@link Location}, not any single one of their paths.
+     * The catalog's own permanent identity for this page — one of the
+     * bundled {@code data/scan-naming.tsv}'s {@code Id} values (1–213,
+     * dense, no gaps), assigned once and never changed even if the file's
+     * on-disk name (see {@link #filename}) is later renamed to a different
+     * scheme. Not shown to the user anywhere; purely internal storage/
+     * lookup key — see {@link Catalog#loadEntry(int)}. Zero for an entry
+     * that predates this field (see {@code CLAUDE.md}'s "Catalog
+     * persistence" section for the migration that assigns real ids to
+     * pre-existing sidecars).
+     */
+    public int id;
+
+    /**
+     * The file's current display name — matches the physical filename
+     * shared by every {@link Location}, not any single one of their paths.
+     * Changes whenever the file is renamed on disk (see
+     * {@link Catalog#renameEntry}); {@link #id} is what stays stable
+     * across that.
      */
     public String filename;
     /**
