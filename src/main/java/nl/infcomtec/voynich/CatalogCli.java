@@ -862,23 +862,20 @@ public class CatalogCli {
 
     /**
      * @return the cataloged entry for folio {@code number}{@code side},
-     * resolved via the bundled naming table's Yale column — same logic as
-     * {@code OverviewPanel.findFolioCounterpart}, duplicated here rather
-     * than shared since {@code OverviewPanel}'s version resolves against
-     * its own in-memory grid list, while this one goes straight through
-     * {@link Catalog#loadEntryByFilename}.
+     * resolved via {@link ScanRenamer#idForFolio} then a plain catalog
+     * scan for that id — same folio→id lookup {@code OverviewPanel}'s
+     * counterpart uses, just resolved to a {@code CatalogEntry} differently
+     * since this has no in-memory grid list to search, only
+     * {@link Catalog#listAll}.
      */
     private static CatalogEntry findFolioCounterpart(Catalog catalog, int number, char side) throws IOException {
-        ScanRenamer renamer = ScanRenamer.load();
-        String target = number + String.valueOf(side) + ".png";
-        for (ScanRenamer.Row row : renamer.rows) {
-            if (target.equals(row.names.get("Yale"))) {
-                for (CatalogEntry entry : catalog.listAll()) {
-                    if (entry.id == row.id) {
-                        return entry;
-                    }
-                }
-                return null;
+        Integer id = ScanRenamer.cached().idForFolio(number, side);
+        if (null == id) {
+            return null;
+        }
+        for (CatalogEntry entry : catalog.listAll()) {
+            if (entry.id == id) {
+                return entry;
             }
         }
         return null;

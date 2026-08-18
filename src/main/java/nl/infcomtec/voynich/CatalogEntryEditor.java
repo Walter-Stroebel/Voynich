@@ -797,17 +797,6 @@ final class CatalogEntryEditor {
      * constructor.
      */
     /**
-     * Cached across every {@link #advance()} call in this dialog's
-     * lifetime, since the bundled {@code scan-naming.tsv} never changes
-     * mid-session — avoids re-parsing it on every entry shown during a
-     * MarkUp review pass over the whole catalog. {@code null} once tried
-     * and failed, so a load failure is only ever surfaced (and retried)
-     * once, not on every entry.
-     */
-    private ScanRenamer renamer;
-    private boolean renamerLoadFailed;
-
-    /**
      * @return every naming scheme's known name for {@code entry.id} (see
      * {@link ScanRenamer#rowFor}), one "Scheme: name" pair per line, for
      * {@link #aliasesLabel} — e.g. someone reviewing a page under its
@@ -820,14 +809,10 @@ final class CatalogEntryEditor {
         if (entry.id == 0) {
             return " ";
         }
-        if (null == renamer && !renamerLoadFailed) {
-            try {
-                renamer = ScanRenamer.load();
-            } catch (IOException ex) {
-                renamerLoadFailed = true;
-            }
-        }
-        if (null == renamer) {
+        ScanRenamer renamer;
+        try {
+            renamer = ScanRenamer.cached();
+        } catch (IOException ex) {
             return " ";
         }
         ScanRenamer.Row row = renamer.rowFor(entry.id);

@@ -539,7 +539,7 @@ public class OverviewPanel extends JPanel {
      * @return the cataloged entry with permanent key {@code id}, or
      * {@code null} if none exists — the id-based counterpart to {@link
      * #findByFilename}, needed once a folio's recto/verso counterpart is
-     * resolved via {@link #parseFolio}/{@link ScanRenamer} rather than by
+     * resolved via {@link ScanRenamer#idForFolio} rather than by
      * reconstructing a display filename string (which only works if the
      * grid happens to be showing Yale-shaped names right now).
      */
@@ -559,20 +559,12 @@ public class OverviewPanel extends JPanel {
      * currently in this catalog.
      */
     CatalogEntry findFolioCounterpart(int number, char side) {
-        ScanRenamer renamer;
         try {
-            renamer = cachedRenamer();
+            Integer id = ScanRenamer.cached().idForFolio(number, side);
+            return null == id ? null : findById(id);
         } catch (IOException ex) {
             return null;
         }
-        String target = number + String.valueOf(side) + ".png";
-        for (ScanRenamer.Row row : renamer.rows) {
-            String yale = row.names.get("Yale");
-            if (target.equals(yale)) {
-                return findById(row.id);
-            }
-        }
-        return null;
     }
 
     /**
@@ -606,32 +598,6 @@ public class OverviewPanel extends JPanel {
             "^(\\d+)([rv])\\.(?:png|jpg|jpeg)$", Pattern.CASE_INSENSITIVE);
 
     /**
-     * The bundled naming table never changes mid-session, so it's loaded
-     * once and reused across every {@link #parseFolio} call rather than
-     * re-parsed on every sort comparison or folio lookup. {@code null}
-     * after a failed load attempt is also cached, so a broken/missing
-     * resource is only ever reported once (see {@link #cachedRenamer}),
-     * not on every single call.
-     */
-    private static ScanRenamer cachedScanRenamer;
-    private static boolean scanRenamerLoadFailed;
-
-    private static ScanRenamer cachedRenamer() throws IOException {
-        if (null == cachedScanRenamer && !scanRenamerLoadFailed) {
-            try {
-                cachedScanRenamer = ScanRenamer.load();
-            } catch (IOException ex) {
-                scanRenamerLoadFailed = true;
-                throw ex;
-            }
-        }
-        if (null == cachedScanRenamer) {
-            throw new IOException("scan-naming.tsv failed to load earlier; not retrying");
-        }
-        return cachedScanRenamer;
-    }
-
-    /**
      * A page's folio number/side is manuscript metadata — a fact about the
      * physical page — not something re-derivable from whatever naming
      * scheme happens to be on screen right now. This resolves it via
@@ -652,7 +618,7 @@ public class OverviewPanel extends JPanel {
     static Folio parseFolio(CatalogEntry entry) {
         if (entry.id != 0) {
             try {
-                ScanRenamer renamer = cachedRenamer();
+                ScanRenamer renamer = ScanRenamer.cached();
                 ScanRenamer.Row row = renamer.rowFor(entry.id);
                 if (null != row) {
                     String yale = row.names.get("Yale");

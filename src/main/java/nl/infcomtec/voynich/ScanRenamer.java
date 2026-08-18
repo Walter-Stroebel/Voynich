@@ -147,6 +147,54 @@ public class ScanRenamer {
     }
 
     /**
+     * @return the permanent {@link CatalogEntry#id} of the row whose
+     * {@code "Yale"} column reads {@code "<number><side>.png"}, or
+     * {@code null} if no row matches — the shared folio→id half of a
+     * recto/verso counterpart lookup; resolving that id to an actual
+     * {@link CatalogEntry} is left to the caller, since that step differs
+     * by what catalog view it already has in hand ({@code OverviewPanel}'s
+     * in-memory list vs. {@link Catalog#loadEntry}).
+     */
+    public Integer idForFolio(int number, char side) {
+        String target = number + String.valueOf(side) + ".png";
+        for (Row row : rows) {
+            if (target.equals(row.names.get("Yale"))) {
+                return row.id;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The bundled table never changes mid-session, so it's loaded once and
+     * reused by every caller rather than re-parsed per call. {@code null}
+     * after a failed load is also cached, so a broken/missing resource is
+     * only ever reported once, not on every single call.
+     */
+    private static ScanRenamer cached;
+    private static boolean cacheLoadFailed;
+
+    /**
+     * @return the shared, lazily-loaded instance — see {@link #cached}.
+     * @throws IOException if the resource has never loaded successfully
+     * (including on this call)
+     */
+    public static synchronized ScanRenamer cached() throws IOException {
+        if (null == cached && !cacheLoadFailed) {
+            try {
+                cached = load();
+            } catch (IOException ex) {
+                cacheLoadFailed = true;
+                throw ex;
+            }
+        }
+        if (null == cached) {
+            throw new IOException(RESOURCE_PATH + " failed to load earlier; not retrying");
+        }
+        return cached;
+    }
+
+    /**
      * Resolves a display filename to its permanent {@link CatalogEntry#id}
      * by matching its basename (extension stripped) against every known
      * naming column's values — used by {@link ScanTaskWindow} so a freshly
