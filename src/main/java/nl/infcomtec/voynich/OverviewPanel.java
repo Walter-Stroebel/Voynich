@@ -263,6 +263,16 @@ public class OverviewPanel extends JPanel {
     }
 
     /**
+     * Whether the "View &gt; Content Area Only" toggle is currently on — read
+     * by {@link Voynich#openTwoPageView} so a side-by-side composite matches
+     * whatever mode the overview grid is already showing, rather than always
+     * compositing full pages regardless of the toggle.
+     */
+    public boolean isContentAreaOnly() {
+        return contentAreaOnly;
+    }
+
+    /**
      * Maps {@code entry}'s {@link CatalogEntry#mainRegion()} polygon (traced
      * in its full-resolution image's own pixel coordinates) into the thumbnail's
      * {@link ColorImage#THUMB_SIZE}×{@link ColorImage#THUMB_SIZE} coordinate

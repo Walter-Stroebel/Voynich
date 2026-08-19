@@ -482,7 +482,7 @@ public class Voynich {
                 if (null == pair) {
                     return;
                 }
-                openTwoPageView(fr, pair.get(0), pair.get(1));
+                openTwoPageView(fr, pair.get(0), pair.get(1), overview.isContentAreaOnly());
             }
         }.withTooltip("Compose the selected page and its r/v counterpart side by side, and open the result in infimg"));
         JMenuItem matrixItem = new JMenuItem(new EzAction("Thumbnail Matrix") {
@@ -920,13 +920,41 @@ public class Voynich {
     }
 
     /**
+     * Crops {@code full} to {@code entry}'s {@link CatalogEntry#mainRegion()}
+     * bounding box (same {@link BitSet2D#cropToPolygon} path
+     * {@code CatalogCli extract --content-area} uses), or returns
+     * {@code full} unchanged if no content area has been traced yet.
+     */
+    private static BufferedImage cropToContentArea(BufferedImage full, CatalogEntry entry) {
+        CatalogEntry.Region main = entry.mainRegion();
+        if (null == main) {
+            return full;
+        }
+        List<java.awt.Point> vertices = new ArrayList<>(main.polygon.size());
+        for (CatalogEntry.Vertex v : main.polygon) {
+            vertices.add(new java.awt.Point(v.x, v.y));
+        }
+        BufferedImage cropped = BitSet2D.cropToPolygon(full, vertices);
+        if (0.0 != main.angle) {
+            cropped = BitSet2D.rotateUpright(cropped, main.angle);
+        }
+        return cropped;
+    }
+
+    /**
      * Reads {@code verso} and {@code recto}'s full-resolution files, composes
      * them side by side (verso left, recto right — the order an open book
      * spread reads) via {@link ImageGrid}, and opens the result in infimg —
      * same "compose then hand to infimg for save/discard/clipboard" shape as
-     * {@link RegionView#openInInfimg}, not a new in-app viewer.
+     * {@link RegionView#openInInfimg}, not a new in-app viewer. When
+     * {@code contentAreaOnly} is set (mirroring {@link OverviewPanel}'s own
+     * "Content Area Only" toggle, so the side-by-side view matches whatever
+     * the thumbnail grid is already showing), each source is cropped to its
+     * {@link CatalogEntry#mainRegion()} bounding box first — a page with no
+     * content area traced yet falls back to the full page rather than
+     * failing the whole composite.
      */
-    private static void openTwoPageView(JFrame fr, CatalogEntry verso, CatalogEntry recto) {
+    private static void openTwoPageView(JFrame fr, CatalogEntry verso, CatalogEntry recto, boolean contentAreaOnly) {
         File versoFile = ImageDisplay.pickExistingFile(verso);
         File rectoFile = ImageDisplay.pickExistingFile(recto);
         if (null == versoFile || null == rectoFile) {
@@ -938,6 +966,10 @@ public class Voynich {
             protected File doInBackground() throws IOException {
                 BufferedImage a = ImageIO.read(versoFile);
                 BufferedImage b = ImageIO.read(rectoFile);
+                if (contentAreaOnly) {
+                    a = cropToContentArea(a, verso);
+                    b = cropToContentArea(b, recto);
+                }
                 int cellW = Math.max(a.getWidth(), b.getWidth());
                 int cellH = Math.max(a.getHeight(), b.getHeight());
                 BufferedImage composite = ImageGrid.paint(List.of(a, b), 2, new Dimension(cellW, cellH));
