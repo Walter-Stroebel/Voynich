@@ -2,13 +2,15 @@
 
 This is for someone who has never installed a Java program before and may
 not have a terminal open right now. If you already have Java 17 and know
-your way around a terminal, skip ahead to [step 2](#2-download-the-app-itself)
+your way around a terminal, skip ahead to [step 2](#2-install-the-app-itself)
 — you don't need to build anything from source, a ready-to-run download
 exists.
 
 Only one thing needs installing before anything else: **Java 17**. Then
-you download the app itself (already built, no compiling needed), the
-scan images, and the companion viewer, and you're running.
+you install the app itself via [MITSA](https://github.com/Walter-Stroebel/mitsa)
+(a small cross-platform launcher/updater — no manual jar downloads or
+per-OS scripts to babysit), plus the scan images and the companion
+viewer, and you're running.
 
 *(Maven/git and building from source are only needed if you want to
 modify the code yourself — that path is covered separately, at the end of
@@ -71,20 +73,26 @@ found" instead, the installer didn't add Java to your PATH — reinstall
 and make sure that option is checked, or search "add Java to PATH
 \<your OS\>".
 
-## 2. Download the app itself
+## 2. Install the app itself
 
-The app is published as a single ready-to-run file (a "jar") — no
-building or compiling needed:
+Voynich is installed and run through [MITSA](https://github.com/Walter-Stroebel/mitsa).
+MITSA handles fetching the right release jar, keeping it updated, and
+giving you a plain `voynich` command — no manual jar downloads, no
+version numbers to track by hand.
 
-1. Go to
-   [github.com/Walter-Stroebel/Voynich/releases/latest](https://github.com/Walter-Stroebel/Voynich/releases/latest)
-2. Download the one `.jar` file attached to that release (named
-   `Voynich-<version>-jar-with-dependencies.jar` — the exact version
-   changes with each release, so don't hardcode it anywhere below;
-   whatever you actually downloaded is what step 6 will point at).
-3. Put it somewhere permanent — e.g. a folder called `Voynich` in your
-   Documents, or wherever you keep this kind of thing. You'll run it
-   directly from there.
+1. Install MITSA itself: follow its own
+   [INSTALL.md](https://github.com/Walter-Stroebel/mitsa/blob/main/INSTALL.md)
+   (needs the same Java 17 you just installed in step 1 — MITSA doesn't
+   bundle its own JVM).
+2. Register Voynich:
+
+   ```bash
+   mitsa add voynich Walter-Stroebel Voynich 'Voynich-.*-jar-with-dependencies\.jar'
+   ```
+
+   This registers the app and fetches the latest release jar. From then
+   on, `mitsa run voynich` launches it, and `mitsa update voynich` pulls
+   a newer release when one's out — no re-downloading or re-registering.
 
 ## 3. Get the scans themselves
 
@@ -153,54 +161,24 @@ items just silently do nothing when clicked. Treat this as a required
 step, not an optional extra — especially on Linux, where there's no
 platform image viewer this app falls back to instead.
 
-infimg has its own public repository with tagged releases — download the
-latest one rather than building from source, so you get exactly what was
-tested and released, not whatever happens to be on `main` at clone time:
-
-1. Go to
-   [github.com/Walter-Stroebel/infimg/releases/latest](https://github.com/Walter-Stroebel/infimg/releases/latest)
-2. Download the one `.jar` file attached to that release (named
-   `infimg-<version>-jar-with-dependencies.jar` — the exact version
-   changes with each release, so don't hardcode a version anywhere below).
-3. Put it somewhere permanent, e.g. `~/bin/infimg-<version>-jar-with-dependencies.jar`
-   (or wherever you keep such things — the wrapper script below reaches it
-   via a glob rather than repeating this number).
-
-The next part is the one genuinely hands-on step in this whole guide —
-everywhere else so far has been "download and click"; this is "paste a
-few lines into a script file." It's short and you only do it once, but
-don't take it as a sign you've gone off the rails if it feels like a
-bigger step than everything before it.
-
-Write a tiny wrapper script so this app can launch it without you
-having to update its config every time you download a newer release. On
-Linux/Mac, create e.g. `~/bin/infimg` (make sure `~/bin` is on your PATH,
-or just pick any folder and use its full path in the config step below)
-containing:
+infimg is installed the same MITSA way as Voynich itself — if you've
+already installed MITSA in step 2, this is one more registration, no
+wrapper scripts to write by hand:
 
 ```bash
-#!/bin/sh
-exec java -jar /full/path/to/infimg-*-jar-with-dependencies.jar "$@"
+mitsa add infimg Walter-Stroebel infimg 'infimg-.*-jar-with-dependencies\.jar'
 ```
 
-(The `*` glob is deliberate — it matches whatever version-numbered
-filename you actually downloaded, so dropping in a newer release later is
-just replacing the jar file, no edits needed here.)
-
-...then `chmod +x ~/bin/infimg`. On Windows, a `.bat` file with the
-equivalent `java -jar ...` line works the same way.
-
-Wrapping it in a script rather than pointing straight at the jar is
-deliberate — it means a future infimg version bump doesn't require
-touching this app's config again, just replacing the jar the wrapper
-points at.
-You'll point `"infimgJar"` at this wrapper script's path in the config
-step next.
+This fetches the latest infimg release and writes a `~/bin/infimg`
+command (Linux/macOS) whose whole job is to hand off to `mitsa run
+infimg` — that path is what you'll point `"infimgJar"` at in the config
+step next. `mitsa update infimg` pulls a newer release later; nothing
+about this app's own config needs to change when that happens.
 
 ## 5. Set up a config file
 
 The app needs to know where your scanned images live, and where to find
-the infimg wrapper script from the previous step. Create a folder called
+the infimg command MITSA just installed. Create a folder called
 `.infVoy` in your home directory (on Windows that's usually
 `C:\Users\<you>\.infVoy`; on Mac/Linux it's `~/.infVoy`), and inside it a
 file named `config.json` containing:
@@ -213,8 +191,9 @@ file named `config.json` containing:
 ```
 
 Replace `scanPath` with wherever your converted PNG scans actually are,
-and `infimgJar` with the wrapper script's path from step 4 (on Windows,
-the `.bat` file's path).
+and `infimgJar` with the path MITSA wrote for infimg in step 4 —
+`~/bin/infimg` on Linux/Mac (on Windows, the `.bat` shim under
+`%APPDATA%\mitsa`, per MITSA's own docs).
 
 (If you skip this step, the app will create the `.infVoy` folder itself
 on first run and tell you exactly this, then exit — it won't guess.)
@@ -222,17 +201,12 @@ on first run and tell you exactly this, then exit — it won't guess.)
 ## 6. Run it
 
 ```bash
-java -jar /full/path/to/Voynich-<version>-jar-with-dependencies.jar
+mitsa run voynich
 ```
 
-(Use the actual path and filename from step 2 — whatever version you
-downloaded. On Mac/Linux, since that folder should only ever hold one
-such jar, a wildcard also works and never needs editing on a later
-upgrade: `java -jar /full/path/to/Voynich-*-jar-with-dependencies.jar`.
-On Windows you can also usually just double-click the jar file, though
-running it from a terminal like this makes any error message easier to
-see if something goes wrong — and `cmd`/PowerShell don't expand `*` the
-way a Unix shell does, so there the exact filename is required.)
+(Or just `voynich`, if MITSA's shim directory is on your PATH — same
+convenience as any other installed command, no version number or jar
+path to remember.)
 
 The main window should open. From here, hand off to
 [MANUAL.md](MANUAL.md#the-main-window) for how to actually use the app —
@@ -246,10 +220,12 @@ from your scan folder.
 - **`java: command not found` / `'java' is not recognized`** — Java isn't
   on your PATH. Reinstall and check the PATH option, or search "add to
   PATH" for your OS.
+- **`mitsa: command not found`** — MITSA's own shim isn't on your PATH;
+  see its [INSTALL.md](https://github.com/Walter-Stroebel/mitsa/blob/main/INSTALL.md)'s
+  own troubleshooting.
 - **Open in infimg / Two-Page View / Thumbnail Matrix do nothing when
-  clicked** — `infimgJar` is missing or wrong in `config.json`, or the
-  wrapper script isn't executable (`chmod +x` on Linux/Mac). Re-check
-  step 4.
+  clicked** — `infimgJar` is missing or wrong in `config.json`. Re-check
+  step 4/5 — it should point at the `infimg` command MITSA installed.
 - **Everything above worked but some other menu item silently does
   nothing** — see [MANUAL.md's Known
   Limitations](MANUAL.md#known-limitations).
