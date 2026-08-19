@@ -29,7 +29,7 @@ import javax.imageio.ImageIO;
  * {@code Main-Class}, so no packaging changes were needed for this). An
  * optional {@code --config}/{@code -c &lt;path&gt;}, found anywhere in the
  * argument list and stripped before command dispatch, overrides
- * {@link Voynich#configFile} (the default {@code ~/.infVoy/config.json}) —
+ * {@link Voynich#configFile} (the default, MITSA-managed {@code config.json}) —
  * for a user running more than one {@link Config#scanPath}/catalog pair
  * side by side, since the GUI's own config-file-as-first-arg override
  * (see {@code Voynich.main}) has no CatalogCli equivalent otherwise.
@@ -1103,7 +1103,7 @@ public class CatalogCli {
 
     private static void usage() {
         System.err.println("Usage: CatalogCli [--config|-c path] <command> [args]");
-        System.err.println("  --config|-c path             use this config file instead of ~/.infVoy/config.json");
+        System.err.println("  --config|-c path             use this config file instead of the MITSA-managed default");
         System.err.println("  list [-v|--invert] [filter]  list filenames (optionally whose JSON contains/lacks 'filter', case-insensitive)");
         System.err.println("  get <filename>              print the entry's JSON");
         System.err.println("  tag <filename> <text...>    add a tag/note (no-op if already present)");

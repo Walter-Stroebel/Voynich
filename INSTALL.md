@@ -178,10 +178,13 @@ about this app's own config needs to change when that happens.
 ## 5. Set up a config file
 
 The app needs to know where your scanned images live, and where to find
-the infimg command MITSA just installed. Create a folder called
-`.infVoy` in your home directory (on Windows that's usually
-`C:\Users\<you>\.infVoy`; on Mac/Linux it's `~/.infVoy`), and inside it a
-file named `config.json` containing:
+the infimg command MITSA just installed. Voynich's own data — this
+config file, the catalog, checkpoints — lives under MITSA's shared
+per-OS config root rather than its own home-directory dotfile: on
+Linux/Mac that's `~/.config/mitsa/data/voynich/` (or
+`$XDG_CONFIG_HOME/mitsa/data/voynich/` if you've set that), on Windows
+`%APPDATA%\mitsa\data\voynich\`. Create a file named `config.json` there
+containing:
 
 ```json
 {
@@ -195,8 +198,8 @@ and `infimgJar` with the path MITSA wrote for infimg in step 4 —
 `~/bin/infimg` on Linux/Mac (on Windows, the `.bat` shim under
 `%APPDATA%\mitsa`, per MITSA's own docs).
 
-(If you skip this step, the app will create the `.infVoy` folder itself
-on first run and tell you exactly this, then exit — it won't guess.)
+(If you skip this step, the app will create that folder itself on first
+run and tell you exactly this, then exit — it won't guess.)
 
 ## 6. Run it
 

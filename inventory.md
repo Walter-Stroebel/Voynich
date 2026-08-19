@@ -113,9 +113,9 @@ GUI+CLI symmetric as of 2026-08-14, listed for contrast):
   better-than-nothing input for corpus-wide questions, not a finished
   answer. See `memory/project_vision_salience_bias_finding.md` for how it
   was produced and validated.
-- `~/.infVoy/catalog` — the live catalog (213 entries); one
+- `~/.config/mitsa/data/voynich/catalog` — the live catalog (213 entries); one
   `<id>.json` per entry, thumbnail inlined as base64
-- `~/.infVoy/catalog-checkpoints/` — manual checkpoints, one
+- `~/.config/mitsa/data/voynich/catalog-checkpoints/` — manual checkpoints, one
   `<epoch-millis>.zip` each, never auto-pruned
 - `src/main/resources/stolfi/` (gitignored — third-party sourced + one
   session's scratch analysis, not an app deliverable):

@@ -7,7 +7,7 @@
 # feedback_no_test_framework_by_design) — this is a plain shell script
 # exercising the built jar end to end, same spirit as --smokeTest.
 #
-# Requires the app already built (mvn package) and a working ~/.infVoy
+# Requires the app already built (mvn package) and a working MITSA-managed
 # config pointing at a real catalog containing 3r.png/3v.png/4r.png/
 # Front_cover.png. Groups 1, 4, and 5 call the real vision endpoint on
 # predator and will fail if it's unreachable — everything else is

@@ -7,7 +7,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Persistent settings, serialized to/from {@code ~/.infVoy/config.json} via {@link JSON}.
+ * Persistent settings, serialized to/from {@code config.json} under
+ * {@link Voynich#baseDir} (MITSA-managed app data root) via {@link JSON}.
  */
 public class Config {
 

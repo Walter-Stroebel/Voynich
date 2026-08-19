@@ -37,6 +37,7 @@ import javax.swing.SwingWorker;
 import javax.swing.event.MenuEvent;
 import javax.swing.event.MenuListener;
 import javax.swing.filechooser.FileNameExtensionFilter;
+import nl.infcomtec.mitsa.MitsaPaths;
 
 /**
  * Entry point. Loads config, validates {@code scanPath}, builds the main
@@ -47,26 +48,15 @@ public class Voynich {
     public static final String TITLE = "Voynich tools by InfcomTec";
     /**
      * Base directory for all app state: config, catalog, checkpoints.
-     * Created on class load if missing; a pre-existing non-directory at this
-     * path is a fatal misconfiguration, not something to work around.
+     * Resolved via {@link MitsaPaths#appDataDir(String)} — nested under
+     * MITSA's own config root, not a standalone dotfile in $HOME.
      */
-    public static final File baseDir = initBaseDir();
+    public static final File baseDir = MitsaPaths.appDataDir("voynich");
     /**
      * Path to the config file. Defaults to {@code <baseDir>/config.json},
      * overridable via the first CLI argument.
      */
     public static File configFile = new File(baseDir, "config.json");
-
-    private static File initBaseDir() {
-        File dir = new File(System.getProperty("user.home"), ".infVoy");
-        if (!dir.exists() && !dir.mkdir()) {
-            throw new IllegalStateException("Could not create " + dir);
-        }
-        if (!dir.isDirectory()) {
-            throw new IllegalStateException(dir + " exists but is not a directory");
-        }
-        return dir;
-    }
     /**
      * The config loaded from {@link #configFile} at startup.
      */

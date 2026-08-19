@@ -83,9 +83,11 @@ java -jar target/Voynich-*-jar-with-dependencies.jar
 Windows, `cmd`/PowerShell don't expand `*` the same way a Unix shell
 does — check `target/` after the build and use the exact filename.)
 
-On first launch the app creates `~/.infVoy/` if it doesn't exist yet. If
-`~/.infVoy/config.json` is missing, or missing its `scanPath` key, the app
-writes a template config to stderr and exits (code 2) instead of guessing.
+On first launch the app creates its MITSA-managed data folder (Linux/Mac
+`~/.config/mitsa/data/voynich/`, Windows `%APPDATA%\mitsa\data\voynich\`)
+if it doesn't exist yet. If `config.json` there is missing, or missing
+its `scanPath` key, the app writes a template config to stderr and exits
+(code 2) instead of guessing.
 Create the file yourself, pointing `scanPath` at a local directory of
 scans (PNG, JPG, or JPEG — see [INSTALL.md](INSTALL.md#3-get-the-scans-themselves)
 for where to get them and why JPG works fine for everyday use):
@@ -100,7 +102,7 @@ A different config file can be passed as the first command-line argument,
 if you want to keep more than one catalog (e.g. separate scan sets).
 
 The catalog itself — one record per scanned file, thumbnail included — is
-stored under `~/.infVoy/catalog/`, independent of where the scans
+stored under that same data folder's `catalog/`, independent of where the scans
 themselves live on disk. The first time you point the app at a scan
 directory, the catalog is empty: use **File → Scan** to walk `scanPath`
 and populate it. Re-running Scan later is safe — it records a "sighting"
@@ -388,13 +390,15 @@ later.
 ## Data & backups
 
 Config, catalog, and checkpoints all live under one base directory,
-`~/.infVoy/`:
+managed by [MITSA](https://github.com/Walter-Stroebel/mitsa)
+(`~/.config/mitsa/data/voynich/` on Linux/Mac,
+`%APPDATA%\mitsa\data\voynich\` on Windows):
 
-- `~/.infVoy/config.json` — your settings (see [Install & first run](#install--first-run)).
-- `~/.infVoy/catalog/` — one JSON file per catalogued scan, thumbnail
+- `config.json` — your settings (see [Install & first run](#install--first-run)).
+- `catalog/` — one JSON file per catalogued scan, thumbnail
   included inline as base64, so the catalog is portable as a plain
   directory of files.
-- `~/.infVoy/catalog-checkpoints/` — manual whole-catalog snapshots.
+- `catalog-checkpoints/` — manual whole-catalog snapshots.
 
 ![Storage dialog](docs/screenshots/storage_dialog.png)
 
@@ -415,14 +419,15 @@ you'd commit before a risky refactor.
 ### Sharing a catalog with someone else
 
 The catalog directory
-(`~/.infVoy/catalog/`) is just plain JSON files — genuinely portable, copy
-it anywhere, sync it with `rsync`, hand it to a collaborator on a USB
-stick. Point their `scanPath` at their own copy of the scans — sidecars
-are keyed by the bundled `scan-naming.tsv`'s permanent id, resolved via
-each scan's filename under whichever naming scheme their copy actually
-uses (not necessarily the same scheme as yours) — and their
-`~/.infVoy/catalog/` at your copied-over directory, and they'll see
-everything: your tags, your traced regions, your notes.
+(`catalog/` under Voynich's MITSA-managed data folder, see above) is just
+plain JSON files — genuinely portable, copy it anywhere, sync it with
+`rsync`, hand it to a collaborator on a USB stick. Point their `scanPath`
+at their own copy of the scans — sidecars are keyed by the bundled
+`scan-naming.tsv`'s permanent id, resolved via each scan's filename under
+whichever naming scheme their copy actually uses (not necessarily the
+same scheme as yours) — and their own `catalog/` at your copied-over
+directory, and they'll see everything: your tags, your traced regions,
+your notes.
 
 Two people can now genuinely exchange tags/regions without replacing
 either catalog wholesale — see [Exporting your
