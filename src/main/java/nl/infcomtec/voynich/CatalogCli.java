@@ -316,6 +316,48 @@ public class CatalogCli {
      * skipped outright.
      */
 
+    /**
+     * @return true if {@code outDir} already holds this entry's denoised
+     * output under ANY naming scheme's basename for its id, not just the
+     * currently active {@link Config#namingScheme} — files were previously
+     * written under whatever scheme was active at the time, and Walter
+     * renames scans between schemes on purpose ("human folly" is not a
+     * reason to lose track of a file), so checking only the current
+     * scheme's expected filename would miss existing output after a scheme
+     * switch and silently re-denoise the whole corpus under the new names,
+     * leaving stale duplicates from the old scheme behind. Compares by
+     * basename (extension stripped), same convention as
+     * {@link ScanRenamer#idForName}, since denoise always writes PNG
+     * regardless of what extension a scheme's own naming table stores.
+     */
+    private static boolean alreadyDenoised(CatalogEntry entry, File outDir) throws IOException {
+        ScanRenamer.Row row = ScanRenamer.cached().rowFor(entry.id);
+        if (null == row) {
+            return false;
+        }
+        File[] existing = outDir.listFiles();
+        if (null == existing) {
+            return false;
+        }
+        for (String name : row.names.values()) {
+            if (name.isEmpty()) {
+                continue;
+            }
+            String base = stripExtension(name);
+            for (File f : existing) {
+                if (stripExtension(f.getName()).equals(base)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static String stripExtension(String filename) {
+        int dot = filename.lastIndexOf('.');
+        return dot < 0 ? filename : filename.substring(0, dot);
+    }
+
     private static void denoise(Catalog catalog, String[] args) throws IOException {
         File outDir = new File(args[1]);
         double tight = 2.0;
@@ -358,7 +400,7 @@ public class CatalogCli {
                 continue;
             }
             String displayName = OverviewPanel.displayNameOf(entry);
-            if (!force && new File(outDir, displayName).exists()) {
+            if (!force && alreadyDenoised(entry, outDir)) {
                 skippedAlreadyPresent.add(displayName);
                 continue;
             }
