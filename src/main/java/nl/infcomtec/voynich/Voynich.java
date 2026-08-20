@@ -38,6 +38,8 @@ import javax.swing.event.MenuEvent;
 import javax.swing.event.MenuListener;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import nl.infcomtec.mitsa.MitsaPaths;
+import nl.infcomtec.tools.GetOpt;
+import nl.infcomtec.tools.Option;
 
 /**
  * Entry point. Loads config, validates {@code scanPath}, builds the main
@@ -54,7 +56,7 @@ public class Voynich {
     public static final File baseDir = MitsaPaths.appDataDir("voynich");
     /**
      * Path to the config file. Defaults to {@code <baseDir>/config.json},
-     * overridable via the first CLI argument.
+     * overridable via {@code -c}/{@code --config}.
      */
     public static File configFile = new File(baseDir, "config.json");
     /**
@@ -138,25 +140,23 @@ public class Voynich {
     /**
      * Main.
      *
-     * @param args {@code --smokeTest} (anywhere in the args) makes the app
-     * exit right after the main {@link JFrame} is constructed, shown, and
-     * has completed its first paint, instead of running normally — a CI/
-     * scripting-friendly "did it even start" check. Any other, single
-     * argument is the path to the configuration file.
+     * @param args {@code -c}/{@code --config-file FILE} overrides
+     * {@link #configFile}. {@code --smokeTest} makes the app exit right
+     * after the main {@link JFrame} is constructed, shown, and has
+     * completed its first paint, instead of running normally — a CI/
+     * scripting-friendly "did it even start" check, not a user-facing
+     * feature.
      */
     public static void main(String[] args) {
         FlatDarculaLaf.setup();
-        boolean smokeTest = false;
-        List<String> positional = new ArrayList<>();
-        for (String arg : args) {
-            if ("--smokeTest".equals(arg)) {
-                smokeTest = true;
-            } else {
-                positional.add(arg);
-            }
-        }
-        if (!positional.isEmpty()) {
-            configFile = new File(positional.get(0));
+        Option[] extra = new Option[]{
+            new Option((char) 0, "smokeTest", null, "Exit right after first paint (for CI).", null)
+        };
+        GetOpt opts = new GetOpt(args, "Voynich", extra, null);
+        Option configOpt = opts.getOption("config-file");
+        boolean smokeTest = opts.getOption("smokeTest") != null;
+        if (configOpt != null) {
+            configFile = new File(configOpt.value);
         }
         config = JSON.readValue(null, configFile, Config.class);
         if (null == config || null == config.scanPath) {

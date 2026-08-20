@@ -23,29 +23,32 @@ import javax.imageio.ImageIO;
  * kept reinventing as a throwaway one-shot {@code main} class every time an
  * entry needed reading or a tag needed adding. Not a Swing app; run via:
  * <pre>
- * java -cp target/Voynich-1.0-jar-with-dependencies.jar nl.infcomtec.voynich.CatalogCli [--config path] &lt;command&gt; [args]
+ * java -cp target/Voynich-1.0-jar-with-dependencies.jar nl.infcomtec.voynich.CatalogCli [--config-file path] &lt;command&gt; [args]
  * </pre>
  * (the {@code -cp} plus explicit class name bypasses the fat jar's GUI
  * {@code Main-Class}, so no packaging changes were needed for this). An
- * optional {@code --config}/{@code -c &lt;path&gt;}, found anywhere in the
+ * optional {@code --config-file}/{@code -c &lt;path&gt;}, found anywhere in the
  * argument list and stripped before command dispatch, overrides
  * {@link Voynich#configFile} (the default, MITSA-managed {@code config.json}) —
  * for a user running more than one {@link Config#scanPath}/catalog pair
- * side by side, since the GUI's own config-file-as-first-arg override
- * (see {@code Voynich.main}) has no CatalogCli equivalent otherwise.
+ * side by side. Same flag name/short letter as {@code Voynich.main}, which
+ * uses the shared {@code nl.infcomtec.tools.GetOpt}; this hand-rolled scan
+ * exists instead of GetOpt itself because GetOpt exits the process on any
+ * unrecognized option, which would break passing the rest of the argument
+ * list through to this class's own subcommand dispatch below.
  */
 public class CatalogCli {
 
     public static void main(String[] args) throws IOException {
         File configFile = Voynich.configFile;
         List<String> argList = new ArrayList<>(List.of(args));
-        int configIdx = argList.indexOf("--config");
+        int configIdx = argList.indexOf("--config-file");
         if (configIdx < 0) {
             configIdx = argList.indexOf("-c");
         }
         if (configIdx >= 0) {
             if (configIdx + 1 >= argList.size()) {
-                System.err.println("--config requires a path");
+                System.err.println("--config-file requires a path");
                 System.exit(1);
                 return;
             }
@@ -1102,8 +1105,8 @@ public class CatalogCli {
     }
 
     private static void usage() {
-        System.err.println("Usage: CatalogCli [--config|-c path] <command> [args]");
-        System.err.println("  --config|-c path             use this config file instead of the MITSA-managed default");
+        System.err.println("Usage: CatalogCli [--config-file|-c path] <command> [args]");
+        System.err.println("  --config-file|-c path         use this config file instead of the MITSA-managed default");
         System.err.println("  list [-v|--invert] [filter]  list filenames (optionally whose JSON contains/lacks 'filter', case-insensitive)");
         System.err.println("  get <filename>              print the entry's JSON");
         System.err.println("  tag <filename> <text...>    add a tag/note (no-op if already present)");
