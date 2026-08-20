@@ -49,11 +49,32 @@ public class Voynich {
 
     public static final String TITLE = "Voynich tools by InfcomTec";
     /**
-     * Base directory for all app state: config, catalog, checkpoints.
-     * Resolved via {@link MitsaPaths#appDataDir(String)} — nested under
-     * MITSA's own config root, not a standalone dotfile in $HOME.
+     * The default MITSA appId, and default {@code --identity}. A second
+     * identity (e.g. {@code "voynich-clean"}, pointed at a denoised copy
+     * of the scans) gets its own {@link #baseDir} — own config, catalog,
+     * and checkpoints — entirely separate from this one; nothing is
+     * shared between identities except by explicit Export/Import (see
+     * {@code CatalogExporter}/{@code CatalogImporter}), never a shared
+     * catalog directory. Walter's call, 2026-08-20: sharing one catalog
+     * across two scan sources "will bite us on the derriere."
      */
-    public static final File baseDir = MitsaPaths.appDataDir("voynich");
+    public static final String DEFAULT_IDENTITY = "voynich";
+    /**
+     * The identity this process is running as — the MITSA appId passed to
+     * {@link MitsaPaths#appDataDir(String)} for {@link #baseDir}. Set once
+     * in {@link #main} before {@link #baseDir}/{@link #configFile} are
+     * resolved; not reassigned afterward.
+     */
+    public static String identity = DEFAULT_IDENTITY;
+    /**
+     * Base directory for all app state: config, catalog, checkpoints.
+     * Resolved via {@link MitsaPaths#appDataDir(String)} keyed by
+     * {@link #identity} — nested under MITSA's own config root, not a
+     * standalone dotfile in $HOME. Not {@code final}: depends on
+     * {@link #identity}, known only once {@link #main} parses
+     * {@code --identity}.
+     */
+    public static File baseDir = MitsaPaths.appDataDir(DEFAULT_IDENTITY);
     /**
      * Path to the config file. Defaults to {@code <baseDir>/config.json},
      * overridable via {@code -c}/{@code --config}.
@@ -141,20 +162,31 @@ public class Voynich {
      * Main.
      *
      * @param args {@code -c}/{@code --config-file FILE} overrides
-     * {@link #configFile}. {@code --smokeTest} makes the app exit right
-     * after the main {@link JFrame} is constructed, shown, and has
-     * completed its first paint, instead of running normally — a CI/
-     * scripting-friendly "did it even start" check, not a user-facing
-     * feature.
+     * {@link #configFile} directly. {@code --identity NAME} selects which
+     * MITSA appId (and therefore which {@link #baseDir} — separate
+     * catalog/checkpoints, not just a different config file) this process
+     * runs as; its default {@link #configFile} is {@code <baseDir>/config.json}
+     * for that identity, still overridable by {@code --config-file}.
+     * {@code --smokeTest} makes the app exit right after the main
+     * {@link JFrame} is constructed, shown, and has completed its first
+     * paint, instead of running normally — a CI/scripting-friendly "did it
+     * even start" check, not a user-facing feature.
      */
     public static void main(String[] args) {
         FlatDarculaLaf.setup();
         Option[] extra = new Option[]{
-            new Option((char) 0, "smokeTest", null, "Exit right after first paint (for CI).", null)
+            new Option((char) 0, "smokeTest", null, "Exit right after first paint (for CI).", null),
+            new Option((char) 0, "identity", "NAME", "MITSA appId to run as (own config/catalog/checkpoints); default \"" + DEFAULT_IDENTITY + "\".", null)
         };
         GetOpt opts = new GetOpt(args, "Voynich", extra, null);
+        Option identityOpt = opts.getOption("identity");
         Option configOpt = opts.getOption("config-file");
         boolean smokeTest = opts.getOption("smokeTest") != null;
+        if (identityOpt != null) {
+            identity = identityOpt.value;
+            baseDir = MitsaPaths.appDataDir(identity);
+            configFile = new File(baseDir, "config.json");
+        }
         if (configOpt != null) {
             configFile = new File(configOpt.value);
         }
@@ -307,6 +339,12 @@ public class Voynich {
                 });
             }
         }.withTooltip("View/take/restore/delete whole-catalog checkpoints")));
+        fileMenu.add(new JMenuItem(new EzAction("Switch Identity…") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                switchIdentity(fr);
+            }
+        }.withTooltip("Restart as a different identity (own config/catalog/checkpoints), e.g. to point at cleaned scans")));
         fileMenu.addSeparator();
         fileMenu.add(new JMenuItem(new EzAction("Exit") {
             @Override
@@ -792,6 +830,37 @@ public class Voynich {
             JOptionPane.showMessageDialog(fr, "Could not reload catalog: " + ex.getMessage(),
                     "Reload failed", JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    /**
+     * Prompts for an identity name, then relaunches this app as that
+     * identity (own {@link #baseDir} — config, catalog, checkpoints, all
+     * separate) via MITSA's own {@code mitsa run voynich --identity NAME}
+     * (the same launch path the {@code voynich} shim on PATH and MITSA's
+     * tray already use — MITSA is this app's defined ecosystem, not just
+     * an optional installer), then exits this instance once the new one
+     * has actually started. No data of any kind (catalog, tags, regions)
+     * transfers automatically between identities — see Import… for the
+     * explicit, human-reviewed path for that.
+     */
+    private static void switchIdentity(JFrame fr) {
+        String name = JOptionPane.showInputDialog(fr,
+                "Identity to run as (own config/catalog/checkpoints):",
+                identity);
+        if (null == name || name.isBlank() || name.equals(identity)) {
+            return;
+        }
+        try {
+            new ProcessBuilder("mitsa", "run", "voynich", "--identity", name)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
+                    .start();
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(fr, "Could not launch identity \"" + name + "\": " + ex.getMessage(),
+                    "Switch Identity failed", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        System.exit(0);
     }
 
     /**

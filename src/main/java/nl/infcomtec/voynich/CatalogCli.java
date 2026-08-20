@@ -15,7 +15,15 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.IntUnaryOperator;
 import javax.imageio.ImageIO;
 
 /**
@@ -23,25 +31,44 @@ import javax.imageio.ImageIO;
  * kept reinventing as a throwaway one-shot {@code main} class every time an
  * entry needed reading or a tag needed adding. Not a Swing app; run via:
  * <pre>
- * java -cp target/Voynich-1.0-jar-with-dependencies.jar nl.infcomtec.voynich.CatalogCli [--config-file path] &lt;command&gt; [args]
+ * java -cp target/Voynich-1.0-jar-with-dependencies.jar nl.infcomtec.voynich.CatalogCli [--identity name] [--config-file path] &lt;command&gt; [args]
  * </pre>
  * (the {@code -cp} plus explicit class name bypasses the fat jar's GUI
  * {@code Main-Class}, so no packaging changes were needed for this). An
- * optional {@code --config-file}/{@code -c &lt;path&gt;}, found anywhere in the
- * argument list and stripped before command dispatch, overrides
- * {@link Voynich#configFile} (the default, MITSA-managed {@code config.json}) —
- * for a user running more than one {@link Config#scanPath}/catalog pair
- * side by side. Same flag name/short letter as {@code Voynich.main}, which
- * uses the shared {@code nl.infcomtec.tools.GetOpt}; this hand-rolled scan
- * exists instead of GetOpt itself because GetOpt exits the process on any
- * unrecognized option, which would break passing the rest of the argument
- * list through to this class's own subcommand dispatch below.
+ * optional {@code --identity name}, found anywhere in the argument list and
+ * stripped before command dispatch, selects which MITSA appId (and
+ * therefore {@link Voynich#baseDir} — separate catalog/checkpoints, not
+ * just a different config file) this process runs against — see
+ * {@link Voynich#DEFAULT_IDENTITY}'s doc for why identities never share a
+ * catalog. An optional {@code --config-file}/{@code -c &lt;path&gt;}, also
+ * stripped before dispatch, overrides {@link Voynich#configFile} directly
+ * (within whichever identity's {@link Voynich#baseDir} was just resolved,
+ * or the default identity if {@code --identity} wasn't given) — for a user
+ * running more than one {@link Config#scanPath}/catalog pair side by side
+ * without a full separate identity. Same flag names as {@code Voynich.main},
+ * which uses the shared {@code nl.infcomtec.tools.GetOpt}; this hand-rolled
+ * scan exists instead of GetOpt itself because GetOpt exits the process on
+ * any unrecognized option, which would break passing the rest of the
+ * argument list through to this class's own subcommand dispatch below.
  */
 public class CatalogCli {
 
     public static void main(String[] args) throws IOException {
-        File configFile = Voynich.configFile;
         List<String> argList = new ArrayList<>(List.of(args));
+        int identityIdx = argList.indexOf("--identity");
+        if (identityIdx >= 0) {
+            if (identityIdx + 1 >= argList.size()) {
+                System.err.println("--identity requires a name");
+                System.exit(1);
+                return;
+            }
+            Voynich.identity = argList.get(identityIdx + 1);
+            Voynich.baseDir = nl.infcomtec.mitsa.MitsaPaths.appDataDir(Voynich.identity);
+            Voynich.configFile = new File(Voynich.baseDir, "config.json");
+            argList.remove(identityIdx + 1);
+            argList.remove(identityIdx);
+        }
+        File configFile = Voynich.configFile;
         int configIdx = argList.indexOf("--config-file");
         if (configIdx < 0) {
             configIdx = argList.indexOf("-c");
@@ -135,6 +162,10 @@ public class CatalogCli {
                 requireArgs(args, 3, "export <exporterName> --all | --marked | <filename> [<filename>...] -- <outFile>");
                 export(catalog, args);
                 break;
+            case "denoise":
+                requireArgs(args, 2, "denoise <outDir> [--tight N] [--merge N] [--threads N]");
+                denoise(catalog, args);
+                break;
             case "checkpoint":
                 catalog.checkpoint();
                 System.out.println("checkpointed");
@@ -203,6 +234,423 @@ public class CatalogCli {
         File out = new File(remaining.get(0));
         CatalogExporter.export(entries, exporterName, out);
         System.out.println("Exported " + entries.size() + " entries to " + out);
+    }
+
+    /**
+     * {@code denoise <outDir> [--tight N] [--merge N] [--threads N]}: the
+     * "clone-the-corpus" preprocessing tool from
+     * {@code memory/project_quadtree_blob_denoise_prototype.md} — the FINAL
+     * stage of the pipeline, downstream of content-area tracing, not a
+     * substitute for it. For every {@code catalog} entry with a traced
+     * {@link CatalogEntry#mainRegion()}, crops to that region's bounding box
+     * (via {@link BitSet2D#cropToPolygon} — pixels outside the polygon but
+     * inside the box are blacked out; everything not-content-area is real
+     * scanning-process noise, not signal worth preserving, Walter's own
+     * framing 2026-08-20) and only THEN runs {@link QuadBlobDenoiser} on
+     * that crop — denoising the untraced backdrop/margin of a page would be
+     * denoising noise, which makes no sense; masking first means the
+     * algorithm never has to protect content it doesn't know exists.
+     * Entries with no traced content area yet (see
+     * {@code CatalogEntry#regions}'s "regions.size() &lt;= 1 means no
+     * content area has been traced yet") are skipped, not denoised
+     * whole-page — an untraced page hasn't finished the required human
+     * judgment step yet, so there is no honest signal/noise boundary to
+     * denoise against (skip, not guess, was Walter's explicit call).
+     * Skipped/failed filenames are listed in the summary so gaps in the
+     * clone are visible, not silent.
+     *
+     * <p>
+     * Output PNGs land in {@code outDir} under the entry's current display
+     * filename (same {@link OverviewPanel#displayNameOf} convention as
+     * everything else in this CLI), sized to the content area — generally
+     * much smaller than the original scan, by design — so {@code outDir}
+     * can be pointed at directly as a second identity's {@code scanPath}
+     * (see {@code Voynich}'s {@code --identity}/Switch Identity…): the
+     * existing app becomes the original-vs-denoised comparison browser,
+     * unmodified, no new {@code CatalogEntry} field or UI needed.
+     * Deliberately writes files only, never touches any {@link Catalog} —
+     * region/tag metadata for the denoised copies is a separate concern
+     * (Import…, from the original identity's export) once a clean identity
+     * has actually been scanned. One {@code denoise-run.json} provenance
+     * sidecar per RUN (not per image, since a whole run shares one recipe)
+     * records the parameters and outcome.
+     *
+     * <p>
+     * Defaults (tight=2.0, merge=5.0) are the one validated parameter pair
+     * so far (Voynich f17r, full page and crop) — exposed as flags rather
+     * than hardcoded specifically so the open "does this generalize across
+     * page types" question can be explored without a code change.
+     * {@code --threads} defaults to every available core (Walter's explicit
+     * call: this is a batch corpus job, not interactive UI work sharing the
+     * machine with anything else) — deliberately local-only, not farmed out
+     * to predator/victus, which would be over-the-top for this.
+     *
+     * <p>
+     * Concurrency is a self-tuning ratchet, not a precomputed budget —
+     * Walter's own call, 2026-08-20, after two prior designs (a
+     * per-megapixel byte-cost estimate, both unsynchronized and then
+     * synchronized) each still let a default-sized heap grind into
+     * repeated Full GCs on the real corpus: "Literally run the FIRST image
+     * (sort by size I'd suggest). If that's done and you have headroom,
+     * start two. etc. it is an optimization, not a law." Entries are
+     * processed smallest-content-area-first (so the ratchet earns evidence
+     * fast, on cheap images, before ever risking a big one) via
+     * {@link #runDenoiseQueue}: start at concurrency 1; after every
+     * completion, if old-gen occupancy looks healthy (see
+     * {@link #HEAP_HEALTHY_THRESHOLD}), allow one more concurrent slot,
+     * up to {@code --threads}; if it looks unhealthy, stay at the current
+     * level rather than grow. No per-image byte-cost math anywhere — the
+     * actual observed GC behavior after each real completion is the only
+     * signal, which is exactly why it doesn't need a tuned constant to get
+     * right on a machine this dyad has never run it on (see this dyad's own
+     * RAMpocalypse memory: RAM/GPU supply is genuinely squeezed, "buy more"
+     * isn't a real fix to assume by default). A single image bigger than
+     * the whole heap still runs (at concurrency 1, alone) rather than being
+     * skipped outright.
+     */
+
+    private static void denoise(Catalog catalog, String[] args) throws IOException {
+        File outDir = new File(args[1]);
+        double tight = 2.0;
+        double merge = 5.0;
+        int threads = Runtime.getRuntime().availableProcessors();
+        for (int i = 2; i < args.length; i++) {
+            switch (args[i]) {
+                case "--tight":
+                    tight = Double.parseDouble(args[++i]);
+                    break;
+                case "--merge":
+                    merge = Double.parseDouble(args[++i]);
+                    break;
+                case "--threads":
+                    threads = Integer.parseInt(args[++i]);
+                    break;
+                default:
+                    System.err.println("Unknown option: " + args[i]);
+                    System.exit(1);
+                    return;
+            }
+        }
+        if (!outDir.exists() && !outDir.mkdirs()) {
+            System.err.println("Could not create " + outDir);
+            System.exit(1);
+            return;
+        }
+
+        List<CatalogEntry> all = catalog.listAll();
+        List<CatalogEntry> withContentArea = new ArrayList<>();
+        List<String> skippedNoContentArea = new ArrayList<>();
+        for (CatalogEntry entry : all) {
+            if (null != entry.mainRegion()) {
+                withContentArea.add(entry);
+            } else {
+                skippedNoContentArea.add(OverviewPanel.displayNameOf(entry));
+            }
+        }
+        if (withContentArea.isEmpty()) {
+            System.err.println("No catalog entries have a traced content area yet — nothing to denoise.");
+            System.exit(1);
+            return;
+        }
+        // Smallest-content-area-first -- see denoise's own doc: the ratchet
+        // needs cheap evidence fast, on small images, before it ever risks
+        // growing concurrency into a huge one.
+        Collections.sort(withContentArea, new Comparator<CatalogEntry>() {
+            @Override
+            public int compare(CatalogEntry a, CatalogEntry b) {
+                return Double.compare(contentAreaMegapixels(a), contentAreaMegapixels(b));
+            }
+        });
+        System.out.println("Denoising " + withContentArea.size() + " content-area crop(s) to " + outDir
+                + " (tight=" + tight + " merge=" + merge + " maxThreads=" + threads
+                + "); skipping " + skippedNoContentArea.size() + " entr"
+                + (1 == skippedNoContentArea.size() ? "y" : "ies") + " with no traced content area.");
+
+        List<String> failed = new ArrayList<>();
+        int completedCount = runDenoiseQueue(withContentArea, outDir, tight, merge, threads, failed);
+
+        LinkedHashMap<String, Object> provenance = new LinkedHashMap<>();
+        provenance.put("algorithm", "QuadBlobDenoiser (anchor-gated region growing), content-area cropped");
+        provenance.put("tightDeltaE", tight);
+        provenance.put("mergeDeltaE", merge);
+        provenance.put("outDir", outDir.getAbsolutePath());
+        provenance.put("imageCount", completedCount);
+        provenance.put("failed", failed);
+        provenance.put("skippedNoContentArea", skippedNoContentArea);
+        provenance.put("runAtEpochMillis", System.currentTimeMillis());
+        JSON.getMapper().writerWithDefaultPrettyPrinter()
+                .writeValue(new File(outDir, "denoise-run.json"), provenance);
+
+        System.out.println("Done: " + completedCount + " written, " + failed.size() + " failed, "
+                + skippedNoContentArea.size() + " skipped (no content area). "
+                + "Point a Voynich identity's scanPath at " + outDir + " to browse the result.");
+    }
+
+    /**
+     * Heap occupancy (via {@link #heapOccupancyFraction}) below this
+     * fraction of its max reads as "healthy" (ratchet grows by 1, up to
+     * {@code --threads}); at or above reads as "unhealthy" (ratchet shrinks
+     * by 1, floor 1) — symmetric in both directions, not grow-only. A
+     * grow-only version (2026-08-20) held concurrency steady rather than
+     * releasing it once several large images landed together near the end
+     * of a real corpus run, so it stayed pinned at a too-high level through
+     * sustained Full-GC thrash with no way to recover; shrinking gives the
+     * next completion a real chance to bring the heap back to a level the
+     * ratchet can safely re-grow from. No claim this exact number is
+     * optimal — it only needs to be conservative enough to stop the ratchet
+     * from growing into that same spiral.
+     */
+    private static final double HEAP_HEALTHY_THRESHOLD = 0.60;
+
+    /**
+     * The self-tuning concurrency ratchet — see {@link #denoise}'s own doc
+     * for why this replaced two prior precomputed-budget designs, both of
+     * which still let a default heap grind into repeated Full GCs on the
+     * real corpus (2026-08-20). Runs {@code queue} (expected
+     * smallest-content-area-first) through a single dispatcher loop on the
+     * calling thread: keeps up to {@code allowedConcurrency} worker threads
+     * (a plain {@link ExecutorService}, capped at {@code maxThreads}) busy
+     * at once, starting at 1; after each completion, bumps
+     * {@code allowedConcurrency} up by one — never above {@code maxThreads}
+     * — only if old-gen occupancy currently looks healthy (see
+     * {@link #HEAP_HEALTHY_THRESHOLD}); otherwise holds where it is.
+     * "An optimization, not a law" (Walter, 2026-08-20) — concurrency is
+     * never refused for an image being too large; the ratchet only controls
+     * how many run at once, and an oversized image still runs alone at
+     * concurrency 1 if that's as high as the ratchet ever grew.
+     *
+     * <p>
+     * One thing IS refused, though — not a concurrency question at all:
+     * {@link #tooLargeForHeap} is checked before dispatch, skipping (never
+     * attempting) any single image whose estimated need alone exceeds what
+     * {@link Runtime#maxMemory()} could provide even running completely
+     * solo. This is the real final lesson of 2026-08-20's corpus run: after
+     * fixing the concurrency bugs, 32 of 33 real content areas — including
+     * two ~21-megapixel wide pages — succeeded cleanly on a default ~8GB
+     * heap, but the corpus's one ~49-megapixel foldout still thrashed into
+     * runaway Full GCs running entirely ALONE, with no other task competing
+     * for memory. No amount of concurrency throttling helps a single task
+     * that's bigger than the machine — "sometimes you just can't," Walter's
+     * own words — and the only honest response to that is to recognize it
+     * up front and skip with a clear, actionable message (see
+     * {@link #tooLargeForHeap}'s own doc), not spend minutes discovering it
+     * through thrash the way this exact image did before this check
+     * existed.
+     *
+     * @return how many entries were denoised successfully; {@code failed}
+     * (must be a plain, not-yet-populated list) is filled with the display
+     * name of every entry that failed or was skipped as too large for this
+     * heap — including any that threw an {@link OutOfMemoryError} despite
+     * the pre-flight check (a conservative estimate can still be wrong; see
+     * {@link #tooLargeForHeap}), caught via {@code catch (Throwable)}, not
+     * {@code catch (Exception)}, since the first real corpus run
+     * (2026-08-20) lost exactly one large entry silently to an
+     * {@code OutOfMemoryError} an {@code Exception}-only catch let through
+     * uncounted.
+     */
+    private static int runDenoiseQueue(List<CatalogEntry> queue, File outDir, double tight, double merge,
+            int maxThreads, List<String> failed) {
+        int total = queue.size();
+        AtomicInteger nextIndex = new AtomicInteger(0);
+        AtomicInteger completed = new AtomicInteger(0);
+        AtomicInteger running = new AtomicInteger(0);
+        AtomicInteger allowedConcurrency = new AtomicInteger(1);
+        List<String> threadSafeFailed = Collections.synchronizedList(failed);
+        ExecutorService pool = Executors.newFixedThreadPool(maxThreads);
+
+        // The dispatcher itself: single loop on the calling thread, deciding
+        // when to hand the next queue entry to the pool. Deliberately not
+        // "submit everything up front and let worker threads self-gate" (the
+        // prior two designs) -- a single dispatcher is the only place that
+        // needs to reason about allowedConcurrency at all, so there's no
+        // check-then-act race to guard with a lock this time.
+        while (true) {
+            int idx = nextIndex.get();
+            if (idx >= total) {
+                break;
+            }
+            if (running.get() >= allowedConcurrency.get()) {
+                try {
+                    Thread.sleep(200);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                continue;
+            }
+            if (!nextIndex.compareAndSet(idx, idx + 1)) {
+                continue;
+            }
+            final CatalogEntry entry = queue.get(idx);
+            final int myIndex = idx;
+            double entryMp = contentAreaMegapixels(entry);
+            if (tooLargeForHeap(entryMp)) {
+                String displayName = OverviewPanel.displayNameOf(entry);
+                System.err.println("[" + (myIndex + 1) + "/" + total + "] cannot handle " + displayName
+                        + " (" + String.format("%.0f", entryMp) + " megapixel content area) — this heap's max is "
+                        + (Runtime.getRuntime().maxMemory() / (1024 * 1024)) + "MB; you might need to run with a"
+                        + " larger -Xmx, or this task cannot be done with this hardware. Skipping.");
+                threadSafeFailed.add(displayName);
+                continue;
+            }
+            running.incrementAndGet();
+            pool.submit(new Runnable() {
+                @Override
+                public void run() {
+                    String displayName = OverviewPanel.displayNameOf(entry);
+                    long startMs = System.currentTimeMillis();
+                    System.out.println("[" + (myIndex + 1) + "/" + total + "] starting " + displayName
+                            + " (concurrency=" + allowedConcurrency.get() + ") ...");
+                    System.out.flush();
+                    boolean ok = false;
+                    try {
+                        File imgFile = resolveExistingLocation(entry);
+                        if (null == imgFile) {
+                            System.err.println("No on-disk location found for " + displayName);
+                            return;
+                        }
+                        BufferedImage full = ImageIO.read(imgFile);
+                        if (null == full) {
+                            System.err.println("Could not decode " + displayName);
+                            return;
+                        }
+                        CatalogEntry.Region main = entry.mainRegion();
+                        List<Point> vertices = new ArrayList<>(main.polygon.size());
+                        for (CatalogEntry.Vertex v : main.polygon) {
+                            vertices.add(new Point(v.x, v.y));
+                        }
+                        BufferedImage cropped = BitSet2D.cropToPolygon(full, vertices);
+                        BufferedImage denoised = QuadBlobDenoiser.denoise(cropped, tight, merge);
+                        ImageIO.write(denoised, "png", new File(outDir, displayName));
+                        ok = true;
+                        int n = completed.incrementAndGet();
+                        long elapsedMs = System.currentTimeMillis() - startMs;
+                        System.out.println("[" + n + "/" + total + "] done " + displayName
+                                + " (" + cropped.getWidth() + "x" + cropped.getHeight() + ", "
+                                + (elapsedMs / 1000.0) + "s)");
+                        System.out.flush();
+                    } catch (Throwable ex) {
+                        // Throwable, not Exception: an OutOfMemoryError on the largest
+                        // content areas (e.g. a multi-page foldout, tens of megapixels)
+                        // is an Error, not an Exception -- catching only Exception let
+                        // exactly this happen silently once (2026-08-20): the task died
+                        // with no stack trace, no "Failed on" line, and no entry in
+                        // either completed or failed, so the run's own accounting didn't
+                        // add up and the gap was invisible until counted by hand.
+                        System.err.println("Failed on " + displayName + ": " + ex);
+                    } finally {
+                        if (!ok) {
+                            threadSafeFailed.add(displayName);
+                        }
+                        running.decrementAndGet();
+                        // Symmetric, not grow-only: an earlier version only ever held
+                        // steady on an unhealthy reading, never gave concurrency back,
+                        // so once several large images landed together (a real burst
+                        // caught 2026-08-20, near the end of a corpus run) the ratchet
+                        // stayed pinned at a too-high level through sustained Full-GC
+                        // thrash with no way to recover. +-1 per completion (never
+                        // more, even though several completions can race this update
+                        // concurrently -- updateAndGet's CAS retry means each one still
+                        // only ever applies a single +-1 step, they just don't compound
+                        // within one instant) keeps this self-correcting in both
+                        // directions instead of a one-way ratchet.
+                        final boolean healthy = heapOccupancyFraction() < HEAP_HEALTHY_THRESHOLD;
+                        allowedConcurrency.updateAndGet(new IntUnaryOperator() {
+                            @Override
+                            public int applyAsInt(int cur) {
+                                return healthy ? Math.min(maxThreads, cur + 1) : Math.max(1, cur - 1);
+                            }
+                        });
+                    }
+                }
+            });
+        }
+        pool.shutdown();
+        try {
+            pool.awaitTermination(24, TimeUnit.HOURS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
+        return completed.get();
+    }
+
+    /**
+     * @return the JVM's current whole-heap occupancy as a fraction of its
+     * configured max (0.0-1.0) — {@link Runtime#totalMemory()} (currently
+     * committed heap) minus {@link Runtime#freeMemory()} (unused within
+     * that committed portion), over {@link Runtime#maxMemory()} (the real
+     * ceiling the heap can grow to). Deliberately just {@code Runtime} —
+     * no {@code java.lang.management} pool-name matching for "old gen"
+     * specifically; {@code Runtime} already reports everything this ratchet
+     * needs, and pool names vary by collector/JDK vendor in a way plain
+     * heap occupancy doesn't (Walter, 2026-08-20: "getRuntime() has all you
+     * need, mind the cargo cult" — caught before the heavier API shipped).
+     */
+    private static double heapOccupancyFraction() {
+        Runtime rt = Runtime.getRuntime();
+        long used = rt.totalMemory() - rt.freeMemory();
+        return (double) used / rt.maxMemory();
+    }
+
+    /**
+     * Conservative per-megapixel byte cost for the pre-flight
+     * {@link #tooLargeForHeap} check ONLY — deliberately not reused for
+     * concurrency decisions (see {@link #runDenoiseQueue}'s doc for why a
+     * live ratchet replaced per-megapixel budget math there). Calibrated
+     * against the one real data point this dyad actually has, not a fresh
+     * guess: on the real corpus (2026-08-20, default ~8GB max heap), two
+     * ~21-megapixel content areas ({@code 68r.png}/{@code 68v.png})
+     * succeeded cleanly running alone, while the corpus's one
+     * ~49-megapixel foldout thrashed into runaway Full GCs running
+     * completely alone too — no concurrency involved either time. That
+     * puts the real per-image ceiling on this exact heap somewhere between
+     * 21MP (fits) and 49MP (doesn't), i.e. this heap's ~8000MB max can hold
+     * at most ~21-45 MP alone, or very roughly 180-380MB/MP; this constant
+     * picks the low (more conservative) end of that observed range on
+     * purpose — a false-positive skip costs nothing here (a human can still
+     * force it with a bigger {@code -Xmx}), while a false-negative attempt
+     * costs a repeat of the exact thrash this check exists to avoid.
+     */
+    private static final long HEAP_CEILING_BYTES_PER_MEGAPIXEL = 200L * 1024 * 1024;
+
+    /**
+     * @return {@code true} if a single image of {@code megapixels} content
+     * area is estimated to need more memory than this JVM's
+     * {@link Runtime#maxMemory()} could ever provide, even running
+     * completely alone with no concurrent task competing for heap — the
+     * "sometimes you just can't" case (Walter, 2026-08-20): no amount of
+     * concurrency throttling helps a single task bigger than the machine,
+     * so {@link #runDenoiseQueue} skips it outright with a clear message
+     * (naming the current heap ceiling and suggesting a larger
+     * {@code -Xmx}) rather than attempting it and discovering the same
+     * thing through minutes of Full-GC thrash, the way the corpus's one
+     * ~49-megapixel foldout entry did before this check existed.
+     */
+    private static boolean tooLargeForHeap(double megapixels) {
+        long estimatedBytes = (long) (megapixels * HEAP_CEILING_BYTES_PER_MEGAPIXEL);
+        return estimatedBytes > Runtime.getRuntime().maxMemory();
+    }
+
+    /**
+     * @return {@code entry}'s traced {@link CatalogEntry#mainRegion()}
+     * bounding-box area in megapixels, or {@code 0.0} if there's no traced
+     * content area — the size {@link #denoise} actually processes (the
+     * crop, not the full scan), still used to sort the queue
+     * smallest-first (see {@link #runDenoiseQueue}'s doc for why).
+     */
+    private static double contentAreaMegapixels(CatalogEntry entry) {
+        CatalogEntry.Region main = entry.mainRegion();
+        if (null == main || main.polygon.isEmpty()) {
+            return 0.0;
+        }
+        int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE;
+        for (CatalogEntry.Vertex v : main.polygon) {
+            minX = Math.min(minX, v.x);
+            minY = Math.min(minY, v.y);
+            maxX = Math.max(maxX, v.x);
+            maxY = Math.max(maxY, v.y);
+        }
+        return ((long) (maxX - minX) * (maxY - minY)) / 1_000_000.0;
     }
 
     private static void requireArgs(String[] args, int min, String usage) {
@@ -1149,6 +1597,19 @@ public class CatalogCli {
         System.err.println("                              JSON array; --marked = entries with a traced content area, other");
         System.err.println("                              regions, or tags/torrentJpg beyond the synthetic whole page;");
         System.err.println("                              exporterName fills any blank Region.author in the export only");
+        System.err.println("  denoise <outDir> [--tight N] [--merge N] [--threads N]");
+        System.err.println("                              FINAL-stage corpus-clone preprocessing: for every catalog entry");
+        System.err.println("                              with a traced content area, crop to its bounding box (black");
+        System.err.println("                              outside the polygon) then quadtree anchor-gated region-growing");
+        System.err.println("                              denoise (see QuadBlobDenoiser) the crop; entries with no traced");
+        System.err.println("                              content area yet are skipped, not denoised whole-page. Writes");
+        System.err.println("                              results to outDir under each entry's display filename, plus a");
+        System.err.println("                              denoise-run.json provenance sidecar; point a second identity's");
+        System.err.println("                              scanPath at outDir to browse the result (no catalog touched).");
+        System.err.println("                              Each task waits for live free-heap headroom (vs. its own crop's");
+        System.err.println("                              megapixels) before starting, so large pages (e.g. foldouts) never");
+        System.err.println("                              run concurrently enough to exhaust a modest heap");
+        System.err.println("                              defaults: --tight 2.0 --merge 5.0 --threads <all cores>");
         System.err.println("  checkpoint                  clone the whole catalog's current state");
         System.err.println("  restore                     discard everything since the last checkpoint");
     }
