@@ -271,9 +271,16 @@ public class CatalogCli {
      * Deliberately writes files only, never touches any {@link Catalog} —
      * region/tag metadata for the denoised copies is a separate concern
      * (Import…, from the original identity's export) once a clean identity
-     * has actually been scanned. One {@code denoise-run.json} provenance
-     * sidecar per RUN (not per image, since a whole run shares one recipe)
-     * records the parameters and outcome.
+     * has actually been scanned. Re-running against an {@code outDir} that
+     * already has output is incremental by default: any entry whose display
+     * filename already exists there is skipped (reported separately from
+     * "no content area" skips), so marking more scans and re-running only
+     * denoises what's new — {@code --force} reprocesses everything instead,
+     * e.g. after a {@code --tight}/{@code --merge} change. {@code
+     * denoise-run.json} is a JSON array, one provenance object appended per
+     * run (not per image, since a whole run shares one recipe), so a
+     * directory's full incremental history stays visible rather than being
+     * overwritten by the latest run.
      *
      * <p>
      * Defaults (tight=2.0, merge=5.0) are the one validated parameter pair
@@ -314,6 +321,7 @@ public class CatalogCli {
         double tight = 2.0;
         double merge = 5.0;
         int threads = Runtime.getRuntime().availableProcessors();
+        boolean force = false;
         for (int i = 2; i < args.length; i++) {
             switch (args[i]) {
                 case "--tight":
@@ -324,6 +332,9 @@ public class CatalogCli {
                     break;
                 case "--threads":
                     threads = Integer.parseInt(args[++i]);
+                    break;
+                case "--force":
+                    force = true;
                     break;
                 default:
                     System.err.println("Unknown option: " + args[i]);
@@ -340,14 +351,26 @@ public class CatalogCli {
         List<CatalogEntry> all = catalog.listAll();
         List<CatalogEntry> withContentArea = new ArrayList<>();
         List<String> skippedNoContentArea = new ArrayList<>();
+        List<String> skippedAlreadyPresent = new ArrayList<>();
         for (CatalogEntry entry : all) {
-            if (null != entry.mainRegion()) {
-                withContentArea.add(entry);
-            } else {
+            if (null == entry.mainRegion()) {
                 skippedNoContentArea.add(OverviewPanel.displayNameOf(entry));
+                continue;
             }
+            String displayName = OverviewPanel.displayNameOf(entry);
+            if (!force && new File(outDir, displayName).exists()) {
+                skippedAlreadyPresent.add(displayName);
+                continue;
+            }
+            withContentArea.add(entry);
         }
         if (withContentArea.isEmpty()) {
+            if (!skippedAlreadyPresent.isEmpty()) {
+                System.out.println("Nothing to do: all " + skippedAlreadyPresent.size()
+                        + " content-area entr" + (1 == skippedAlreadyPresent.size() ? "y" : "ies")
+                        + " already have output in " + outDir + ". Use --force to redo them.");
+                return;
+            }
             System.err.println("No catalog entries have a traced content area yet — nothing to denoise.");
             System.exit(1);
             return;
@@ -364,7 +387,9 @@ public class CatalogCli {
         System.out.println("Denoising " + withContentArea.size() + " content-area crop(s) to " + outDir
                 + " (tight=" + tight + " merge=" + merge + " maxThreads=" + threads
                 + "); skipping " + skippedNoContentArea.size() + " entr"
-                + (1 == skippedNoContentArea.size() ? "y" : "ies") + " with no traced content area.");
+                + (1 == skippedNoContentArea.size() ? "y" : "ies") + " with no traced content area"
+                + (skippedAlreadyPresent.isEmpty() ? "." : ("; skipping " + skippedAlreadyPresent.size()
+                        + " already present in " + outDir + " (--force to redo).")));
 
         List<String> failed = new ArrayList<>();
         int completedCount = runDenoiseQueue(withContentArea, outDir, tight, merge, threads, failed);
@@ -377,12 +402,30 @@ public class CatalogCli {
         provenance.put("imageCount", completedCount);
         provenance.put("failed", failed);
         provenance.put("skippedNoContentArea", skippedNoContentArea);
+        provenance.put("skippedAlreadyPresent", skippedAlreadyPresent);
+        provenance.put("force", force);
         provenance.put("runAtEpochMillis", System.currentTimeMillis());
-        JSON.getMapper().writerWithDefaultPrettyPrinter()
-                .writeValue(new File(outDir, "denoise-run.json"), provenance);
+        File provenanceFile = new File(outDir, "denoise-run.json");
+        List<Object> runs = new ArrayList<>();
+        if (provenanceFile.exists()) {
+            try {
+                Object existing = JSON.getMapper().readValue(provenanceFile, Object.class);
+                if (existing instanceof List) {
+                    runs.addAll((List<Object>) existing);
+                } else {
+                    runs.add(existing);
+                }
+            } catch (IOException e) {
+                System.err.println("Warning: could not read existing " + provenanceFile
+                        + ", overwriting with this run's provenance only: " + e.getMessage());
+            }
+        }
+        runs.add(provenance);
+        JSON.getMapper().writerWithDefaultPrettyPrinter().writeValue(provenanceFile, runs);
 
         System.out.println("Done: " + completedCount + " written, " + failed.size() + " failed, "
-                + skippedNoContentArea.size() + " skipped (no content area). "
+                + skippedNoContentArea.size() + " skipped (no content area), "
+                + skippedAlreadyPresent.size() + " skipped (already present). "
                 + "Point a Voynich identity's scanPath at " + outDir + " to browse the result.");
     }
 
@@ -1597,18 +1640,22 @@ public class CatalogCli {
         System.err.println("                              JSON array; --marked = entries with a traced content area, other");
         System.err.println("                              regions, or tags/torrentJpg beyond the synthetic whole page;");
         System.err.println("                              exporterName fills any blank Region.author in the export only");
-        System.err.println("  denoise <outDir> [--tight N] [--merge N] [--threads N]");
+        System.err.println("  denoise <outDir> [--tight N] [--merge N] [--threads N] [--force]");
         System.err.println("                              FINAL-stage corpus-clone preprocessing: for every catalog entry");
         System.err.println("                              with a traced content area, crop to its bounding box (black");
         System.err.println("                              outside the polygon) then quadtree anchor-gated region-growing");
         System.err.println("                              denoise (see QuadBlobDenoiser) the crop; entries with no traced");
         System.err.println("                              content area yet are skipped, not denoised whole-page. Writes");
-        System.err.println("                              results to outDir under each entry's display filename, plus a");
-        System.err.println("                              denoise-run.json provenance sidecar; point a second identity's");
-        System.err.println("                              scanPath at outDir to browse the result (no catalog touched).");
-        System.err.println("                              Each task waits for live free-heap headroom (vs. its own crop's");
-        System.err.println("                              megapixels) before starting, so large pages (e.g. foldouts) never");
-        System.err.println("                              run concurrently enough to exhaust a modest heap");
+        System.err.println("                              results to outDir under each entry's display filename, appending");
+        System.err.println("                              a run record to outDir's denoise-run.json provenance array;");
+        System.err.println("                              point a second identity's scanPath at outDir to browse the result");
+        System.err.println("                              (no catalog touched). Incremental by default: an entry whose");
+        System.err.println("                              output already exists in outDir is skipped, so marking more scans");
+        System.err.println("                              and re-running only denoises what's new; --force reprocesses");
+        System.err.println("                              everything (e.g. after changing --tight/--merge). Each task waits");
+        System.err.println("                              for live free-heap headroom (vs. its own crop's megapixels) before");
+        System.err.println("                              starting, so large pages (e.g. foldouts) never run concurrently");
+        System.err.println("                              enough to exhaust a modest heap");
         System.err.println("                              defaults: --tight 2.0 --merge 5.0 --threads <all cores>");
         System.err.println("  checkpoint                  clone the whole catalog's current state");
         System.err.println("  restore                     discard everything since the last checkpoint");
