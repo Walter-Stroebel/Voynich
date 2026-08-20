@@ -98,8 +98,20 @@ for where to get them and why JPG works fine for everyday use):
 }
 ```
 
-A different config file can be passed as the first command-line argument,
-if you want to keep more than one catalog (e.g. separate scan sets).
+A different config file can be passed via `--config-file`/`-c PATH`, if
+you want to keep more than one catalog (e.g. separate scan sets) without
+a full separate identity. For a full separate setup — own config,
+catalog, AND checkpoints, not just a different config file — use
+`--identity NAME` instead (default identity: `voynich`); a second
+identity's data lives entirely apart from the first
+(`~/.config/mitsa/data/<identity>/` instead of
+`~/.config/mitsa/data/voynich/`) and is never shared with it. One common
+use: pointing a second identity's `scanPath` at a denoised clone of the
+scans (see [CLI reference](#cli-reference)'s `denoise` command below) so
+the app itself becomes the original-vs-clean comparison browser. From
+inside the app, **File → Switch Identity…** prompts for an identity name
+and restarts as that identity — the current window closes once the new
+one has actually started.
 
 The catalog itself — one record per scanned file, thumbnail included — is
 stored under that same data folder's `catalog/`, independent of where the scans
@@ -342,16 +354,19 @@ opened through **infimg** (a separate companion image-viewer tool) rather
 than a one-off in-app dialog — so the result can be saved, copied, or
 discarded using infimg's own tools.
 
-**infimg doesn't come with this repo** — it's a sibling project you build
-separately, and despite being a separate download it's a required step
-for this app to be fully usable, not a nice-to-have: `Selected → Open in
-infimg`, Two-Page View, and Thumbnail Matrix all depend on it, and there's
-no in-app fallback viewer on any platform. If any of those fail with a
-launch error or silently do nothing, see
+**infimg doesn't come with this repo** — it's a sibling project, and
+despite being a separate download it's a required step for this app to
+be fully usable, not a nice-to-have: `Selected → Open in infimg`,
+Two-Page View, and Thumbnail Matrix all depend on it, and there's no
+in-app fallback viewer on any platform. On a MITSA-managed install, both
+apps are registered together and infimg's launcher shim is on `PATH`, so
+`Config.infimgJar` already defaults to the bare `infimg` command — no
+manual config step needed. Building/installing outside MITSA still
+works, but then `infimgJar` needs pointing at wherever infimg actually
+lives; see
 [INSTALL.md](INSTALL.md#4-get-infimg-needed-for-viewing-full-size-images)
-for the build and `infimgJar` config steps. The app itself installs and
-builds cleanly while `infimgJar` is unset — every infimg-backed menu item
-just has nothing to launch until it's configured.
+for that path. If any infimg-backed menu item fails with a launch error
+or silently does nothing, that's the config value to check first.
 
 ![Two-Page View spread](docs/screenshots/two_page_view.png)
 
@@ -509,8 +524,14 @@ equivalent, useful for scripting, batch extraction, or quick lookups
 without opening the app. Run via:
 
 ```bash
-java -cp target/Voynich-*-jar-with-dependencies.jar nl.infcomtec.voynich.CatalogCli <command>
+java -cp target/Voynich-*-jar-with-dependencies.jar nl.infcomtec.voynich.CatalogCli [--identity NAME] [--config-file PATH] <command>
 ```
+
+`--identity`/`--config-file` work the same as the GUI's (see
+[Install & first run](#install--first-run) above) — `--identity` selects
+which MITSA-managed identity's catalog/config to operate against
+(default `voynich`), `--config-file` overrides just the config path
+within that identity.
 
 Key commands:
 
@@ -547,6 +568,24 @@ Key commands:
   it's GUI-only by design.
 - **`checkpoint`** / **`restore`** — CLI equivalents of the Storage dialog's
   take/restore actions.
+- **`denoise <outDir> [--tight N] [--merge N] [--threads N]`** —
+  corpus-clone preprocessing, no GUI equivalent. For every catalog entry
+  with a traced content area, crops to that region's bounding box (black
+  outside the polygon — everything outside the traced content is treated
+  as scanning-process noise, not signal worth keeping) and runs a
+  content-preserving quadtree denoiser over the crop, writing the result
+  to `outDir` under the entry's current filename. Entries with no traced
+  content area yet are skipped, not denoised whole-page — this is meant
+  as a FINAL stage downstream of tracing, not a substitute for it.
+  Concurrency self-tunes to whatever heap is actually available (grows
+  when memory looks healthy, shrinks when it doesn't); a single image too
+  large to process even alone on the current heap is skipped with a
+  message naming the heap ceiling and suggesting a larger `-Xmx`, rather
+  than being attempted and failing partway through. Point a second
+  `--identity`'s `scanPath` at `outDir` afterward (see
+  [Install & first run](#install--first-run) above) to browse the
+  denoised result — the app itself becomes the comparison browser, no
+  new UI needed.
 
 See `scripts/test-catalog-cli.sh` in the repo for a working example of
 every command's argument shape.
