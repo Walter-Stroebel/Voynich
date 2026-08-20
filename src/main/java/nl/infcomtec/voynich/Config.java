@@ -40,14 +40,19 @@ public class Config {
      * value survives infimg version bumps without needing an edit here each
      * time). A bare jar path also still works, as long as it's directly
      * executable (unusual for a plain {@code .jar}) — the launcher-script
-     * indirection is the intended usage. Not shipped with a default: a
-     * dev-machine launcher path only makes sense on the machine that has
-     * one, so {@link Voynich#launchImageView} logs a warning rather than
-     * guessing when this is unset — this "install location" question is
-     * intended to be settled properly in the user manual's install section,
-     * not baked in here.
+     * indirection is the intended usage. Defaults to the bare command
+     * {@code "infimg"}, resolved via {@code PATH} — both this app and
+     * infimg are registered together as MITSA-managed apps
+     * ({@code ~/.config/mitsa/apps.json}), each with its own launcher shim
+     * MITSA installs onto {@code PATH} (see {@code MitsaPaths#binDir}), so
+     * a MITSA-managed Voynich install can assume infimg's shim is present
+     * rather than treating it as an optional external tool needing its own
+     * configured path — confirmed the hard way 2026-08-20: a freshly
+     * created {@code --identity} (own config.json, no {@code infimgJar}
+     * carried over from the default identity) hit "no viewer selected"
+     * until this default existed.
      */
-    public String infimgJar;
+    public String infimgJar = "infimg";
 
     /**
      * Host running the {@code mcp-service-catalog} vision pipeline (see
